@@ -24,6 +24,9 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
+// wwwroot must exist before Build() so UseStaticFiles() gets a PhysicalFileProvider, not NullFileProvider
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads"));
+
 var app = builder.Build();
 
 // Auto-migrate and seed database
@@ -34,8 +37,25 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseCors();
+app.UseStaticFiles();
 app.MapHub<ChatHub>("/chathub");
 app.MapGet("/", () => "Chaos Server is running");
+
+app.MapPost("/api/upload", async (IFormFile file, IWebHostEnvironment env) =>
+{
+    var allowed = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+    var ext = Path.GetExtension(file.FileName).ToLower();
+    if (!allowed.Contains(ext)) return Results.BadRequest("Not an image");
+
+    var dir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
+    Directory.CreateDirectory(dir);
+
+    var name = $"{Guid.NewGuid()}{ext}";
+    await using var stream = File.Create(Path.Combine(dir, name));
+    await file.CopyToAsync(stream);
+
+    return Results.Ok(new { url = $"/uploads/{name}" });
+}).DisableAntiforgery();
 
 // Print connection info
 var localIp = GetLocalIpAddress();

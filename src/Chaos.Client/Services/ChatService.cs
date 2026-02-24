@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Text.Json;
 using Chaos.Shared;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -6,6 +8,7 @@ namespace Chaos.Client.Services;
 public class ChatService : IAsyncDisposable
 {
     private HubConnection? _connection;
+    private string _baseUrl = string.Empty;
 
     public event Action<MessageDto>? MessageReceived;
     public event Action<string, int, int>? UserJoinedVoice; // username, channelId, voiceUserId
@@ -20,6 +23,8 @@ public class ChatService : IAsyncDisposable
 
     public async Task ConnectAsync(string serverUrl)
     {
+        _baseUrl = serverUrl.Replace("/chathub", "");
+
         _connection = new HubConnectionBuilder()
             .WithUrl(serverUrl)
             .WithAutomaticReconnect()
@@ -93,10 +98,22 @@ public class ChatService : IAsyncDisposable
             await _connection.InvokeAsync("LeaveVoiceChannel");
     }
 
-    public async Task SendMessage(int channelId, string content)
+    public async Task<string?> UploadImageAsync(byte[] imageData, string filename)
+    {
+        using var http = new HttpClient();
+        using var content = new MultipartFormDataContent();
+        content.Add(new ByteArrayContent(imageData), "file", filename);
+        var response = await http.PostAsync($"{_baseUrl}/api/upload", content);
+        if (!response.IsSuccessStatusCode) return null;
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var relative = doc.RootElement.GetProperty("url").GetString();
+        return relative is null ? null : $"{_baseUrl}{relative}";
+    }
+
+    public async Task SendMessage(int channelId, string content, string? imageUrl = null)
     {
         if (_connection is not null)
-            await _connection.InvokeAsync("SendMessage", channelId, content);
+            await _connection.InvokeAsync("SendMessage", channelId, content, imageUrl);
     }
 
     public async Task<Dictionary<int, List<VoiceMemberDto>>> GetAllVoiceMembers()
