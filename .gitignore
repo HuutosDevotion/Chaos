@@ -25,6 +25,9 @@ nuget.config
 *.db-shm
 *.db-wal
 
+# User-uploaded files
+wwwroot/uploads/
+
 # Logs
 *.log
 logs/
