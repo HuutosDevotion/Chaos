@@ -1,0 +1,363 @@
+<Window x:Class="Chaos.Client.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Chaos.Client.ViewModels"
+        xmlns:conv="clr-namespace:Chaos.Client.Converters"
+        xmlns:shared="clr-namespace:Chaos.Shared;assembly=Chaos.Shared"
+        mc:Ignorable="d"
+        Title="Chaos" Height="700" Width="1100"
+        Background="{StaticResource BgMediumBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+        <conv:InverseBoolConverter x:Key="InverseBool" />
+    </Window.Resources>
+
+    <Grid>
+        <!-- Login Overlay -->
+        <Grid Visibility="{Binding IsConnected, Converter={StaticResource InverseBoolToVis}}"
+              Panel.ZIndex="10"
+              Background="{StaticResource BgDarkBrush}">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="340">
+                <TextBlock Text="CHAOS"
+                           FontSize="36" FontWeight="Bold"
+                           Foreground="{StaticResource AccentBlueBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,8" />
+                <TextBlock Text="Self-hosted voice &amp; text chat"
+                           FontSize="13"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,30" />
+
+                <TextBlock Text="SERVER ADDRESS" FontSize="11" FontWeight="Bold"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,0,0,6" />
+                <TextBox Style="{StaticResource DarkTextBox}"
+                         Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,0,16" />
+
+                <TextBlock Text="USERNAME" FontSize="11" FontWeight="Bold"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Margin="0,0,0,6" />
+                <TextBox Style="{StaticResource DarkTextBox}"
+                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,0,0,20" />
+
+                <Button Content="Connect"
+                        Style="{StaticResource AccentButton}"
+                        Command="{Binding ConnectCommand}"
+                        FontSize="15" FontWeight="SemiBold"
+                        Padding="0,10"
+                        Margin="0,0,0,12" />
+
+                <TextBlock Text="{Binding ConnectionStatus}"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           HorizontalAlignment="Center"
+                           FontSize="12" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Main Layout (visible when connected) -->
+        <Grid Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Sidebar -->
+            <Grid Grid.Column="0" Background="{StaticResource BgDarkBrush}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="52" />
+                </Grid.RowDefinitions>
+
+                <!-- Server Name Header -->
+                <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
+                        Padding="16,0">
+                    <TextBlock Text="Chaos Server"
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <!-- Channel List with voice members inline -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Channels}" Margin="8,12,8,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <!-- Channel Button -->
+                                    <Button HorizontalContentAlignment="Left"
+                                            Padding="8,6" Margin="0,1"
+                                            Cursor="Hand"
+                                            Command="{Binding DataContext.ChannelClickCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Setter Property="BorderThickness" Value="0" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                                    CornerRadius="4" Background="{TemplateBinding Background}">
+                                                                <ContentPresenter />
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Icon}"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       FontSize="16" Margin="0,0,6,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Name}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="14"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Voice members shown under voice channels -->
+                                    <ItemsControl ItemsSource="{Binding VoiceMembers}"
+                                                  Margin="28,0,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
+                                                                        <Setter Property="Fill" Value="{StaticResource AccentGreenBrush}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding Username}" FontSize="13" VerticalAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Voice Connection Bar (shown when in voice) -->
+                <Border Grid.Row="2"
+                        Visibility="{Binding IsInVoice, Converter={StaticResource BoolToVis}}"
+                        Background="#1A1E1B" BorderBrush="#222326" BorderThickness="0,1,0,0"
+                        Padding="12,8">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="X"
+                                    Style="{StaticResource DarkButton}"
+                                    Command="{Binding DisconnectVoiceCommand}"
+                                    FontSize="11" Padding="6,2" FontWeight="Bold"
+                                    VerticalAlignment="Center" />
+                            <StackPanel>
+                                <TextBlock Text="{Binding VoiceChannelName}"
+                                           Foreground="{StaticResource AccentGreenBrush}"
+                                           FontSize="12" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding VoiceStatus}"
+                                           Foreground="{StaticResource AccentRedBrush}"
+                                           FontSize="10" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding VoiceStatus}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </DockPanel>
+                        <ProgressBar Height="3" Margin="0,6,0,0"
+                                     Minimum="0" Maximum="100"
+                                     Value="{Binding MicLevel, Mode=OneWay}"
+                                     Background="#3A3C42" Foreground="{StaticResource AccentGreenBrush}"
+                                     BorderThickness="0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- User Panel (bottom) -->
+                <Border Grid.Row="3" Background="{StaticResource BgDarkestBrush}"
+                        Padding="8,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Username}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ConnectionStatus}"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="10" />
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Content="{Binding MuteButtonText}"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding ToggleMuteCommand}"
+                                FontSize="11" Padding="4,4"
+                                Margin="4,0" VerticalAlignment="Center" />
+
+                        <Button Grid.Column="2" Content="{Binding DeafenButtonText}"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding ToggleDeafenCommand}"
+                                FontSize="11" Padding="4,4"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Right: Text Chat Area (always shows selected text channel) -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="48" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Channel Header -->
+                <Border Grid.Row="0" Background="{StaticResource BgMediumBrush}"
+                        BorderBrush="#222326" BorderThickness="0,0,0,1"
+                        Padding="16,0">
+                    <TextBlock Text="{Binding SelectedChannelName}"
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <!-- Messages -->
+                <Grid Grid.Row="1" Background="{StaticResource BgMediumBrush}">
+                    <ListBox Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"
+                             ItemsSource="{Binding Messages}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             x:Name="MessageList">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="16,4" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border Padding="{TemplateBinding Padding}"
+                                                    Background="{TemplateBinding Background}">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#2E3035" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Author}"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   FontWeight="SemiBold" FontSize="14" />
+                                        <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
+                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                   FontSize="11" Margin="8,2,0,0"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Content}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="14" TextWrapping="Wrap"
+                                               Margin="0,2,0,0" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- No Channel Selected -->
+                    <TextBlock Text="Select a text channel to start chatting"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="16"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasTextChannel, Converter={StaticResource InverseBoolToVis}}" />
+                </Grid>
+
+                <!-- Message Input -->
+                <Border Grid.Row="2" Padding="16,0,16,16"
+                        Background="{StaticResource BgMediumBrush}"
+                        Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}">
+                    <Border Background="{StaticResource BgInputBrush}"
+                            CornerRadius="8"
+                            Padding="4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Style="{StaticResource DarkTextBox}"
+                                     Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0"
+                                     VerticalAlignment="Center"
+                                     x:Name="MessageInput"
+                                     KeyDown="MessageInput_KeyDown" />
+                            <Button Grid.Column="1"
+                                    Content="Send"
+                                    Style="{StaticResource AccentButton}"
+                                    Command="{Binding SendMessageCommand}"
+                                    Padding="16,6"
+                                    Margin="4,0,0,0"
+                                    VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

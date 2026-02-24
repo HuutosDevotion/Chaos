@@ -1,0 +1,114 @@
+using Chaos.Shared;
+using Microsoft.AspNetCore.SignalR.Client;
+
+namespace Chaos.Client.Services;
+
+public class ChatService : IAsyncDisposable
+{
+    private HubConnection? _connection;
+
+    public event Action<MessageDto>? MessageReceived;
+    public event Action<string, int, int>? UserJoinedVoice; // username, channelId, voiceUserId
+    public event Action<string, int>? UserLeftVoice;
+    public event Action<int, List<VoiceMemberDto>>? VoiceMembersReceived;
+    public event Action<string>? UserConnected;
+    public event Action<string>? UserDisconnected;
+    public event Action<string>? Connected;
+    public event Action? Disconnected;
+
+    public bool IsConnected => _connection?.State == HubConnectionState.Connected;
+
+    public async Task ConnectAsync(string serverUrl)
+    {
+        _connection = new HubConnectionBuilder()
+            .WithUrl(serverUrl)
+            .WithAutomaticReconnect()
+            .Build();
+
+        _connection.On<MessageDto>("ReceiveMessage", msg =>
+            MessageReceived?.Invoke(msg));
+
+        _connection.On<string, int, int>("UserJoinedVoice", (user, channelId, voiceUserId) =>
+            UserJoinedVoice?.Invoke(user, channelId, voiceUserId));
+
+        _connection.On<string, int>("UserLeftVoice", (user, channelId) =>
+            UserLeftVoice?.Invoke(user, channelId));
+
+        _connection.On<int, List<VoiceMemberDto>>("VoiceMembers", (channelId, members) =>
+            VoiceMembersReceived?.Invoke(channelId, members));
+
+        _connection.On<string>("UserConnected", user =>
+            UserConnected?.Invoke(user));
+
+        _connection.On<string>("UserDisconnected", user =>
+            UserDisconnected?.Invoke(user));
+
+        _connection.On<string>("UsernameSet", username =>
+            Connected?.Invoke(username));
+
+        _connection.Closed += _ =>
+        {
+            Disconnected?.Invoke();
+            return Task.CompletedTask;
+        };
+
+        await _connection.StartAsync();
+    }
+
+    public async Task SetUsername(string username)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("SetUsername", username);
+    }
+
+    public async Task<List<ChannelDto>> GetChannels()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<ChannelDto>>("GetChannels");
+        return new();
+    }
+
+    public async Task<List<MessageDto>> GetMessages(int channelId)
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<MessageDto>>("GetMessages", channelId);
+        return new();
+    }
+
+    public async Task JoinTextChannel(int channelId)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("JoinTextChannel", channelId);
+    }
+
+    public async Task JoinVoiceChannel(int channelId, int voiceUserId)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("JoinVoiceChannel", channelId, voiceUserId);
+    }
+
+    public async Task LeaveVoiceChannel()
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("LeaveVoiceChannel");
+    }
+
+    public async Task SendMessage(int channelId, string content)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("SendMessage", channelId, content);
+    }
+
+    public async Task<Dictionary<int, List<VoiceMemberDto>>> GetAllVoiceMembers()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<Dictionary<int, List<VoiceMemberDto>>>("GetAllVoiceMembers");
+        return new();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection is not null)
+            await _connection.DisposeAsync();
+    }
+}
