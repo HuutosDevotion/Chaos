@@ -275,6 +275,7 @@
                              Background="Transparent"
                              BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             VirtualizingPanel.ScrollUnit="Pixel"
                              x:Name="MessageList">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
@@ -313,7 +314,23 @@
                                     <TextBlock Text="{Binding Content}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                FontSize="14" TextWrapping="Wrap"
-                                               Margin="0,2,0,0" />
+                                               Margin="0,2,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Content}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <Image Source="{Binding ImageUrl}"
+                                           MaxWidth="400" MaxHeight="300"
+                                           Stretch="Uniform" HorizontalAlignment="Left"
+                                           Margin="0,4,0,0"
+                                           Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -329,33 +346,58 @@
                 </Grid>
 
                 <!-- Message Input -->
-                <Border Grid.Row="2" Padding="16,0,16,16"
+                <Border Grid.Row="2" Padding="16,8,16,16"
                         Background="{StaticResource BgMediumBrush}"
-                        Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}">
-                    <Border Background="{StaticResource BgInputBrush}"
-                            CornerRadius="8"
-                            Padding="4">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0"
-                                     Style="{StaticResource DarkTextBox}"
-                                     Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
-                                     BorderThickness="0"
-                                     VerticalAlignment="Center"
-                                     x:Name="MessageInput"
-                                     KeyDown="MessageInput_KeyDown" />
-                            <Button Grid.Column="1"
-                                    Content="Send"
-                                    Style="{StaticResource AccentButton}"
-                                    Command="{Binding SendMessageCommand}"
-                                    Padding="16,6"
-                                    Margin="4,0,0,0"
-                                    VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
+                        Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"
+                        AllowDrop="True"
+                        PreviewDragOver="ChatInput_DragOver"
+                        PreviewDrop="ChatInput_Drop">
+                    <StackPanel>
+                        <!-- Pending image thumbnail preview -->
+                        <Border Background="{StaticResource BgInputBrush}"
+                                CornerRadius="8" Padding="8"
+                                Margin="0,0,0,6"
+                                Visibility="{Binding HasPendingImage, Converter={StaticResource BoolToVis}}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right"
+                                        Content="✕"
+                                        Style="{StaticResource DarkButton}"
+                                        Command="{Binding ClearPendingImageCommand}"
+                                        Padding="6,4" Margin="8,0,0,0"
+                                        VerticalAlignment="Top" />
+                                <Image Source="{Binding PendingImagePreview}"
+                                       MaxWidth="300" MaxHeight="120"
+                                       Stretch="Uniform" HorizontalAlignment="Left" />
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Text input row -->
+                        <Border Background="{StaticResource BgInputBrush}"
+                                CornerRadius="8"
+                                Padding="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         Style="{StaticResource DarkTextBox}"
+                                         Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
+                                         BorderThickness="0"
+                                         VerticalAlignment="Center"
+                                         x:Name="MessageInput"
+                                         KeyDown="MessageInput_KeyDown"
+                                         PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                <Button Grid.Column="1"
+                                        Content="Send"
+                                        Style="{StaticResource AccentButton}"
+                                        Command="{Binding SendMessageCommand}"
+                                        Padding="16,6"
+                                        Margin="4,0,0,0"
+                                        VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
                 </Border>
             </Grid>
         </Grid>

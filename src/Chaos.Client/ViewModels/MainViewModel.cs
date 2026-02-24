@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using Chaos.Client.Services;
 using Chaos.Shared;
 
@@ -51,6 +52,9 @@ public class MainViewModel : INotifyPropertyChanged
     private int _userId;
     private double _micLevel;
     private string _voiceStatus = string.Empty;
+    private byte[]? _pendingImageData;
+    private string _pendingImageFilename = string.Empty;
+    private BitmapSource? _pendingImagePreview;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageDto> Messages { get; } = new();
@@ -129,6 +133,30 @@ public class MainViewModel : INotifyPropertyChanged
         set { _voiceStatus = value; OnPropertyChanged(); }
     }
 
+    public BitmapSource? PendingImagePreview
+    {
+        get => _pendingImagePreview;
+        private set { _pendingImagePreview = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasPendingImage)); }
+    }
+
+    public bool HasPendingImage => _pendingImagePreview is not null;
+
+    public void SetPendingImage(byte[] data, string filename, BitmapSource preview)
+    {
+        _pendingImageData = data;
+        _pendingImageFilename = filename;
+        PendingImagePreview = preview;
+    }
+
+    public void ClearPendingImage()
+    {
+        _pendingImageData = null;
+        _pendingImageFilename = string.Empty;
+        PendingImagePreview = null;
+    }
+
+    public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
+
     public string MuteButtonText => IsMuted ? "\U0001F507 Unmute" : "\U0001F3A4 Mute";
     public string DeafenButtonText => IsDeafened ? "\U0001F508 Undeafen" : "\U0001F50A Deafen";
 
@@ -162,7 +190,7 @@ public class MainViewModel : INotifyPropertyChanged
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
 
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
-    public ICommand SendMessageCommand => new RelayCommand(async _ => await SendMessageAsync(), _ => IsConnected && !string.IsNullOrWhiteSpace(MessageText));
+    public ICommand SendMessageCommand => new RelayCommand(async _ => await SendMessageAsync(), _ => IsConnected && (!string.IsNullOrWhiteSpace(MessageText) || HasPendingImage));
     public ICommand ToggleMuteCommand => new RelayCommand(_ => IsMuted = !IsMuted);
     public ICommand ToggleDeafenCommand => new RelayCommand(_ => IsDeafened = !IsDeafened);
     public ICommand ChannelClickCommand => new RelayCommand(async p => await OnChannelClicked(p as ChannelViewModel));
@@ -322,11 +350,22 @@ public class MainViewModel : INotifyPropertyChanged
 
     private async Task SendMessageAsync()
     {
-        if (_selectedTextChannel is null || string.IsNullOrWhiteSpace(MessageText))
-            return;
+        if (_selectedTextChannel is null) return;
+        if (string.IsNullOrWhiteSpace(MessageText) && !HasPendingImage) return;
 
-        await _chatService.SendMessage(_selectedTextChannel.Id, MessageText);
-        MessageText = string.Empty;
+        if (_pendingImageData is not null)
+        {
+            var url = await _chatService.UploadImageAsync(_pendingImageData, _pendingImageFilename);
+            if (url is not null)
+                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url);
+            ClearPendingImage();
+        }
+
+        if (!string.IsNullOrWhiteSpace(MessageText))
+        {
+            await _chatService.SendMessage(_selectedTextChannel.Id, MessageText, null);
+            MessageText = string.Empty;
+        }
     }
 
     private void OnMessageReceived(MessageDto msg)

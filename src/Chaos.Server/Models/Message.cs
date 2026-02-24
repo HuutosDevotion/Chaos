@@ -8,4 +8,5 @@ public class Message
     public string Author { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
+    public string? ImageUrl { get; set; }
 }
