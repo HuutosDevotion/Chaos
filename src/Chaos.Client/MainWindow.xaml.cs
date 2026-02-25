@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/app.ico"));
         Loaded += OnLoaded;
     }
 

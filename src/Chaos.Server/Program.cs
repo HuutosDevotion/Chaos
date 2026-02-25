@@ -5,6 +5,22 @@ using Chaos.Server.Hubs;
 using Chaos.Server.Services;
 using Microsoft.EntityFrameworkCore;
 
+var logPath = Path.Combine(AppContext.BaseDirectory, "server.log");
+
+void Log(string msg)
+{
+    var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}";
+    Console.WriteLine(line);
+    File.AppendAllText(logPath, line + Environment.NewLine);
+}
+
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    Log($"FATAL: {e.ExceptionObject}");
+};
+
+Log("Starting Chaos Server...");
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Kestrel to listen on all interfaces
@@ -59,14 +75,24 @@ app.MapPost("/api/upload", async (IFormFile file, IWebHostEnvironment env) =>
 
 // Print connection info
 var localIp = GetLocalIpAddress();
-Console.WriteLine("═══════════════════════════════════════════");
-Console.WriteLine("  CHAOS SERVER");
-Console.WriteLine("═══════════════════════════════════════════");
-Console.WriteLine($"  SignalR:  http://{localIp}:5000/chathub");
-Console.WriteLine($"  Voice:   udp://{localIp}:9000");
-Console.WriteLine("═══════════════════════════════════════════");
+Log("═══════════════════════════════════════════");
+Log("  CHAOS SERVER");
+Log("═══════════════════════════════════════════");
+Log($"  SignalR:  http://{localIp}:5000/chathub");
+Log($"  Voice:   udp://{localIp}:9000");
+Log("═══════════════════════════════════════════");
 
-app.Run();
+try
+{
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log($"FATAL: {ex}");
+    Console.Error.WriteLine("Server crashed. See server.log for details. Press any key to exit...");
+    Console.ReadKey();
+    throw;
+}
 
 static string GetLocalIpAddress()
 {
