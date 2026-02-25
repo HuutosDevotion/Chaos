@@ -26,7 +26,9 @@
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource InverseBoolToVis}}"
               Panel.ZIndex="10"
               Background="{StaticResource BgDarkBrush}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="340">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="340"
+                        KeyDown="LoginPanel_KeyDown"
+                        FocusManager.FocusedElement="{Binding ElementName=UsernameInput}">
                 <TextBlock Text="CHAOS"
                            FontSize="36" FontWeight="Bold"
                            Foreground="{StaticResource AccentBlueBrush}"
@@ -48,7 +50,8 @@
                 <TextBlock Text="USERNAME" FontSize="11" FontWeight="Bold"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            Margin="0,0,0,6" />
-                <TextBox Style="{StaticResource DarkTextBox}"
+                <TextBox x:Name="UsernameInput"
+                         Style="{StaticResource DarkTextBox}"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,20" />
 

@@ -43,6 +43,16 @@ public partial class MainWindow : Window
         return null;
     }
 
+    private void LoginPanel_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
+        {
+            if (vm.ConnectCommand.CanExecute(null))
+                vm.ConnectCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     private void MessageInput_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && DataContext is MainViewModel vm)
