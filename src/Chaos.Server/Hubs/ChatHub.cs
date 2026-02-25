@@ -41,6 +41,8 @@ public class ChatHub : Hub
         await Clients.Caller.SendAsync("UsernameSet", username);
     }
 
+    public List<SlashCommandDto> GetAvailableCommands() => _commandDispatcher.GetCommandInfos();
+
     public async Task<List<ChannelDto>> GetChannels()
     {
         return await _db.Channels.Select(c => new ChannelDto

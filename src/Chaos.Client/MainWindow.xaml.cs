@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Chaos.Client.ViewModels;
+using Chaos.Shared;
 
 namespace Chaos.Client;
 
@@ -28,6 +29,16 @@ public partial class MainWindow : Window
             {
                 FindScrollViewer(MessageList)?.ScrollToBottom();
             };
+
+            vm.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(MainViewModel.SelectedSuggestionIndex))
+                {
+                    int idx = vm.SelectedSuggestionIndex;
+                    if (idx >= 0 && idx < vm.SlashSuggestions.Count)
+                        SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
+                }
+            };
         }
     }
 
@@ -47,6 +58,14 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Enter && DataContext is MainViewModel vm)
         {
+            if (vm.ShowSlashSuggestions && vm.SelectedSuggestionIndex >= 0)
+            {
+                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                MessageInput.CaretIndex = MessageInput.Text.Length;
+                e.Handled = true;
+                return;
+            }
+
             if (vm.SendMessageCommand.CanExecute(null))
                 vm.SendMessageCommand.Execute(null);
             e.Handled = true;
@@ -84,6 +103,39 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
+        {
+            if (e.Key == Key.Down)
+            {
+                vm.NavigateSuggestions(1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Up)
+            {
+                vm.NavigateSuggestions(-1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Tab)
+            {
+                int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
+                if (idx < vm.SlashSuggestions.Count)
+                {
+                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
+                    MessageInput.CaretIndex = MessageInput.Text.Length;
+                }
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Escape)
+            {
+                vm.DismissSuggestions();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && Clipboard.ContainsImage())
         {
             e.Handled = true;
@@ -92,8 +144,21 @@ public partial class MainWindow : Window
             encoder.Frames.Add(BitmapFrame.Create(bmp));
             using var ms = new MemoryStream();
             encoder.Save(ms);
-            if (DataContext is MainViewModel vm)
-                vm.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+            if (DataContext is MainViewModel vm2)
+                vm2.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+        }
+    }
+
+    private void SuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is SlashCommandDto cmd &&
+            DataContext is MainViewModel vm)
+        {
+            vm.SelectSuggestion(cmd);
+            MessageInput.Focus();
+            MessageInput.CaretIndex = MessageInput.Text.Length;
+            e.Handled = true;
         }
     }
 }

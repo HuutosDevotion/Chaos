@@ -393,6 +393,69 @@
                             </DockPanel>
                         </Border>
 
+                        <!-- Slash Command Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowSlashSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="SuggestionList"
+                                     ItemsSource="{Binding SlashSuggestions}"
+                                     SelectedIndex="{Binding SelectedSuggestionIndex, Mode=TwoWay}"
+                                     Focusable="False"
+                                     MaxHeight="200"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="SuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Foreground="{StaticResource AccentBlueBrush}"
+                                                       FontWeight="SemiBold" FontSize="14"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="/" /><Run Text="{Binding Name, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Description}"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       FontSize="13" Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Usage}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+
                         <!-- Text input row -->
                         <Border Background="{StaticResource BgInputBrush}"
                                 CornerRadius="8"
