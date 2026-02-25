@@ -444,7 +444,13 @@ public class MainViewModel : INotifyPropertyChanged
         var dialog = new ChannelDialog("Create Channel", string.Empty, showTypeSelector: true)
             { Owner = Application.Current.MainWindow };
         if (dialog.ShowDialog() != true) return;
-        await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
+        var dto = await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
+        if (dto?.Type == ChannelType.Text)
+        {
+            var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
+            if (channel is not null)
+                SelectedTextChannel = channel;
+        }
     }
 
     private async Task RenameChannelAsync(ChannelViewModel? channel)
