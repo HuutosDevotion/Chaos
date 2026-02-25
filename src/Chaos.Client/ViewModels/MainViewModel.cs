@@ -27,6 +27,7 @@ public class ChannelViewModel : INotifyPropertyChanged
 {
     private string _name;
     private bool _isSelected;
+    private bool _isActiveVoice;
     public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
     public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
@@ -37,6 +38,11 @@ public class ChannelViewModel : INotifyPropertyChanged
     {
         get => _isSelected;
         set { if (_isSelected == value) return; _isSelected = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected))); }
+    }
+    public bool IsActiveVoice
+    {
+        get => _isActiveVoice;
+        set { if (_isActiveVoice == value) return; _isActiveVoice = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActiveVoice))); }
     }
     public string Name
     {
@@ -346,6 +352,12 @@ public class MainViewModel : INotifyPropertyChanged
 
     private async Task JoinVoice(int channelId)
     {
+        if (_voiceChannelId.HasValue)
+        {
+            var prev = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (prev is not null) prev.IsActiveVoice = false;
+        }
+
         VoiceStatus = string.Empty;
         await _chatService.JoinVoiceChannel(channelId, _userId);
 
@@ -357,12 +369,21 @@ public class MainViewModel : INotifyPropertyChanged
 
         _voiceService.Start(host, 9000, _userId, channelId);
         _voiceChannelId = channelId;
+
+        var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+        if (ch is not null) ch.IsActiveVoice = true;
+
         OnPropertyChanged(nameof(IsInVoice));
         OnPropertyChanged(nameof(VoiceChannelName));
     }
 
     private async Task LeaveVoice()
     {
+        if (_voiceChannelId.HasValue)
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (ch is not null) ch.IsActiveVoice = false;
+        }
         _voiceService.Stop();
         await _chatService.LeaveVoiceChannel();
         _voiceChannelId = null;
@@ -537,6 +558,11 @@ public class MainViewModel : INotifyPropertyChanged
             IsConnected = false;
             ConnectionStatus = "Disconnected";
             _voiceService.Stop();
+            if (_voiceChannelId.HasValue)
+            {
+                var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+                if (ch is not null) ch.IsActiveVoice = false;
+            }
             _voiceChannelId = null;
             OnPropertyChanged(nameof(IsInVoice));
             OnPropertyChanged(nameof(VoiceChannelName));

@@ -108,6 +108,17 @@
                     <ItemsControl ItemsSource="{Binding Channels}" Margin="8,12,8,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
+                                <Border BorderThickness="3,0,0,0">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                 <StackPanel>
                                     <!-- Channel Button -->
                                     <Button HorizontalContentAlignment="Left"
@@ -156,9 +167,19 @@
                                         </Button.Style>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Icon}"
-                                                       Foreground="{StaticResource TextMutedBrush}"
                                                        FontSize="16" Margin="0,0,6,0"
-                                                       VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock Text="{Binding Name}"
                                                        FontSize="14"
                                                        VerticalAlignment="Center">
@@ -167,6 +188,9 @@
                                                         <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
                                                                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
@@ -211,6 +235,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
