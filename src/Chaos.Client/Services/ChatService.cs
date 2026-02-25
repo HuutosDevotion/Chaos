@@ -18,6 +18,9 @@ public class ChatService : IAsyncDisposable
     public event Action<string>? UserDisconnected;
     public event Action<string>? Connected;
     public event Action? Disconnected;
+    public event Action<ChannelDto>? ChannelCreated;
+    public event Action<int>? ChannelDeleted;
+    public event Action<ChannelDto>? ChannelRenamed;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -50,6 +53,10 @@ public class ChatService : IAsyncDisposable
 
         _connection.On<string>("UsernameSet", username =>
             Connected?.Invoke(username));
+
+        _connection.On<ChannelDto>("ChannelCreated", dto => ChannelCreated?.Invoke(dto));
+        _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
+        _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
 
         _connection.Closed += _ =>
         {
@@ -121,6 +128,25 @@ public class ChatService : IAsyncDisposable
         if (_connection is not null)
             return await _connection.InvokeAsync<Dictionary<int, List<VoiceMemberDto>>>("GetAllVoiceMembers");
         return new();
+    }
+
+    public async Task<ChannelDto?> CreateChannelAsync(string name, ChannelType type)
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<ChannelDto>("CreateChannel", name, type);
+        return null;
+    }
+
+    public async Task DeleteChannelAsync(int channelId)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("DeleteChannel", channelId);
+    }
+
+    public async Task RenameChannelAsync(int channelId, string newName)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("RenameChannel", channelId, newName);
     }
 
     public async ValueTask DisposeAsync()

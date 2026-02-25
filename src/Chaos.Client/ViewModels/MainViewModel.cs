@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Chaos.Client.Services;
 using Chaos.Shared;
+using Chaos.Client;
 
 namespace Chaos.Client.ViewModels;
 
@@ -24,13 +25,18 @@ public class VoiceMemberInfo : INotifyPropertyChanged
 
 public class ChannelViewModel : INotifyPropertyChanged
 {
-    public ChannelDto Channel { get; set; } = null!;
+    private string _name;
+    public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
+    public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
     public int Id => Channel.Id;
-    public string Name => Channel.Name;
     public ChannelType Type => Channel.Type;
     public string Icon => Type == ChannelType.Voice ? "\U0001F50A" : "#";
-
+    public string Name
+    {
+        get => _name;
+        set { if (_name == value) return; _name = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name))); }
+    }
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
@@ -190,6 +196,9 @@ public class MainViewModel : INotifyPropertyChanged
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
 
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
+    public ICommand CreateChannelCommand => new RelayCommand(async _ => await CreateChannelAsync(), _ => IsConnected);
+    public ICommand RenameChannelCommand => new RelayCommand(async p => await RenameChannelAsync(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
+    public ICommand DeleteChannelCommand => new RelayCommand(async p => await DeleteChannelAsync(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
     public ICommand SendMessageCommand => new RelayCommand(async _ => await SendMessageAsync(), _ => IsConnected && (!string.IsNullOrWhiteSpace(MessageText) || HasPendingImage));
     public ICommand ToggleMuteCommand => new RelayCommand(_ => IsMuted = !IsMuted);
     public ICommand ToggleDeafenCommand => new RelayCommand(_ => IsDeafened = !IsDeafened);
@@ -205,6 +214,9 @@ public class MainViewModel : INotifyPropertyChanged
         _chatService.UserConnected += OnUserConnected;
         _chatService.UserDisconnected += OnUserDisconnected;
         _chatService.Disconnected += OnDisconnected;
+        _chatService.ChannelCreated += OnChannelCreated;
+        _chatService.ChannelDeleted += OnChannelDeleted;
+        _chatService.ChannelRenamed += OnChannelRenamed;
         _voiceService.MicLevelChanged += level =>
         {
             Application.Current.Dispatcher.BeginInvoke(() =>
@@ -261,9 +273,9 @@ public class MainViewModel : INotifyPropertyChanged
             Application.Current.Dispatcher.Invoke(() =>
             {
                 Channels.Clear();
-                foreach (var ch in channels)
+                foreach (var ch in channels.OrderBy(c => c.Type))
                 {
-                    var vm = new ChannelViewModel { Channel = ch };
+                    var vm = new ChannelViewModel(ch);
                     if (voiceMembers.TryGetValue(ch.Id, out var members))
                     {
                         foreach (var m in members)
@@ -420,6 +432,83 @@ public class MainViewModel : INotifyPropertyChanged
                 if (member is not null)
                     ch.VoiceMembers.Remove(member);
             }
+        });
+    }
+
+    private async Task CreateChannelAsync()
+    {
+        var dialog = new ChannelDialog("Create Channel", string.Empty, showTypeSelector: true)
+            { Owner = Application.Current.MainWindow };
+        if (dialog.ShowDialog() != true) return;
+        await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
+    }
+
+    private async Task RenameChannelAsync(ChannelViewModel? channel)
+    {
+        if (channel is null) return;
+        var dialog = new ChannelDialog("Rename Channel", channel.Name, showTypeSelector: false)
+            { Owner = Application.Current.MainWindow };
+        if (dialog.ShowDialog() != true) return;
+        await _chatService.RenameChannelAsync(channel.Id, dialog.ChannelName);
+    }
+
+    private async Task DeleteChannelAsync(ChannelViewModel? channel)
+    {
+        if (channel is null) return;
+        var result = MessageBox.Show($"Delete \"{channel.Name}\"? This cannot be undone.",
+            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+        await _chatService.DeleteChannelAsync(channel.Id);
+    }
+
+    private void OnChannelCreated(ChannelDto dto)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (Channels.Any(c => c.Id == dto.Id)) return;
+            var vm = new ChannelViewModel(dto);
+            if (dto.Type == ChannelType.Text)
+            {
+                // Insert before the first voice channel
+                var insertAt = Channels.Count(c => c.Type == ChannelType.Text);
+                Channels.Insert(insertAt, vm);
+            }
+            else
+            {
+                Channels.Add(vm);
+            }
+        });
+    }
+
+    private void OnChannelDeleted(int channelId)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var vm = Channels.FirstOrDefault(c => c.Id == channelId);
+            if (vm is null) return;
+            Channels.Remove(vm);
+            if (_selectedTextChannel?.Id == channelId) { SelectedTextChannel = null; Messages.Clear(); }
+            if (_voiceChannelId == channelId)
+            {
+                _voiceService.Stop();
+                _voiceChannelId = null;
+                MicLevel = 0;
+                OnPropertyChanged(nameof(IsInVoice));
+                OnPropertyChanged(nameof(VoiceChannelName));
+                _ = _chatService.LeaveVoiceChannel();
+            }
+        });
+    }
+
+    private void OnChannelRenamed(ChannelDto dto)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var vm = Channels.FirstOrDefault(c => c.Id == dto.Id);
+            if (vm is null) return;
+            vm.Name = dto.Name;
+            if (_selectedTextChannel?.Id == dto.Id) OnPropertyChanged(nameof(SelectedChannelName));
+            if (_voiceChannelId == dto.Id) OnPropertyChanged(nameof(VoiceChannelName));
         });
     }
 
