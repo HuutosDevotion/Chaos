@@ -287,6 +287,10 @@ public class MainViewModel : INotifyPropertyChanged
 
             IsConnected = true;
             ConnectionStatus = $"Connected as {Username}";
+
+            var firstText = Channels.FirstOrDefault(c => c.Type == ChannelType.Text);
+            if (firstText is not null)
+                SelectedTextChannel = firstText;
         }
         catch (Exception ex)
         {

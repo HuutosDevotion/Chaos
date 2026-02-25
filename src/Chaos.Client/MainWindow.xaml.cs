@@ -28,6 +28,12 @@ public partial class MainWindow : Window
             {
                 FindScrollViewer(MessageList)?.ScrollToBottom();
             };
+
+            vm.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => MessageInput.Focus());
+            };
         }
     }
 
