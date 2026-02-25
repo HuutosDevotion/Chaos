@@ -9,6 +9,8 @@ public class RollCommand : IChatCommand
 {
     private readonly ChaosDbContext _db;
     public string Name => "roll";
+    public string Description => "Roll dice";
+    public string Usage => "/roll d<sides>  (e.g. /roll d20)";
 
     public RollCommand(ChaosDbContext db) => _db = db;
 

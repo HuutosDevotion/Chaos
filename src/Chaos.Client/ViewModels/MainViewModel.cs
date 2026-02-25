@@ -61,9 +61,13 @@ public class MainViewModel : INotifyPropertyChanged
     private byte[]? _pendingImageData;
     private string _pendingImageFilename = string.Empty;
     private BitmapSource? _pendingImagePreview;
+    private List<SlashCommandDto> _allCommands = new();
+    private int _selectedSuggestionIndex = -1;
+    private bool _showSlashSuggestions;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageDto> Messages { get; } = new();
+    public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
 
     public string ServerAddress
     {
@@ -80,7 +84,19 @@ public class MainViewModel : INotifyPropertyChanged
     public string MessageText
     {
         get => _messageText;
-        set { _messageText = value; OnPropertyChanged(); }
+        set { _messageText = value; OnPropertyChanged(); UpdateSlashSuggestions(value); }
+    }
+
+    public bool ShowSlashSuggestions
+    {
+        get => _showSlashSuggestions;
+        set { _showSlashSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedSuggestionIndex
+    {
+        get => _selectedSuggestionIndex;
+        set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
 
     public string ConnectionStatus
@@ -162,6 +178,47 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
+
+    private void UpdateSlashSuggestions(string text)
+    {
+        SlashSuggestions.Clear();
+        SelectedSuggestionIndex = -1;
+
+        if (string.IsNullOrEmpty(text) || text[0] != '/' || text.Contains(' '))
+        {
+            ShowSlashSuggestions = false;
+            return;
+        }
+
+        var typed = text.Length > 1 ? text[1..].ToLowerInvariant() : string.Empty;
+        foreach (var cmd in _allCommands.Where(c => c.Name.StartsWith(typed, StringComparison.OrdinalIgnoreCase)))
+            SlashSuggestions.Add(cmd);
+
+        ShowSlashSuggestions = SlashSuggestions.Count > 0;
+    }
+
+    public void SelectSuggestion(SlashCommandDto cmd)
+    {
+        _messageText = $"/{cmd.Name} ";
+        OnPropertyChanged(nameof(MessageText));
+        ShowSlashSuggestions = false;
+        SelectedSuggestionIndex = -1;
+    }
+
+    public void DismissSuggestions()
+    {
+        ShowSlashSuggestions = false;
+        SelectedSuggestionIndex = -1;
+    }
+
+    public void NavigateSuggestions(int direction)
+    {
+        if (SlashSuggestions.Count == 0) return;
+        int next = SelectedSuggestionIndex + direction;
+        if (next < 0) next = SlashSuggestions.Count - 1;
+        else if (next >= SlashSuggestions.Count) next = 0;
+        SelectedSuggestionIndex = next;
+    }
 
     public string MuteButtonText => IsMuted ? "\U0001F507 Unmute" : "\U0001F3A4 Mute";
     public string DeafenButtonText => IsDeafened ? "\U0001F508 Undeafen" : "\U0001F50A Deafen";
@@ -269,6 +326,7 @@ public class MainViewModel : INotifyPropertyChanged
 
             var channels = await _chatService.GetChannels();
             var voiceMembers = await _chatService.GetAllVoiceMembers();
+            _allCommands = await _chatService.GetAvailableCommandsAsync();
 
             Application.Current.Dispatcher.Invoke(() =>
             {
