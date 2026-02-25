@@ -184,23 +184,7 @@ public class MainViewModel : INotifyPropertyChanged
         SlashSuggestions.Clear();
         SelectedSuggestionIndex = -1;
 
-        if (string.IsNullOrEmpty(text) || text[0] != '/')
-        {
-            ShowSlashSuggestions = false;
-            return;
-        }
-
-        var afterSlash = text.Length > 1 ? text[1..] : string.Empty;
-        var spaceIdx = afterSlash.IndexOf(' ');
-        var verb = spaceIdx >= 0 ? afterSlash[..spaceIdx] : afterSlash;
-        bool hasArgs = spaceIdx >= 0;
-
-        // While typing the verb: prefix match. Once a space is typed: exact match only.
-        var matches = hasArgs
-            ? _allCommands.Where(c => c.Name.Equals(verb, StringComparison.OrdinalIgnoreCase))
-            : _allCommands.Where(c => c.Name.StartsWith(verb, StringComparison.OrdinalIgnoreCase));
-
-        foreach (var cmd in matches)
+        foreach (var cmd in SlashCommandFilter.Filter(_allCommands, text))
             SlashSuggestions.Add(cmd);
 
         ShowSlashSuggestions = SlashSuggestions.Count > 0;
