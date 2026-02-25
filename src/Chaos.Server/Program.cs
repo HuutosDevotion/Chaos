@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Chaos.Server.Commands;
 using Chaos.Server.Data;
 using Chaos.Server.Hubs;
 using Chaos.Server.Services;
@@ -34,6 +35,10 @@ builder.Services.AddSignalR();
 builder.Services.AddDbContext<ChaosDbContext>(options =>
     options.UseSqlite("Data Source=chaos.db"));
 builder.Services.AddHostedService<VoiceRelay>();
+
+// Chat commands — add new commands by registering another AddTransient<IChatCommand, YourCommand>()
+builder.Services.AddTransient<IChatCommand, RollCommand>();
+builder.Services.AddScoped<CommandDispatcher>();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
