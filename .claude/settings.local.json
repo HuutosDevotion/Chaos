@@ -9,7 +9,8 @@
       "Bash(dotnet publish:*)",
       "Bash(ls:*)",
       "Bash(cd:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(cd /c/Users/virus/dev/chaos && dotnet test src/Chaos.Tests 2>&1)"
     ]
   }
 }

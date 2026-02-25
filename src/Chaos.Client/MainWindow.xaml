@@ -85,10 +85,17 @@
                 <!-- Server Name Header -->
                 <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
                         Padding="16,0">
-                    <TextBlock Text="Chaos Server"
-                               FontSize="15" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               VerticalAlignment="Center" />
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="+"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding CreateChannelCommand}"
+                                FontSize="18" FontWeight="Bold"
+                                Padding="8,0" VerticalAlignment="Center"
+                                ToolTip="Create Channel" />
+                        <TextBlock Text="Chaos Server" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
                 </Border>
 
                 <!-- Channel List with voice members inline -->
@@ -102,7 +109,22 @@
                                             Padding="8,6" Margin="0,1"
                                             Cursor="Hand"
                                             Command="{Binding DataContext.ChannelClickCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}">
+                                            CommandParameter="{Binding}"
+                                            Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <Button.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Rename Channel"
+                                                          Command="{Binding PlacementTarget.Tag.RenameChannelCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding PlacementTarget.DataContext,
+                                                                                     RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                <MenuItem Header="Delete Channel"
+                                                          Command="{Binding PlacementTarget.Tag.DeleteChannelCommand,
+                                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                          CommandParameter="{Binding PlacementTarget.DataContext,
+                                                                                     RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Background" Value="Transparent" />

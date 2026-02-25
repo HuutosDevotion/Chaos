@@ -158,6 +158,41 @@ public class ChatHub : Hub
             }).ToList());
     }
 
+    public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
+    {
+        name = name.Trim();
+        if (string.IsNullOrEmpty(name))
+            throw new HubException("Channel name cannot be empty.");
+        var channel = new Channel { Name = name, Type = type };
+        _db.Channels.Add(channel);
+        await _db.SaveChangesAsync();
+        var dto = new ChannelDto { Id = channel.Id, Name = channel.Name, Type = channel.Type };
+        await Clients.All.SendAsync("ChannelCreated", dto);
+        return dto;
+    }
+
+    public async Task DeleteChannel(int channelId)
+    {
+        var channel = await _db.Channels.FindAsync(channelId);
+        if (channel is null) throw new HubException("Channel not found.");
+        _db.Channels.Remove(channel);
+        await _db.SaveChangesAsync();
+        await Clients.All.SendAsync("ChannelDeleted", channelId);
+    }
+
+    public async Task RenameChannel(int channelId, string newName)
+    {
+        newName = newName.Trim();
+        if (string.IsNullOrEmpty(newName))
+            throw new HubException("Channel name cannot be empty.");
+        var channel = await _db.Channels.FindAsync(channelId);
+        if (channel is null) throw new HubException("Channel not found.");
+        channel.Name = newName;
+        await _db.SaveChangesAsync();
+        var dto = new ChannelDto { Id = channel.Id, Name = channel.Name, Type = channel.Type };
+        await Clients.All.SendAsync("ChannelRenamed", dto);
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (_users.TryRemove(Context.ConnectionId, out var user))

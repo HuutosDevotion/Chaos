@@ -1,0 +1,43 @@
+<Window x:Class="Chaos.Client.ChannelDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Channel"
+        Width="360"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource BgDarkBrush}">
+    <StackPanel Margin="20">
+        <TextBlock x:Name="NameLabel"
+                   Text="CHANNEL NAME" FontSize="11" FontWeight="Bold"
+                   Foreground="{StaticResource TextSecondaryBrush}"
+                   Margin="0,0,0,6" />
+        <TextBox x:Name="NameBox"
+                 Style="{StaticResource DarkTextBox}"
+                 Margin="0,0,0,16" />
+
+        <StackPanel x:Name="TypePanel" Margin="0,0,0,16">
+            <TextBlock Text="CHANNEL TYPE" FontSize="11" FontWeight="Bold"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="TextRadio" Content="Text" IsChecked="True"
+                             Foreground="{StaticResource TextPrimaryBrush}"
+                             Margin="0,0,16,0" />
+                <RadioButton x:Name="VoiceRadio" Content="Voice"
+                             Foreground="{StaticResource TextPrimaryBrush}" />
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel"
+                    Style="{StaticResource DarkButton}"
+                    Click="Cancel_Click"
+                    Padding="16,8" Margin="0,0,8,0" />
+            <Button Content="Confirm"
+                    Style="{StaticResource AccentButton}"
+                    Click="Confirm_Click"
+                    Padding="16,8" />
+        </StackPanel>
+    </StackPanel>
+</Window>
