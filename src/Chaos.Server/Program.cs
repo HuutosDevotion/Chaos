@@ -80,3 +80,5 @@ static string GetLocalIpAddress()
     catch { }
     return "localhost";
 }
+
+public partial class Program { }
