@@ -61,6 +61,7 @@ public partial class MainWindow : Window
             if (vm.ShowSlashSuggestions && vm.SelectedSuggestionIndex >= 0)
             {
                 vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                MessageInput.CaretIndex = MessageInput.Text.Length;
                 e.Handled = true;
                 return;
             }
@@ -120,7 +121,10 @@ public partial class MainWindow : Window
             {
                 int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
                 if (idx < vm.SlashSuggestions.Count)
+                {
                     vm.SelectSuggestion(vm.SlashSuggestions[idx]);
+                    MessageInput.CaretIndex = MessageInput.Text.Length;
+                }
                 e.Handled = true;
                 return;
             }
@@ -153,6 +157,7 @@ public partial class MainWindow : Window
         {
             vm.SelectSuggestion(cmd);
             MessageInput.Focus();
+            MessageInput.CaretIndex = MessageInput.Text.Length;
             e.Handled = true;
         }
     }

@@ -208,9 +208,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public void SelectSuggestion(SlashCommandDto cmd)
     {
-        _messageText = $"/{cmd.Name} ";
-        OnPropertyChanged(nameof(MessageText));
-        ShowSlashSuggestions = false;
+        MessageText = $"/{cmd.Name} ";
         SelectedSuggestionIndex = -1;
     }
 
