@@ -73,8 +73,9 @@
         <!-- Main Layout (visible when connected) -->
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="240" MinWidth="160" MaxWidth="480" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" MinWidth="300" />
             </Grid.ColumnDefinitions>
 
             <!-- Left Sidebar -->
@@ -276,8 +277,14 @@
                 </Border>
             </Grid>
 
+            <!-- Resize handle between sidebar and chat -->
+            <GridSplitter Grid.Column="1"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#222326"
+                          ShowsPreview="False" />
+
             <!-- Right: Text Chat Area (always shows selected text channel) -->
-            <Grid Grid.Column="1">
+            <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="48" />
                     <RowDefinition Height="*" />
