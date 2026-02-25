@@ -26,12 +26,18 @@ public class VoiceMemberInfo : INotifyPropertyChanged
 public class ChannelViewModel : INotifyPropertyChanged
 {
     private string _name;
+    private bool _isSelected;
     public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
     public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
     public int Id => Channel.Id;
     public ChannelType Type => Channel.Type;
     public string Icon => Type == ChannelType.Voice ? "\U0001F50A" : "#";
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (_isSelected == value) return; _isSelected = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected))); }
+    }
     public string Name
     {
         get => _name;
@@ -183,7 +189,9 @@ public class MainViewModel : INotifyPropertyChanged
         set
         {
             if (_selectedTextChannel?.Id == value?.Id) return;
+            if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = false;
             _selectedTextChannel = value;
+            if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = true;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasTextChannel));
             OnPropertyChanged(nameof(SelectedChannelName));

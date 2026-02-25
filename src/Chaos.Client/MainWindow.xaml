@@ -142,6 +142,9 @@
                                                                 <ContentPresenter />
                                                             </Border>
                                                             <ControlTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#404249" />
+                                                                </DataTrigger>
                                                                 <Trigger Property="IsMouseOver" Value="True">
                                                                     <Setter TargetName="Bd" Property="Background" Value="#35373C" />
                                                                 </Trigger>
@@ -157,9 +160,19 @@
                                                        FontSize="16" Margin="0,0,6,0"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Name}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="14"
-                                                       VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </Button>
 
