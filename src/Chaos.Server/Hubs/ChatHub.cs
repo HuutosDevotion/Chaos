@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Chaos.Server.Commands;
 using Chaos.Server.Data;
 using Chaos.Server.Models;
 using Chaos.Shared;
@@ -20,10 +21,12 @@ public class ChatHub : Hub
 {
     private static readonly ConcurrentDictionary<string, ConnectedUser> _users = new();
     private readonly ChaosDbContext _db;
+    private readonly CommandDispatcher _commandDispatcher;
 
-    public ChatHub(ChaosDbContext db)
+    public ChatHub(ChaosDbContext db, CommandDispatcher commandDispatcher)
     {
         _db = db;
+        _commandDispatcher = commandDispatcher;
     }
 
     public async Task SetUsername(string username)
@@ -120,6 +123,14 @@ public class ChatHub : Hub
     {
         if (!_users.TryGetValue(Context.ConnectionId, out var user))
             return;
+
+        if (imageUrl == null)
+        {
+            var handled = await _commandDispatcher.TryDispatchAsync(
+                content, user.Username, channelId,
+                Clients.Group($"text_{channelId}"), Clients.Caller);
+            if (handled) return;
+        }
 
         var message = new Message
         {
