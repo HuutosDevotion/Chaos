@@ -59,16 +59,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MessageInput_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
-        {
-            if (vm.SendMessageCommand.CanExecute(null))
-                vm.SendMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-    }
-
     private static BitmapSource BytesToBitmapSource(byte[] data)
     {
         using var ms = new MemoryStream(data);
@@ -100,6 +90,14 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
+        {
+            if (vm.SendMessageCommand.CanExecute(null))
+                vm.SendMessageCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && Clipboard.ContainsImage())
         {
             e.Handled = true;
@@ -108,8 +106,8 @@ public partial class MainWindow : Window
             encoder.Frames.Add(BitmapFrame.Create(bmp));
             using var ms = new MemoryStream();
             encoder.Save(ms);
-            if (DataContext is MainViewModel vm)
-                vm.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+            if (DataContext is MainViewModel vm2)
+                vm2.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
         }
     }
 }

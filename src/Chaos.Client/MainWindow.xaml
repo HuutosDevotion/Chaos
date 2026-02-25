@@ -58,6 +58,7 @@
                 <Button Content="Connect"
                         Style="{StaticResource AccentButton}"
                         Command="{Binding ConnectCommand}"
+                        IsDefault="True"
                         FontSize="15" FontWeight="SemiBold"
                         Padding="0,10"
                         Margin="0,0,0,12" />
@@ -411,12 +412,12 @@
                                          BorderThickness="0"
                                          VerticalAlignment="Center"
                                          x:Name="MessageInput"
-                                         KeyDown="MessageInput_KeyDown"
                                          PreviewKeyDown="MessageInput_PreviewKeyDown" />
                                 <Button Grid.Column="1"
                                         Content="Send"
                                         Style="{StaticResource AccentButton}"
                                         Command="{Binding SendMessageCommand}"
+                                        IsDefault="True"
                                         Padding="16,6"
                                         Margin="4,0,0,0"
                                         VerticalAlignment="Center" />
