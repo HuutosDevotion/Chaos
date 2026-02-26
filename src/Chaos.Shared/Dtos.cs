@@ -42,3 +42,10 @@ public class VoicePacket
     public int ChannelId { get; set; }
     public byte[] AudioData { get; set; } = Array.Empty<byte>();
 }
+
+public class SlashCommandDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Usage { get; set; } = string.Empty;
+}

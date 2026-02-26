@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Chaos.Client.ViewModels;
+using Chaos.Shared;
 
 namespace Chaos.Client;
 
@@ -18,6 +19,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/app.ico"));
         Loaded += OnLoaded;
+    }
+
+    protected override async void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (DataContext is MainViewModel vm)
+            await vm.DisposeAsync();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -33,6 +41,13 @@ public partial class MainWindow : Window
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => MessageInput.Focus());
+
+                if (args.PropertyName == nameof(MainViewModel.SelectedSuggestionIndex))
+                {
+                    int idx = vm.SelectedSuggestionIndex;
+                    if (idx >= 0 && idx < vm.SlashSuggestions.Count)
+                        SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
+                }
             };
         }
     }
@@ -90,10 +105,50 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && DataContext is MainViewModel vm)
+        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
         {
-            if (vm.SendMessageCommand.CanExecute(null))
-                vm.SendMessageCommand.Execute(null);
+            if (e.Key == Key.Down)
+            {
+                vm.NavigateSuggestions(1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Up)
+            {
+                vm.NavigateSuggestions(-1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Tab)
+            {
+                int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
+                if (idx < vm.SlashSuggestions.Count)
+                {
+                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
+                    MessageInput.CaretIndex = MessageInput.Text.Length;
+                }
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Escape)
+            {
+                vm.DismissSuggestions();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
+            {
+                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                MessageInput.CaretIndex = MessageInput.Text.Length;
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
+        {
+            if (vm2.SendMessageCommand.CanExecute(null))
+                vm2.SendMessageCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -106,8 +161,21 @@ public partial class MainWindow : Window
             encoder.Frames.Add(BitmapFrame.Create(bmp));
             using var ms = new MemoryStream();
             encoder.Save(ms);
-            if (DataContext is MainViewModel vm2)
-                vm2.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+            if (DataContext is MainViewModel vm3)
+                vm3.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+        }
+    }
+
+    private void SuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is SlashCommandDto cmd &&
+            DataContext is MainViewModel vm)
+        {
+            vm.SelectSuggestion(cmd);
+            MessageInput.Focus();
+            MessageInput.CaretIndex = MessageInput.Text.Length;
+            e.Handled = true;
         }
     }
 }

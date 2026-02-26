@@ -19,6 +19,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:InverseBoolConverter x:Key="InverseBool" />
+        <conv:VolumeToPercentConverter x:Key="VolumeToPercent" />
     </Window.Resources>
 
     <Grid>
@@ -206,6 +207,42 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                    <StackPanel.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem StaysOpenOnClick="True">
+                                                                <MenuItem.Template>
+                                                                    <ControlTemplate TargetType="MenuItem">
+                                                                        <Border Background="{StaticResource BgDarkBrush}" Padding="10,8">
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="VOLUME"
+                                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                           FontSize="11" FontWeight="Bold"
+                                                                                           Margin="0,0,0,6" />
+                                                                                <DockPanel>
+                                                                                    <TextBlock DockPanel.Dock="Right"
+                                                                                               Text="{Binding PlacementTarget.DataContext.Volume,
+                                                                                                              RelativeSource={RelativeSource AncestorType=ContextMenu},
+                                                                                                              Converter={StaticResource VolumeToPercent}}"
+                                                                                               Foreground="{StaticResource TextMutedBrush}"
+                                                                                               FontSize="11" VerticalAlignment="Center"
+                                                                                               MinWidth="34" TextAlignment="Right"
+                                                                                               Margin="8,0,0,0" />
+                                                                                    <Slider Minimum="0" Maximum="1"
+                                                                                            Value="{Binding PlacementTarget.DataContext.Volume,
+                                                                                                            RelativeSource={RelativeSource AncestorType=ContextMenu},
+                                                                                                            Mode=TwoWay}"
+                                                                                            Width="130"
+                                                                                            SmallChange="0.05" LargeChange="0.1"
+                                                                                            VerticalAlignment="Center" />
+                                                                                </DockPanel>
+                                                                            </StackPanel>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </MenuItem.Template>
+                                                            </MenuItem>
+                                                        </ContextMenu>
+                                                    </StackPanel.ContextMenu>
+
                                                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
                                                         <Ellipse.Style>
                                                             <Style TargetType="Ellipse">
@@ -440,6 +477,69 @@
                                        MaxWidth="300" MaxHeight="120"
                                        Stretch="Uniform" HorizontalAlignment="Left" />
                             </DockPanel>
+                        </Border>
+
+                        <!-- Slash Command Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowSlashSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="SuggestionList"
+                                     ItemsSource="{Binding SlashSuggestions}"
+                                     SelectedIndex="{Binding SelectedSuggestionIndex, Mode=TwoWay}"
+                                     Focusable="False"
+                                     MaxHeight="200"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="SuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Foreground="{StaticResource AccentBlueBrush}"
+                                                       FontWeight="SemiBold" FontSize="14"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="/" /><Run Text="{Binding Name, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Description}"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       FontSize="13" Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Usage}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Border>
 
                         <!-- Text input row -->

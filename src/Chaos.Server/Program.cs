@@ -38,6 +38,7 @@ builder.Services.AddHostedService<VoiceRelay>();
 
 // Chat commands — add new commands by registering another AddTransient<IChatCommand, YourCommand>()
 builder.Services.AddTransient<IChatCommand, RollCommand>();
+builder.Services.AddTransient<IChatCommand, ShrugCommand>();
 builder.Services.AddScoped<CommandDispatcher>();
 builder.Services.AddCors(options =>
 {

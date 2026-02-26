@@ -10,6 +10,12 @@ public class CommandDispatcher
     public CommandDispatcher(IEnumerable<IChatCommand> commands)
         => _commands = commands.ToDictionary(c => c.Name.ToLowerInvariant(), StringComparer.OrdinalIgnoreCase);
 
+    public List<SlashCommandDto> GetCommandInfos() =>
+        _commands.Values
+            .Select(c => new SlashCommandDto { Name = c.Name, Description = c.Description, Usage = c.Usage })
+            .OrderBy(c => c.Name)
+            .ToList();
+
     // Returns true if content was a slash-command (handled or error sent)
     public async Task<bool> TryDispatchAsync(
         string content, string username, int channelId,

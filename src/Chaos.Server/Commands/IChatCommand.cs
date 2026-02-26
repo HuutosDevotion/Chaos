@@ -13,6 +13,8 @@ public record CommandContext(
 
 public interface IChatCommand
 {
-    string Name { get; }  // lowercase, e.g. "roll"
+    string Name { get; }         // lowercase, e.g. "roll"
+    string Description { get; }  // short description shown in autocomplete
+    string Usage { get; }        // usage hint, e.g. "/roll d20"
     Task ExecuteAsync(CommandContext context);
 }

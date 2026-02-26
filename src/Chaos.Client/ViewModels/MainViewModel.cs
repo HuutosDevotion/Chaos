@@ -13,12 +13,23 @@ namespace Chaos.Client.ViewModels;
 public class VoiceMemberInfo : INotifyPropertyChanged
 {
     private bool _isSpeaking;
+    private float _volume = 1.0f;
     public string Username { get; set; } = string.Empty;
     public int VoiceUserId { get; set; }
     public bool IsSpeaking
     {
         get => _isSpeaking;
         set { _isSpeaking = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSpeaking))); }
+    }
+    public float Volume
+    {
+        get => _volume;
+        set
+        {
+            if (Math.Abs(_volume - value) < 0.001f) return;
+            _volume = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Volume)));
+        }
     }
     public event PropertyChangedEventHandler? PropertyChanged;
 }
@@ -52,7 +63,7 @@ public class ChannelViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public class MainViewModel : INotifyPropertyChanged
+public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
@@ -73,9 +84,13 @@ public class MainViewModel : INotifyPropertyChanged
     private byte[]? _pendingImageData;
     private string _pendingImageFilename = string.Empty;
     private BitmapSource? _pendingImagePreview;
+    private List<SlashCommandDto> _allCommands = new();
+    private int _selectedSuggestionIndex = -1;
+    private bool _showSlashSuggestions;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageDto> Messages { get; } = new();
+    public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
 
     public string ServerAddress
     {
@@ -92,7 +107,19 @@ public class MainViewModel : INotifyPropertyChanged
     public string MessageText
     {
         get => _messageText;
-        set { _messageText = value; OnPropertyChanged(); }
+        set { _messageText = value; OnPropertyChanged(); UpdateSlashSuggestions(value); }
+    }
+
+    public bool ShowSlashSuggestions
+    {
+        get => _showSlashSuggestions;
+        set { _showSlashSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedSuggestionIndex
+    {
+        get => _selectedSuggestionIndex;
+        set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
 
     public string ConnectionStatus
@@ -174,6 +201,38 @@ public class MainViewModel : INotifyPropertyChanged
     }
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
+
+    private void UpdateSlashSuggestions(string text)
+    {
+        SlashSuggestions.Clear();
+        SelectedSuggestionIndex = -1;
+
+        foreach (var cmd in SlashCommandFilter.Filter(_allCommands, text))
+            SlashSuggestions.Add(cmd);
+
+        ShowSlashSuggestions = SlashSuggestions.Count > 0;
+    }
+
+    public void SelectSuggestion(SlashCommandDto cmd)
+    {
+        MessageText = $"/{cmd.Name} ";
+        SelectedSuggestionIndex = -1;
+    }
+
+    public void DismissSuggestions()
+    {
+        ShowSlashSuggestions = false;
+        SelectedSuggestionIndex = -1;
+    }
+
+    public void NavigateSuggestions(int direction)
+    {
+        if (SlashSuggestions.Count == 0) return;
+        int next = SelectedSuggestionIndex + direction;
+        if (next < 0) next = SlashSuggestions.Count - 1;
+        else if (next >= SlashSuggestions.Count) next = 0;
+        SelectedSuggestionIndex = next;
+    }
 
     public string MuteButtonText => IsMuted ? "\U0001F507 Unmute" : "\U0001F3A4 Mute";
     public string DeafenButtonText => IsDeafened ? "\U0001F508 Undeafen" : "\U0001F50A Deafen";
@@ -283,6 +342,7 @@ public class MainViewModel : INotifyPropertyChanged
 
             var channels = await _chatService.GetChannels();
             var voiceMembers = await _chatService.GetAllVoiceMembers();
+            _allCommands = await _chatService.GetAvailableCommandsAsync();
 
             Application.Current.Dispatcher.Invoke(() =>
             {
@@ -293,7 +353,11 @@ public class MainViewModel : INotifyPropertyChanged
                     if (voiceMembers.TryGetValue(ch.Id, out var members))
                     {
                         foreach (var m in members)
-                            vm.VoiceMembers.Add(new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId });
+                        {
+                            var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                            SubscribeVoiceMemberVolume(info);
+                            vm.VoiceMembers.Add(info);
+                        }
                     }
                     Channels.Add(vm);
                 }
@@ -348,6 +412,15 @@ public class MainViewModel : INotifyPropertyChanged
             foreach (var msg in messages)
                 Messages.Add(msg);
         });
+    }
+
+    private void SubscribeVoiceMemberVolume(VoiceMemberInfo member)
+    {
+        member.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(VoiceMemberInfo.Volume))
+                _voiceService.SetUserVolume(member.VoiceUserId, member.Volume);
+        };
     }
 
     private async Task JoinVoice(int channelId)
@@ -425,7 +498,11 @@ public class MainViewModel : INotifyPropertyChanged
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is not null && !ch.VoiceMembers.Any(m => m.Username == username))
-                ch.VoiceMembers.Add(new VoiceMemberInfo { Username = username, VoiceUserId = voiceUserId });
+            {
+                var info = new VoiceMemberInfo { Username = username, VoiceUserId = voiceUserId };
+                SubscribeVoiceMemberVolume(info);
+                ch.VoiceMembers.Add(info);
+            }
         });
     }
 
@@ -448,7 +525,11 @@ public class MainViewModel : INotifyPropertyChanged
             if (ch is null) return;
             ch.VoiceMembers.Clear();
             foreach (var m in members)
-                ch.VoiceMembers.Add(new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId });
+            {
+                var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                SubscribeVoiceMemberVolume(info);
+                ch.VoiceMembers.Add(info);
+            }
         });
     }
 
@@ -567,6 +648,12 @@ public class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsInVoice));
             OnPropertyChanged(nameof(VoiceChannelName));
         });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _voiceService.Dispose();
+        await _chatService.DisposeAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

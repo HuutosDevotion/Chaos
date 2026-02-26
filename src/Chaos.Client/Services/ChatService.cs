@@ -73,6 +73,13 @@ public class ChatService : IAsyncDisposable
             await _connection.InvokeAsync("SetUsername", username);
     }
 
+    public async Task<List<SlashCommandDto>> GetAvailableCommandsAsync()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<SlashCommandDto>>("GetAvailableCommands");
+        return new();
+    }
+
     public async Task<List<ChannelDto>> GetChannels()
     {
         if (_connection is not null)
