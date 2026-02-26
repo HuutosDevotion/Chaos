@@ -67,3 +67,16 @@ public class InverseBoolConverter : IValueConverter
         return true;
     }
 }
+
+public class VolumeToPercentConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is float f) return $"{(int)Math.Round(f * 100)}%";
+        if (value is double d) return $"{(int)Math.Round(d * 100)}%";
+        return "100%";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

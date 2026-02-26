@@ -28,6 +28,9 @@ nuget.config
 # User-uploaded files
 wwwroot/uploads/
 
+# Server static files
+src/Chaos.Server/wwwroot/
+
 # Logs
 *.log
 logs/

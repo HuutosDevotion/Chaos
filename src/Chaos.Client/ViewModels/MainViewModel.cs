@@ -13,12 +13,23 @@ namespace Chaos.Client.ViewModels;
 public class VoiceMemberInfo : INotifyPropertyChanged
 {
     private bool _isSpeaking;
+    private float _volume = 1.0f;
     public string Username { get; set; } = string.Empty;
     public int VoiceUserId { get; set; }
     public bool IsSpeaking
     {
         get => _isSpeaking;
         set { _isSpeaking = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSpeaking))); }
+    }
+    public float Volume
+    {
+        get => _volume;
+        set
+        {
+            if (Math.Abs(_volume - value) < 0.001f) return;
+            _volume = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Volume)));
+        }
     }
     public event PropertyChangedEventHandler? PropertyChanged;
 }
@@ -328,7 +339,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     if (voiceMembers.TryGetValue(ch.Id, out var members))
                     {
                         foreach (var m in members)
-                            vm.VoiceMembers.Add(new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId });
+                        {
+                            var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                            SubscribeVoiceMemberVolume(info);
+                            vm.VoiceMembers.Add(info);
+                        }
                     }
                     Channels.Add(vm);
                 }
@@ -379,6 +394,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             foreach (var msg in messages)
                 Messages.Add(msg);
         });
+    }
+
+    private void SubscribeVoiceMemberVolume(VoiceMemberInfo member)
+    {
+        member.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(VoiceMemberInfo.Volume))
+                _voiceService.SetUserVolume(member.VoiceUserId, member.Volume);
+        };
     }
 
     private async Task JoinVoice(int channelId)
@@ -441,7 +465,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is not null && !ch.VoiceMembers.Any(m => m.Username == username))
-                ch.VoiceMembers.Add(new VoiceMemberInfo { Username = username, VoiceUserId = voiceUserId });
+            {
+                var info = new VoiceMemberInfo { Username = username, VoiceUserId = voiceUserId };
+                SubscribeVoiceMemberVolume(info);
+                ch.VoiceMembers.Add(info);
+            }
         });
     }
 
@@ -464,7 +492,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (ch is null) return;
             ch.VoiceMembers.Clear();
             foreach (var m in members)
-                ch.VoiceMembers.Add(new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId });
+            {
+                var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                SubscribeVoiceMemberVolume(info);
+                ch.VoiceMembers.Add(info);
+            }
         });
     }
 

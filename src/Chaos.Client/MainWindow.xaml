@@ -19,6 +19,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:InverseBoolConverter x:Key="InverseBool" />
+        <conv:VolumeToPercentConverter x:Key="VolumeToPercent" />
     </Window.Resources>
 
     <Grid>
@@ -164,6 +165,42 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                    <StackPanel.ContextMenu>
+                                                        <ContextMenu>
+                                                            <MenuItem StaysOpenOnClick="True">
+                                                                <MenuItem.Template>
+                                                                    <ControlTemplate TargetType="MenuItem">
+                                                                        <Border Background="{StaticResource BgDarkBrush}" Padding="10,8">
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="VOLUME"
+                                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                           FontSize="11" FontWeight="Bold"
+                                                                                           Margin="0,0,0,6" />
+                                                                                <DockPanel>
+                                                                                    <TextBlock DockPanel.Dock="Right"
+                                                                                               Text="{Binding PlacementTarget.DataContext.Volume,
+                                                                                                              RelativeSource={RelativeSource AncestorType=ContextMenu},
+                                                                                                              Converter={StaticResource VolumeToPercent}}"
+                                                                                               Foreground="{StaticResource TextMutedBrush}"
+                                                                                               FontSize="11" VerticalAlignment="Center"
+                                                                                               MinWidth="34" TextAlignment="Right"
+                                                                                               Margin="8,0,0,0" />
+                                                                                    <Slider Minimum="0" Maximum="1"
+                                                                                            Value="{Binding PlacementTarget.DataContext.Volume,
+                                                                                                            RelativeSource={RelativeSource AncestorType=ContextMenu},
+                                                                                                            Mode=TwoWay}"
+                                                                                            Width="130"
+                                                                                            SmallChange="0.05" LargeChange="0.1"
+                                                                                            VerticalAlignment="Center" />
+                                                                                </DockPanel>
+                                                                            </StackPanel>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </MenuItem.Template>
+                                                            </MenuItem>
+                                                        </ContextMenu>
+                                                    </StackPanel.ContextMenu>
+
                                                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
                                                         <Ellipse.Style>
                                                             <Style TargetType="Ellipse">
