@@ -17,8 +17,11 @@ public class AppSettings : INotifyPropertyChanged
     public double FontSize
     {
         get => _fontSize;
-        set { if (_fontSize == value) return; _fontSize = value; OnPropertyChanged(); }
+        set { if (_fontSize == value) return; _fontSize = value; OnPropertyChanged(); OnPropertyChanged(nameof(HeaderFontSize)); }
     }
+
+    [JsonIgnore]
+    public double HeaderFontSize => _fontSize + 2;
 
     public double MessageSpacing
     {
