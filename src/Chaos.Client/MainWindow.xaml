@@ -731,12 +731,7 @@
                              x:Name="MessageList">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding">
-                                    <Setter.Value>
-                                        <Binding Path="DataContext.Settings.MessagePadding"
-                                                 RelativeSource="{RelativeSource FindAncestor, AncestorType={x:Type ListBox}}" />
-                                    </Setter.Value>
-                                </Setter>
+                                <Setter Property="Padding" Value="{Binding Padding}" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Template">

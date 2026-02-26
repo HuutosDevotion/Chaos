@@ -13,6 +13,7 @@ namespace Chaos.Client.ViewModels;
 public class MessageViewModel : INotifyPropertyChanged
 {
     private bool _showHeader = true;
+    private readonly AppSettings? _settings;
 
     public MessageDto Message { get; }
     public string Author => Message.Author;
@@ -25,10 +26,41 @@ public class MessageViewModel : INotifyPropertyChanged
     public bool ShowHeader
     {
         get => _showHeader;
-        set { if (_showHeader == value) return; _showHeader = value; OnPropertyChanged(); }
+        set
+        {
+            if (_showHeader == value) return;
+            _showHeader = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Padding));
+        }
     }
 
-    public MessageViewModel(MessageDto message) { Message = message; }
+    /// <summary>
+    /// Per-message padding. Group starters get MessageSpacing on top;
+    /// continuation messages within a group get a fixed 1px gap.
+    /// </summary>
+    public Thickness Padding
+    {
+        get
+        {
+            double top = _showHeader ? (_settings?.MessageSpacing ?? 4.0) : 1.0;
+            return new Thickness(16, top, 16, 0);
+        }
+    }
+
+    public MessageViewModel(MessageDto message, AppSettings? settings = null)
+    {
+        Message = message;
+        _settings = settings;
+        if (_settings is not null)
+            _settings.PropertyChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AppSettings.MessageSpacing) && _showHeader)
+            OnPropertyChanged(nameof(Padding));
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
@@ -538,7 +570,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             MessageViewModel? prev = null;
             foreach (var msg in messages)
             {
-                var vm = new MessageViewModel(msg);
+                var vm = new MessageViewModel(msg, Settings);
                 vm.ShowHeader = ShouldShowHeader(vm, prev);
                 Messages.Add(vm);
                 prev = vm;
@@ -623,7 +655,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (msg.ChannelId == _selectedTextChannel?.Id)
             SafeDispatch(() =>
             {
-                var vm = new MessageViewModel(msg);
+                var vm = new MessageViewModel(msg, Settings);
                 vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
                 Messages.Add(vm);
             });
