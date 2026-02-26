@@ -376,6 +376,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.OutputDeviceName = Settings.OutputDevice;
                 if (IsInVoice) RestartVoice();
             }
+            if (e.PropertyName == nameof(AppSettings.InputVolume))
+                _voiceService.InputVolume = Settings.InputVolume;
+            if (e.PropertyName == nameof(AppSettings.OutputVolume))
+                _voiceService.OutputVolume = Settings.OutputVolume;
         };
     }
 

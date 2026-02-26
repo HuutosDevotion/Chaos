@@ -84,6 +84,12 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         Settings = settings;
         TestMicCommand = new RelayCommand(_ => ToggleMicTest());
 
+        Settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettings.OutputVolume) && _micTestWaveOut is not null)
+                _micTestWaveOut.Volume = Math.Clamp(Settings.OutputVolume, 0f, 1f);
+        };
+
         InputDevices.Add("Default");
         try
         {
@@ -119,6 +125,7 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
             };
             _micTestWaveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(Settings.OutputDevice) };
             _micTestWaveOut.Init(_micTestProvider);
+            _micTestWaveOut.Volume = Math.Clamp(Settings.OutputVolume, 0f, 1f);
             _micTestWaveOut.Play();
 
             _micTestWaveIn = new WaveInEvent
@@ -158,15 +165,24 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
 
     private void OnMicTestDataAvailable(object? sender, WaveInEventArgs e)
     {
-        _micTestProvider?.AddSamples(e.Buffer, 0, e.BytesRecorded);
-
         float maxSample = 0;
+        float inputGain = Settings.InputVolume;
         for (int i = 0; i < e.BytesRecorded - 1; i += 2)
         {
-            short sample = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            short raw = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            short sample = raw;
+            if (inputGain != 1.0f)
+            {
+                sample = (short)Math.Clamp(raw * inputGain, short.MinValue, short.MaxValue);
+                e.Buffer[i] = (byte)(sample & 0xFF);
+                e.Buffer[i + 1] = (byte)((sample >> 8) & 0xFF);
+            }
             float abs = Math.Abs(sample / 32768f);
             if (abs > maxSample) maxSample = abs;
         }
+
+        _micTestProvider?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.HasShutdownStarted) return;
         dispatcher.BeginInvoke(() => MicTestLevel = maxSample);
