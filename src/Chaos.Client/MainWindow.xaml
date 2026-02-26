@@ -102,6 +102,229 @@
                 </StackPanel>
             </Border>
         </DataTemplate>
+
+        <!-- ── Settings modal ──────────────────────────────────────────────── -->
+
+        <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">
+            <Border Background="{StaticResource BgMediumBrush}" CornerRadius="8"
+                    Width="800" Height="520">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Sidebar -->
+                    <Grid Grid.Column="0" Background="{StaticResource BgDarkBrush}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
+                                Padding="16,14,16,12">
+                            <TextBlock Text="Settings" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      Margin="8,8,8,8">
+                            <ItemsControl ItemsSource="{Binding Categories}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- DataContext = SettingsCategoryViewModel -->
+                                        <StackPanel Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="11" FontWeight="Bold"
+                                                       Foreground="{StaticResource TextMutedBrush}"
+                                                       Margin="8,6,8,4" />
+                                            <!-- Pass SettingsModalViewModel down via Tag -->
+                                            <ItemsControl ItemsSource="{Binding Pages}"
+                                                          Tag="{Binding DataContext, RelativeSource={RelativeSource FindAncestor, AncestorType=ItemsControl}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <!-- DataContext = SettingsPageViewModel -->
+                                                        <!-- Command="{Binding Select}" calls select(this) in the page VM -->
+                                                        <Button Content="{Binding Name}"
+                                                                HorizontalContentAlignment="Left"
+                                                                Padding="8,6" Margin="0,1"
+                                                                Cursor="Hand"
+                                                                Command="{Binding Select}">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Background" Value="Transparent" />
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                                    <Setter Property="BorderThickness" Value="0" />
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="Bd" CornerRadius="4"
+                                                                                        Padding="{TemplateBinding Padding}"
+                                                                                        Background="{TemplateBinding Background}">
+                                                                                    <ContentPresenter />
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                        <Setter TargetName="Bd" Property="Background" Value="#404249" />
+                                                                                    </DataTrigger>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Content area -->
+                    <Grid Grid.Column="1">
+                        <ContentControl Content="{Binding SelectedPage}"
+                                        HorizontalContentAlignment="Stretch"
+                                        VerticalContentAlignment="Stretch" />
+                        <Button Content="✕" Style="{StaticResource DarkButton}"
+                                Command="{Binding Close}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Padding="10,6" Margin="0,8,8,0" FontSize="13" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type vm:AppearanceSettingsViewModel}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="32,24,32,24">
+                    <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Margin="0,0,0,24" />
+
+                    <TextBlock Text="FONT SIZE" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,20">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding Settings.FontSize, StringFormat='{}{0:0}px'}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" Width="42" TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                        <Slider Minimum="10" Maximum="24"
+                                Value="{Binding Settings.FontSize, Mode=TwoWay}"
+                                SmallChange="1" LargeChange="2"
+                                IsSnapToTickEnabled="True" TickFrequency="1" />
+                    </DockPanel>
+
+                    <TextBlock Text="MESSAGE SPACING" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,20">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding Settings.MessageSpacing, StringFormat='{}{0:0}'}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" Width="42" TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                        <Slider Minimum="0" Maximum="16"
+                                Value="{Binding Settings.MessageSpacing, Mode=TwoWay}"
+                                SmallChange="1" LargeChange="2"
+                                IsSnapToTickEnabled="True" TickFrequency="1" />
+                    </DockPanel>
+
+                    <TextBlock Text="UI SCALE" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,24">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding Settings.UiScale, StringFormat='{}{0:P0}'}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" Width="42" TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                        <Slider Minimum="0.75" Maximum="1.5"
+                                Value="{Binding Settings.UiScale, Mode=TwoWay}"
+                                SmallChange="0.05" LargeChange="0.1"
+                                IsSnapToTickEnabled="True" TickFrequency="0.05" />
+                    </DockPanel>
+
+                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
+
+                    <DockPanel Margin="0,0,0,4">
+                        <ToggleButton DockPanel.Dock="Right"
+                                      IsChecked="{Binding Settings.GroupMessages, Mode=TwoWay}"
+                                      Style="{StaticResource DarkToggleSwitch}" />
+                        <StackPanel>
+                            <TextBlock Text="Group Messages"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="14" FontWeight="SemiBold" />
+                            <TextBlock Text="Consecutive messages from the same user are grouped together"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="12" TextWrapping="Wrap" Margin="0,2,16,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type vm:VoiceSettingsViewModel}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="32,24,32,24">
+                    <TextBlock Text="Voice" FontSize="20" FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Margin="0,0,0,24" />
+
+                    <TextBlock Text="MICROPHONE" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <ComboBox ItemsSource="{Binding InputDevices}"
+                              SelectedItem="{Binding Settings.InputDevice, Mode=TwoWay}"
+                              Style="{StaticResource DarkComboBox}"
+                              Margin="0,0,0,16" />
+
+                    <TextBlock Text="INPUT VOLUME" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,24">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding Settings.InputVolume, Converter={StaticResource VolumeToPercent}}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" Width="42" TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                        <Slider Minimum="0" Maximum="1"
+                                Value="{Binding Settings.InputVolume, Mode=TwoWay}"
+                                SmallChange="0.05" LargeChange="0.1" />
+                    </DockPanel>
+
+                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
+
+                    <TextBlock Text="SPEAKER" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <ComboBox ItemsSource="{Binding OutputDevices}"
+                              SelectedItem="{Binding Settings.OutputDevice, Mode=TwoWay}"
+                              Style="{StaticResource DarkComboBox}"
+                              Margin="0,0,0,16" />
+
+                    <TextBlock Text="OUTPUT VOLUME" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <DockPanel Margin="0,0,0,24">
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding Settings.OutputVolume, Converter={StaticResource VolumeToPercent}}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="12" Width="42" TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                        <Slider Minimum="0" Maximum="1"
+                                Value="{Binding Settings.OutputVolume, Mode=TwoWay}"
+                                SmallChange="0.05" LargeChange="0.1" />
+                    </DockPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -168,6 +391,9 @@
 
         <!-- Main Layout (visible when connected) -->
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+            <Grid.LayoutTransform>
+                <ScaleTransform ScaleX="{Binding Settings.UiScale}" ScaleY="{Binding Settings.UiScale}" />
+            </Grid.LayoutTransform>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="240" MinWidth="160" MaxWidth="480" />
                 <ColumnDefinition Width="4" />
@@ -421,6 +647,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -443,6 +670,13 @@
                                 Command="{Binding ToggleDeafenCommand}"
                                 FontSize="11" Padding="4,4"
                                 VerticalAlignment="Center" />
+
+                        <Button Grid.Column="3" Content="⚙"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding OpenSettingsCommand}"
+                                FontSize="13" Padding="6,4"
+                                Margin="4,0,0,0" VerticalAlignment="Center"
+                                ToolTip="Settings" />
                     </Grid>
                 </Border>
             </Grid>
@@ -479,10 +713,16 @@
                              BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              VirtualizingPanel.ScrollUnit="Pixel"
+                             FontSize="{Binding Settings.FontSize}"
                              x:Name="MessageList">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="16,4" />
+                                <Setter Property="Padding">
+                                    <Setter.Value>
+                                        <Binding Path="DataContext.Settings.MessagePadding"
+                                                 RelativeSource="{RelativeSource FindAncestor, AncestorType={x:Type ListBox}}" />
+                                    </Setter.Value>
+                                </Setter>
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <Setter Property="Template">

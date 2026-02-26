@@ -67,6 +67,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
 
+    public AppSettings Settings { get; } = new();
+
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
     private string _messageText = string.Empty;
@@ -288,6 +290,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand ToggleDeafenCommand => new RelayCommand(_ => IsDeafened = !IsDeafened);
     public ICommand ChannelClickCommand => new RelayCommand(async p => await OnChannelClicked(p as ChannelViewModel));
     public ICommand DisconnectVoiceCommand => new RelayCommand(async _ => await LeaveVoice());
+    public ICommand OpenSettingsCommand => new RelayCommand(_ => OpenSettingsModal());
 
     public MainViewModel()
     {
@@ -602,6 +605,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             },
             cancel: () => ActiveModal = null);
     }
+
+    private void OpenSettingsModal() =>
+        ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
 
     private void OnChannelCreated(ChannelDto dto)
     {
