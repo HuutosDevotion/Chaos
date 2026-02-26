@@ -48,6 +48,14 @@ public partial class MainWindow : Window
                     if (idx >= 0 && idx < vm.SlashSuggestions.Count)
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
+
+                if (args.PropertyName == nameof(MainViewModel.IsCreateChannelModalOpen) && vm.IsCreateChannelModalOpen)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+                        () => { CreateChannelNameInput.Focus(); CreateChannelNameInput.SelectAll(); });
+
+                if (args.PropertyName == nameof(MainViewModel.IsRenameChannelModalOpen) && vm.IsRenameChannelModalOpen)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+                        () => { RenameChannelNameInput.Focus(); RenameChannelNameInput.SelectAll(); });
             };
         }
     }
@@ -163,6 +171,26 @@ public partial class MainWindow : Window
             encoder.Save(ms);
             if (DataContext is MainViewModel vm3)
                 vm3.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+        }
+    }
+
+    private void ModalBackdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            vm.CloseModalCommand.Execute(null);
+    }
+
+    private void Modal_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true; // prevent click from reaching the backdrop
+    }
+
+    private void ModalOverlay_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && DataContext is MainViewModel vm && vm.IsAnyModalOpen)
+        {
+            vm.CloseModalCommand.Execute(null);
+            e.Handled = true;
         }
     }
 

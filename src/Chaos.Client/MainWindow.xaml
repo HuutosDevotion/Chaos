@@ -71,6 +71,124 @@
             </StackPanel>
         </Grid>
 
+        <!-- Modal Overlay -->
+        <Grid Panel.ZIndex="20"
+              Visibility="{Binding IsAnyModalOpen, Converter={StaticResource BoolToVis}}"
+              Background="#A0000000"
+              MouseLeftButtonDown="ModalBackdrop_MouseLeftButtonDown"
+              PreviewKeyDown="ModalOverlay_PreviewKeyDown">
+
+            <!-- Create Channel Modal -->
+            <Border Visibility="{Binding IsCreateChannelModalOpen, Converter={StaticResource BoolToVis}}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="360"
+                    Background="{StaticResource BgDarkBrush}"
+                    CornerRadius="8"
+                    MouseLeftButtonDown="Modal_MouseLeftButtonDown">
+                <StackPanel Margin="24">
+                    <TextBlock Text="CREATE CHANNEL" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,20" />
+
+                    <TextBlock Text="CHANNEL NAME" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="CreateChannelNameInput"
+                             Style="{StaticResource DarkTextBox}"
+                             Text="{Binding ModalChannelName, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,16" />
+
+                    <TextBlock Text="CHANNEL TYPE" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,8" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                        <RadioButton Content="Text"
+                                     IsChecked="{Binding ModalIsVoiceType, Converter={StaticResource InverseBool}}"
+                                     Foreground="{StaticResource TextPrimaryBrush}"
+                                     Margin="0,0,16,0" />
+                        <RadioButton Content="Voice"
+                                     IsChecked="{Binding ModalIsVoiceType}"
+                                     Foreground="{StaticResource TextPrimaryBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancel"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding CloseModalCommand}"
+                                Padding="16,8" Margin="0,0,8,0" />
+                        <Button Content="Create"
+                                Style="{StaticResource AccentButton}"
+                                Command="{Binding ConfirmCreateChannelCommand}"
+                                IsDefault="True"
+                                Padding="16,8" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Rename Channel Modal -->
+            <Border Visibility="{Binding IsRenameChannelModalOpen, Converter={StaticResource BoolToVis}}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="360"
+                    Background="{StaticResource BgDarkBrush}"
+                    CornerRadius="8"
+                    MouseLeftButtonDown="Modal_MouseLeftButtonDown">
+                <StackPanel Margin="24">
+                    <TextBlock Text="RENAME CHANNEL" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,20" />
+
+                    <TextBlock Text="CHANNEL NAME" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,0,0,6" />
+                    <TextBox x:Name="RenameChannelNameInput"
+                             Style="{StaticResource DarkTextBox}"
+                             Text="{Binding ModalChannelName, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,0,0,24" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancel"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding CloseModalCommand}"
+                                Padding="16,8" Margin="0,0,8,0" />
+                        <Button Content="Rename"
+                                Style="{StaticResource AccentButton}"
+                                Command="{Binding ConfirmRenameChannelCommand}"
+                                IsDefault="True"
+                                Padding="16,8" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Delete Channel Modal -->
+            <Border Visibility="{Binding IsDeleteChannelModalOpen, Converter={StaticResource BoolToVis}}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="360"
+                    Background="{StaticResource BgDarkBrush}"
+                    CornerRadius="8"
+                    MouseLeftButtonDown="Modal_MouseLeftButtonDown">
+                <StackPanel Margin="24">
+                    <TextBlock Text="DELETE CHANNEL" FontSize="13" FontWeight="Bold"
+                               Foreground="{StaticResource AccentRedBrush}"
+                               Margin="0,0,0,12" />
+                    <TextBlock Text="{Binding DeleteModalMessage}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="14" TextWrapping="Wrap"
+                               Margin="0,0,0,24" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancel"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding CloseModalCommand}"
+                                Padding="16,8" Margin="0,0,8,0" />
+                        <Button Content="Delete"
+                                Style="{StaticResource DangerButton}"
+                                Command="{Binding ConfirmDeleteChannelCommand}"
+                                Padding="16,8" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!-- Main Layout (visible when connected) -->
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
