@@ -7,8 +7,8 @@ namespace Chaos.Client.Services;
 public class VoiceService : IDisposable
 {
     private WaveInEvent? _waveIn;
-    private BufferedWaveProvider? _bufferedProvider;
-    private WaveOutEvent? _waveOut;
+    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider)> _userStreams = new();
+    private readonly Dictionary<int, float> _userVolumes = new();
     private UdpClient? _udpClient;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
@@ -50,12 +50,10 @@ public class VoiceService : IDisposable
         set
         {
             _isDeafened = value;
-            if (_waveOut is not null)
+            foreach (var (waveOut, _) in _userStreams.Values)
             {
-                if (_isDeafened)
-                    _waveOut.Stop();
-                else if (_isActive)
-                    _waveOut.Play();
+                if (_isDeafened) waveOut.Stop();
+                else if (_isActive) waveOut.Play();
             }
         }
     }
@@ -110,22 +108,12 @@ public class VoiceService : IDisposable
                     Error?.Invoke($"Recording error: {args.Exception.Message}");
             };
 
-            // Setup audio playback
-            _bufferedProvider = new BufferedWaveProvider(VoiceFormat)
-            {
-                DiscardOnBufferOverflow = true,
-                BufferDuration = TimeSpan.FromSeconds(2)
-            };
-            _waveOut = new WaveOutEvent();
-            _waveOut.Init(_bufferedProvider);
-
             // Start receiving
             _receiveCts = new CancellationTokenSource();
             _receiveTask = Task.Run(() => ReceiveLoop(_receiveCts.Token));
 
-            // Start capture and playback
+            // Start capture
             if (!_isMuted) _waveIn.StartRecording();
-            if (!_isDeafened) _waveOut.Play();
 
             _isActive = true;
             System.Diagnostics.Debug.WriteLine("[Voice] Started successfully");
@@ -165,6 +153,28 @@ public class VoiceService : IDisposable
         catch { }
     }
 
+    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
+    {
+        if (_userStreams.TryGetValue(userId, out var existing))
+            return existing;
+
+        var provider = new BufferedWaveProvider(VoiceFormat) { DiscardOnBufferOverflow = true, BufferDuration = TimeSpan.FromSeconds(2) };
+        var waveOut = new WaveOutEvent();
+        waveOut.Init(provider);
+        waveOut.Volume = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f;
+        if (!_isDeafened) waveOut.Play();
+        _userStreams[userId] = (waveOut, provider);
+        return (waveOut, provider);
+    }
+
+    public void SetUserVolume(int userId, float volume)
+    {
+        volume = Math.Clamp(volume, 0f, 1f);
+        _userVolumes[userId] = volume;
+        if (_userStreams.TryGetValue(userId, out var stream))
+            stream.WaveOut.Volume = volume;
+    }
+
     private async Task ReceiveLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && _udpClient is not null)
@@ -191,13 +201,11 @@ public class VoiceService : IDisposable
                     RemoteAudioLevel?.Invoke(senderId, maxSample);
                 }
 
-                if (_isDeafened)
-                    continue;
-
                 // Play audio
-                if (audioLength > 0 && _bufferedProvider is not null)
+                if (audioLength > 0 && !_isDeafened)
                 {
-                    _bufferedProvider.AddSamples(result.Buffer, 8, audioLength);
+                    var stream = GetOrCreateUserStream(senderId);
+                    stream.Provider.AddSamples(result.Buffer, 8, audioLength);
                 }
             }
             catch (OperationCanceledException)
@@ -214,16 +222,20 @@ public class VoiceService : IDisposable
         _receiveCts?.Cancel();
 
         try { _waveIn?.StopRecording(); } catch { }
-        try { _waveOut?.Stop(); } catch { }
+
+        foreach (var (waveOut, _) in _userStreams.Values)
+        {
+            try { waveOut.Stop(); } catch { }
+            waveOut.Dispose();
+        }
+        _userStreams.Clear();
+        _userVolumes.Clear();
 
         _waveIn?.Dispose();
-        _waveOut?.Dispose();
         _udpClient?.Close();
         _udpClient?.Dispose();
 
         _waveIn = null;
-        _waveOut = null;
-        _bufferedProvider = null;
         _udpClient = null;
         _receiveCts = null;
     }
