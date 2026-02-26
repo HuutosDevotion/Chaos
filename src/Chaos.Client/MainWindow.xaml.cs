@@ -32,7 +32,24 @@ public partial class MainWindow : Window
         }
 
         Loaded += OnLoaded;
+        StateChanged += (_, _) => UpdateMaximizeIcon();
     }
+
+    private void UpdateMaximizeIcon()
+    {
+        var icon = MaximizeButton.Template.FindName("MaximizeIcon", MaximizeButton) as Border;
+        if (icon is null) return;
+        // When maximized show a slightly inset square to hint at restore
+        icon.Margin = WindowState == WindowState.Maximized ? new Thickness(2, 0, 0, 2) : new Thickness(0);
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     protected override async void OnClosed(EventArgs e)
     {

@@ -9,7 +9,12 @@
         mc:Ignorable="d"
         Title="Chaos" Height="700" Width="1100"
         Background="{StaticResource BgMediumBrush}"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32" GlassFrameThickness="0" ResizeBorderThickness="5" CornerRadius="0" />
+    </WindowChrome.WindowChrome>
 
     <Window.DataContext>
         <vm:MainViewModel />
@@ -437,6 +442,92 @@
     </Window.Resources>
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Custom title bar -->
+        <Border Grid.Row="0" Background="{StaticResource BgDarkestBrush}">
+            <Grid>
+                <!-- Centered icon + app name -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                    <Image Source="pack://application:,,,/Assets/app.ico" Width="16" Height="16" Margin="0,0,6,0" />
+                    <TextBlock Text="Chaos" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Window controls — all icons are drawn shapes so size and alignment are always consistent -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Minimize: horizontal line, same stroke as maximize square -->
+                    <Button x:Name="MinimizeButton" Click="MinimizeButton_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            Width="40" Height="32" Background="Transparent" BorderThickness="0" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                    <Line X1="0" Y1="0" X2="11" Y2="0"
+                                          Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgLightBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Maximize: square outline -->
+                    <Button x:Name="MaximizeButton" Click="MaximizeButton_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            Width="40" Height="32" Background="Transparent" BorderThickness="0" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                    <Border x:Name="MaximizeIcon" Width="11" Height="11"
+                                            BorderBrush="{StaticResource TextSecondaryBrush}"
+                                            BorderThickness="1.5"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgLightBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Close: X path, same stroke as maximize square -->
+                    <Button x:Name="CloseButton" Click="CloseButton_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            Width="40" Height="32" Background="Transparent" BorderThickness="0" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                                    <Path x:Name="CloseIcon"
+                                          Data="M0.75,0.75 L10.25,10.25 M10.25,0.75 L0.75,10.25"
+                                          Stroke="{StaticResource TextSecondaryBrush}" StrokeThickness="1.5"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentRedBrush}" />
+                                        <Setter TargetName="CloseIcon" Property="Stroke" Value="White" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Content -->
+        <Grid Grid.Row="1">
+
         <!-- Login Overlay -->
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource InverseBoolToVis}}"
               Panel.ZIndex="10"
@@ -982,5 +1073,7 @@
                 </Border>
             </Grid>
         </Grid>
+
+        </Grid> <!-- /Content -->
     </Grid>
 </Window>
