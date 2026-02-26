@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using Chaos.Shared;
 using NAudio.Wave;
 
 namespace Chaos.Client.ViewModels;
@@ -34,11 +35,47 @@ public abstract class SettingsPageViewModel : INotifyPropertyChanged
 public class AppearanceSettingsViewModel : SettingsPageViewModel
 {
     public AppSettings Settings { get; }
+    public IReadOnlyList<MessageViewModel> SampleMessages { get; }
 
     public AppearanceSettingsViewModel(AppSettings settings, Action<SettingsPageViewModel> select)
         : base("Appearance", select)
     {
         Settings = settings;
+        SampleMessages = BuildSampleMessages();
+
+        settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettings.GroupMessages))
+                RecomputeGrouping();
+        };
+    }
+
+    private MessageViewModel[] BuildSampleMessages()
+    {
+        var now = DateTime.Now;
+        var msgs = new[]
+        {
+            new MessageViewModel(new MessageDto { Author = "Alice", Content = "Hey, how's everyone doing?",           Timestamp = now.AddMinutes(-8) }, Settings),
+            new MessageViewModel(new MessageDto { Author = "Alice", Content = "Did you catch the game last night?",   Timestamp = now.AddMinutes(-7) }, Settings),
+            new MessageViewModel(new MessageDto { Author = "Bob",   Content = "Yeah it was incredible!",             Timestamp = now.AddMinutes(-6) }, Settings),
+            new MessageViewModel(new MessageDto { Author = "Bob",   Content = "Can't believe that ending.",          Timestamp = now.AddMinutes(-5) }, Settings),
+            new MessageViewModel(new MessageDto { Author = "Alice", Content = "Right?! I'm still thinking about it.",Timestamp = now.AddMinutes(-4) }, Settings),
+        };
+        ApplyGrouping(msgs, Settings.GroupMessages);
+        return msgs;
+    }
+
+    private void RecomputeGrouping() =>
+        ApplyGrouping((MessageViewModel[])SampleMessages, Settings.GroupMessages);
+
+    private static void ApplyGrouping(IList<MessageViewModel> msgs, bool grouped)
+    {
+        MessageViewModel? prev = null;
+        foreach (var m in msgs)
+        {
+            m.ShowHeader = !grouped || prev is null || prev.Author != m.Author;
+            prev = m;
+        }
     }
 }
 

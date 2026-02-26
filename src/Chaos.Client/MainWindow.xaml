@@ -206,12 +206,83 @@
             </Border>
         </DataTemplate>
 
+        <!-- Shared message item template — used by both the main chat list and the Appearance preview -->
+        <DataTemplate x:Key="MessageItemTemplate">
+            <StackPanel Margin="0,2">
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding ShowHeader, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding Author}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               FontWeight="SemiBold"
+                               FontSize="{Binding DataContext.Settings.HeaderFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}" />
+                    <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="11" Margin="8,2,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Text="{Binding Content}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,2,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Content}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <Image Source="{Binding ImageUrl, TargetNullValue={x:Null}}"
+                       MaxWidth="400" MaxHeight="300"
+                       Stretch="Uniform" HorizontalAlignment="Left"
+                       Margin="0,4,0,0"
+                       Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </DataTemplate>
+
         <DataTemplate DataType="{x:Type vm:AppearanceSettingsViewModel}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="32,24,32,24">
                     <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"
                                Foreground="{StaticResource TextPrimaryBrush}"
-                               Margin="0,0,0,24" />
+                               Margin="0,0,0,16" />
+
+                    <!-- Live preview -->
+                    <Border Background="{StaticResource BgDarkBrush}"
+                            BorderBrush="#222326" BorderThickness="1"
+                            CornerRadius="6" Margin="0,0,0,24"
+                            ClipToBounds="True" Height="160">
+                        <ListBox ItemsSource="{Binding SampleMessages}"
+                                 ItemTemplate="{StaticResource MessageItemTemplate}"
+                                 FontSize="{Binding Settings.FontSize}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 IsHitTestVisible="False"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListBox.LayoutTransform>
+                                <ScaleTransform ScaleX="{Binding Settings.UiScale}"
+                                                ScaleY="{Binding Settings.UiScale}" />
+                            </ListBox.LayoutTransform>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="{Binding Padding}" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <ContentPresenter Margin="{TemplateBinding Padding}" />
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                    </Border>
 
                     <TextBlock Text="FONT SIZE" FontSize="11" FontWeight="Bold"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
@@ -752,41 +823,7 @@
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="0,2">
-                                    <StackPanel Orientation="Horizontal"
-                                                Visibility="{Binding ShowHeader, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock Text="{Binding Author}"
-                                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                                   FontWeight="SemiBold"
-                                                   FontSize="{Binding DataContext.Settings.HeaderFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}" />
-                                        <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
-                                                   Foreground="{StaticResource TextMutedBrush}"
-                                                   FontSize="11" Margin="8,2,0,0"
-                                                   VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Content}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap"
-                                               Margin="0,2,0,0">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Content}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <Image Source="{Binding ImageUrl, TargetNullValue={x:Null}}"
-                                           MaxWidth="400" MaxHeight="300"
-                                           Stretch="Uniform" HorizontalAlignment="Left"
-                                           Margin="0,4,0,0"
-                                           Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
-                            </DataTemplate>
+                            <StaticResource ResourceKey="MessageItemTemplate" />
                         </ListBox.ItemTemplate>
                     </ListBox>
 
