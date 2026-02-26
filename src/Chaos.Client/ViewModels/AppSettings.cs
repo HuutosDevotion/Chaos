@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using System.Windows;
 
 namespace Chaos.Client.ViewModels;
@@ -31,6 +32,7 @@ public class AppSettings : INotifyPropertyChanged
         }
     }
 
+    [JsonIgnore]
     public Thickness MessagePadding => new(16, _messageSpacing, 16, _messageSpacing);
 
     public double UiScale

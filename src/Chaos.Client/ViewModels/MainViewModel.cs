@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Chaos.Client.Services;
 using Chaos.Shared;
 
@@ -91,8 +92,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
+    private readonly IClientSettingsStore _settingsStore = new LocalJsonSettingsStore();
+    private readonly DispatcherTimer _settingsSaveTimer;
 
-    public AppSettings Settings { get; } = new();
+    public AppSettings Settings { get; }
 
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
@@ -319,6 +322,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public MainViewModel()
     {
+        Settings = _settingsStore.Load();
+
+        _voiceService.InputDeviceName = Settings.InputDevice;
+        _voiceService.OutputDeviceName = Settings.OutputDevice;
+        _voiceService.InputVolume = Settings.InputVolume;
+        _voiceService.OutputVolume = Settings.OutputVolume;
+
+        _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); _settingsStore.Save(Settings); };
+
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
         _chatService.UserLeftVoice += OnUserLeftVoice;
@@ -364,6 +377,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         Settings.PropertyChanged += (_, e) =>
         {
+            _settingsSaveTimer.Stop();
+            _settingsSaveTimer.Start();
+
             if (e.PropertyName == nameof(AppSettings.GroupMessages))
                 RecomputeGrouping();
             if (e.PropertyName == nameof(AppSettings.InputDevice))
