@@ -9,6 +9,31 @@ using Chaos.Shared;
 
 namespace Chaos.Client.ViewModels;
 
+public class MessageViewModel : INotifyPropertyChanged
+{
+    private bool _showHeader = true;
+
+    public MessageDto Message { get; }
+    public string Author => Message.Author;
+    public DateTime Timestamp => Message.Timestamp;
+    public string Content => Message.Content;
+    public string? ImageUrl => Message.ImageUrl;
+    public bool HasImage => Message.HasImage;
+    public int ChannelId => Message.ChannelId;
+
+    public bool ShowHeader
+    {
+        get => _showHeader;
+        set { if (_showHeader == value) return; _showHeader = value; OnPropertyChanged(); }
+    }
+
+    public MessageViewModel(MessageDto message) { Message = message; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
 public class VoiceMemberInfo : INotifyPropertyChanged
 {
     private bool _isSpeaking;
@@ -92,7 +117,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private object? _activeModal;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
-    public ObservableCollection<MessageDto> Messages { get; } = new();
+    public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
 
     public string ServerAddress
@@ -336,6 +361,25 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         };
 
         _userId = Random.Shared.Next(1, 100000);
+
+        Settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AppSettings.GroupMessages))
+                RecomputeGrouping();
+        };
+    }
+
+    private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>
+        !Settings.GroupMessages || prev is null || prev.Author != msg.Author;
+
+    private void RecomputeGrouping()
+    {
+        MessageViewModel? prev = null;
+        foreach (var msg in Messages)
+        {
+            msg.ShowHeader = ShouldShowHeader(msg, prev);
+            prev = msg;
+        }
     }
 
     private async Task ConnectAsync()
@@ -423,8 +467,14 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         Application.Current.Dispatcher.Invoke(() =>
         {
             Messages.Clear();
+            MessageViewModel? prev = null;
             foreach (var msg in messages)
-                Messages.Add(msg);
+            {
+                var vm = new MessageViewModel(msg);
+                vm.ShowHeader = ShouldShowHeader(vm, prev);
+                Messages.Add(vm);
+                prev = vm;
+            }
         });
     }
 
@@ -503,7 +553,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnMessageReceived(MessageDto msg)
     {
         if (msg.ChannelId == _selectedTextChannel?.Id)
-            Application.Current.Dispatcher.Invoke(() => Messages.Add(msg));
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                var vm = new MessageViewModel(msg);
+                vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
+                Messages.Add(vm);
+            });
     }
 
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)

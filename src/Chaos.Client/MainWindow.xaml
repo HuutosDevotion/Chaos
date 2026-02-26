@@ -745,10 +745,11 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,2">
-                                    <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding ShowHeader, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="{Binding Author}"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
-                                                   FontWeight="SemiBold" FontSize="14" />
+                                                   FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
                                                    Foreground="{StaticResource TextMutedBrush}"
                                                    FontSize="11" Margin="8,2,0,0"
@@ -756,7 +757,7 @@
                                     </StackPanel>
                                     <TextBlock Text="{Binding Content}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
-                                               FontSize="14" TextWrapping="Wrap"
+                                               TextWrapping="Wrap"
                                                Margin="0,2,0,0">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
