@@ -92,7 +92,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
-    private readonly IKeyValueStore _settingsStore = new LocalJsonKeyValueStore();
+    private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
 
     public AppSettings Settings { get; }
@@ -320,8 +320,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand DisconnectVoiceCommand => new RelayCommand(async _ => await LeaveVoice());
     public ICommand OpenSettingsCommand => new RelayCommand(_ => OpenSettingsModal());
 
-    public MainViewModel()
+    public MainViewModel() : this(new LocalJsonKeyValueStore()) { }
+
+    public MainViewModel(IKeyValueStore store)
     {
+        _settingsStore = store;
+
         Settings = new AppSettings
         {
             FontSize        = _settingsStore.Get("FontSize",        14.0),
@@ -340,18 +344,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputVolume = Settings.OutputVolume;
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _settingsSaveTimer.Tick += (_, _) =>
-        {
-            _settingsSaveTimer.Stop();
-            _settingsStore.Set("FontSize",       Settings.FontSize);
-            _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
-            _settingsStore.Set("UiScale",        Settings.UiScale);
-            _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
-            _settingsStore.Set("InputDevice",    Settings.InputDevice);
-            _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
-            _settingsStore.Set("InputVolume",    Settings.InputVolume);
-            _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
-        };
+        _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
 
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
@@ -807,8 +800,22 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
+    public void FlushSettings()
+    {
+        _settingsStore.Set("FontSize",       Settings.FontSize);
+        _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
+        _settingsStore.Set("UiScale",        Settings.UiScale);
+        _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
+        _settingsStore.Set("InputDevice",    Settings.InputDevice);
+        _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
+        _settingsStore.Set("InputVolume",    Settings.InputVolume);
+        _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+    }
+
     public async ValueTask DisposeAsync()
     {
+        _settingsSaveTimer.Stop();
+        FlushSettings();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();
     }

@@ -14,14 +14,16 @@ public interface IServerSettingsStore { }
 
 public class LocalJsonKeyValueStore : IKeyValueStore
 {
-    private static readonly string SettingsPath = Path.Combine(
+    private static readonly string DefaultSettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Chaos", "client-settings.json");
 
+    private readonly string _settingsPath;
     private readonly Dictionary<string, JsonElement> _cache;
 
-    public LocalJsonKeyValueStore()
+    public LocalJsonKeyValueStore(string? path = null)
     {
+        _settingsPath = path ?? DefaultSettingsPath;
         _cache = Load();
     }
 
@@ -38,12 +40,12 @@ public class LocalJsonKeyValueStore : IKeyValueStore
         Flush();
     }
 
-    private static Dictionary<string, JsonElement> Load()
+    private Dictionary<string, JsonElement> Load()
     {
         try
         {
-            if (!File.Exists(SettingsPath)) return new();
-            var json = File.ReadAllText(SettingsPath);
+            if (!File.Exists(_settingsPath)) return new();
+            var json = File.ReadAllText(_settingsPath);
             return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json) ?? new();
         }
         catch { return new(); }
@@ -53,9 +55,9 @@ public class LocalJsonKeyValueStore : IKeyValueStore
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
             var json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsPath, json);
+            File.WriteAllText(_settingsPath, json);
         }
         catch { }
     }
