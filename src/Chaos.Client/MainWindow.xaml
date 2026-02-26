@@ -118,7 +118,9 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Sidebar -->
-                    <Grid Grid.Column="0" Background="{StaticResource BgDarkBrush}">
+                    <Border Grid.Column="0" Background="{StaticResource BgDarkBrush}"
+                            CornerRadius="8,0,0,8">
+                        <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -193,7 +195,8 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </ScrollViewer>
-                    </Grid>
+                        </Grid>
+                    </Border>
 
                     <!-- Content area -->
                     <Grid Grid.Column="1">
