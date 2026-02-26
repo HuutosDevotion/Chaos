@@ -1,12 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
+
+  <!-- Restore implicit usings that WPF SDK drops, and pin Path to System.IO to
+       avoid ambiguity with System.Windows.Shapes.Path -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+    <Using Include="System.IO.Path" Alias="Path" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
@@ -24,6 +33,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Chaos.Client\Chaos.Client.csproj" />
     <ProjectReference Include="..\Chaos.Server\Chaos.Server.csproj" />
     <ProjectReference Include="..\Chaos.Shared\Chaos.Shared.csproj" />
   </ItemGroup>
