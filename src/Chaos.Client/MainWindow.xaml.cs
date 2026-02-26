@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shell;
 using Chaos.Client.ViewModels;
 using Chaos.Shared;
 
@@ -39,8 +40,13 @@ public partial class MainWindow : Window
     {
         var icon = MaximizeButton.Template.FindName("MaximizeIcon", MaximizeButton) as Border;
         if (icon is null) return;
-        // When maximized show a slightly inset square to hint at restore
         icon.Margin = WindowState == WindowState.Maximized ? new Thickness(2, 0, 0, 2) : new Thickness(0);
+
+        // When maximized, WPF moves the window off-screen by ResizeBorderThickness to hide
+        // the resize handles. Compensate with an equal margin on the root element.
+        var chrome = WindowChrome.GetWindowChrome(this);
+        double t = WindowState == WindowState.Maximized ? chrome.ResizeBorderThickness.Left : 0;
+        RootGrid.Margin = new Thickness(t);
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) =>
