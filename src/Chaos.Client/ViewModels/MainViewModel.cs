@@ -331,7 +331,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelRenamed += OnChannelRenamed;
         _voiceService.MicLevelChanged += level =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() =>
+            SafeDispatchAsync(() =>
             {
                 MicLevel = level * 200;
                 // Update speaking indicator for self
@@ -346,7 +346,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         };
         _voiceService.RemoteAudioLevel += (remoteUserId, level) =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() =>
+            SafeDispatchAsync(() =>
             {
                 if (!_voiceChannelId.HasValue) return;
                 var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
@@ -357,7 +357,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         };
         _voiceService.Error += error =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() => VoiceStatus = error);
+            SafeDispatchAsync(() => VoiceStatus = error);
         };
 
         _userId = Random.Shared.Next(1, 100000);
@@ -367,6 +367,20 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (e.PropertyName == nameof(AppSettings.GroupMessages))
                 RecomputeGrouping();
         };
+    }
+
+    private static void SafeDispatch(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.Invoke(action);
+    }
+
+    private static void SafeDispatchAsync(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.BeginInvoke(action);
     }
 
     private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>
@@ -402,7 +416,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
 
-            Application.Current.Dispatcher.Invoke(() =>
+            SafeDispatch(() =>
             {
                 Channels.Clear();
                 foreach (var ch in channels.OrderBy(c => c.Type))
@@ -464,7 +478,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         await _chatService.JoinTextChannel(channel.Id);
         var messages = await _chatService.GetMessages(channel.Id);
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             Messages.Clear();
             MessageViewModel? prev = null;
@@ -553,7 +567,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnMessageReceived(MessageDto msg)
     {
         if (msg.ChannelId == _selectedTextChannel?.Id)
-            Application.Current.Dispatcher.Invoke(() =>
+            SafeDispatch(() =>
             {
                 var vm = new MessageViewModel(msg);
                 vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
@@ -563,7 +577,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is not null && !ch.VoiceMembers.Any(m => m.Username == username))
@@ -577,7 +591,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnUserLeftVoice(string username, int channelId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
@@ -588,7 +602,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnVoiceMembersReceived(int channelId, List<VoiceMemberDto> members)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is null) return;
@@ -606,8 +620,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnUserDisconnected(string username)
     {
-        // Remove from all voice channels
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             foreach (var ch in Channels)
             {
@@ -666,7 +679,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnChannelCreated(ChannelDto dto)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             if (Channels.Any(c => c.Id == dto.Id)) return;
             var vm = new ChannelViewModel(dto);
@@ -685,7 +698,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnChannelDeleted(int channelId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var vm = Channels.FirstOrDefault(c => c.Id == channelId);
             if (vm is null) return;
@@ -705,7 +718,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnChannelRenamed(ChannelDto dto)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var vm = Channels.FirstOrDefault(c => c.Id == dto.Id);
             if (vm is null) return;
@@ -717,7 +730,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnDisconnected()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             IsConnected = false;
             ConnectionStatus = "Disconnected";
