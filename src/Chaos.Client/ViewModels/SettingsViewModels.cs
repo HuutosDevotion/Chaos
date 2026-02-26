@@ -47,6 +47,8 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
     private static readonly WaveFormat MicTestFormat = new(16000, 16, 1);
 
     private WaveInEvent? _micTestWaveIn;
+    private WaveOutEvent? _micTestWaveOut;
+    private BufferedWaveProvider? _micTestProvider;
     private bool _isMicTesting;
     private double _micTestLevel;
 
@@ -110,6 +112,15 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         StopMicTest();
         try
         {
+            _micTestProvider = new BufferedWaveProvider(MicTestFormat)
+            {
+                DiscardOnBufferOverflow = true,
+                BufferDuration = TimeSpan.FromMilliseconds(200)
+            };
+            _micTestWaveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(Settings.OutputDevice) };
+            _micTestWaveOut.Init(_micTestProvider);
+            _micTestWaveOut.Play();
+
             _micTestWaveIn = new WaveInEvent
             {
                 WaveFormat = MicTestFormat,
@@ -134,12 +145,21 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
             _micTestWaveIn.Dispose();
             _micTestWaveIn = null;
         }
+        if (_micTestWaveOut is not null)
+        {
+            try { _micTestWaveOut.Stop(); } catch { }
+            _micTestWaveOut.Dispose();
+            _micTestWaveOut = null;
+        }
+        _micTestProvider = null;
         IsMicTesting = false;
         MicTestLevel = 0;
     }
 
     private void OnMicTestDataAvailable(object? sender, WaveInEventArgs e)
     {
+        _micTestProvider?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+
         float maxSample = 0;
         for (int i = 0; i < e.BytesRecorded - 1; i += 2)
         {
@@ -160,6 +180,16 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
             try { if (WaveInEvent.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
         }
         return 0;
+    }
+
+    private static int ResolveOutputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return -1;
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            try { if (WaveOut.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return -1;
     }
 }
 
