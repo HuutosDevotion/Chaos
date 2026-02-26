@@ -286,7 +286,21 @@
                     <ComboBox ItemsSource="{Binding InputDevices}"
                               SelectedItem="{Binding Settings.InputDevice, Mode=TwoWay}"
                               Style="{StaticResource DarkComboBox}"
-                              Margin="0,0,0,16" />
+                              Margin="0,0,0,8" />
+
+                    <Button Content="{Binding MicTestButtonText}"
+                            Command="{Binding TestMicCommand}"
+                            Style="{StaticResource DarkButton}"
+                            HorizontalAlignment="Left"
+                            Padding="12,6" Margin="0,0,0,8" />
+                    <Grid Margin="0,0,0,16"
+                          Visibility="{Binding IsMicTesting, Converter={StaticResource BoolToVis}}">
+                        <ProgressBar Height="6" Minimum="0" Maximum="1"
+                                     Value="{Binding MicTestLevel, Mode=OneWay}"
+                                     Background="#3A3C42"
+                                     Foreground="{StaticResource AccentGreenBrush}"
+                                     BorderThickness="0" />
+                    </Grid>
 
                     <TextBlock Text="INPUT VOLUME" FontSize="11" FontWeight="Bold"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />

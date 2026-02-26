@@ -366,6 +366,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             if (e.PropertyName == nameof(AppSettings.GroupMessages))
                 RecomputeGrouping();
+            if (e.PropertyName == nameof(AppSettings.InputDevice))
+            {
+                _voiceService.InputDeviceName = Settings.InputDevice;
+                if (IsInVoice) RestartVoice();
+            }
+            if (e.PropertyName == nameof(AppSettings.OutputDevice))
+            {
+                _voiceService.OutputDeviceName = Settings.OutputDevice;
+                if (IsInVoice) RestartVoice();
+            }
         };
     }
 
@@ -381,6 +391,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.HasShutdownStarted) return;
         dispatcher.BeginInvoke(action);
+    }
+
+    private void RestartVoice()
+    {
+        if (!_voiceChannelId.HasValue) return;
+        var host = ServerAddress.Replace("http://", "").Replace("https://", "");
+        if (host.Contains('/')) host = host.Split('/')[0];
+        if (host.Contains(':')) host = host.Split(':')[0];
+        if (string.IsNullOrEmpty(host)) host = "localhost";
+        _voiceService.Start(host, 9000, _userId, _voiceChannelId.Value);
     }
 
     private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>

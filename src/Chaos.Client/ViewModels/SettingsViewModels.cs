@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
 using System.Windows.Input;
 using NAudio.Wave;
 
@@ -43,14 +44,43 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 
 public class VoiceSettingsViewModel : SettingsPageViewModel
 {
+    private static readonly WaveFormat MicTestFormat = new(16000, 16, 1);
+
+    private WaveInEvent? _micTestWaveIn;
+    private bool _isMicTesting;
+    private double _micTestLevel;
+
     public AppSettings Settings { get; }
     public ObservableCollection<string> InputDevices { get; } = new();
     public ObservableCollection<string> OutputDevices { get; } = new();
+
+    public bool IsMicTesting
+    {
+        get => _isMicTesting;
+        private set
+        {
+            if (_isMicTesting == value) return;
+            _isMicTesting = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MicTestButtonText));
+        }
+    }
+
+    public double MicTestLevel
+    {
+        get => _micTestLevel;
+        private set { if (Math.Abs(_micTestLevel - value) < 0.001) return; _micTestLevel = value; OnPropertyChanged(); }
+    }
+
+    public string MicTestButtonText => IsMicTesting ? "Stop Test" : "Test Microphone";
+
+    public ICommand TestMicCommand { get; }
 
     public VoiceSettingsViewModel(AppSettings settings, Action<SettingsPageViewModel> select)
         : base("Voice", select)
     {
         Settings = settings;
+        TestMicCommand = new RelayCommand(_ => ToggleMicTest());
 
         InputDevices.Add("Default");
         try
@@ -67,6 +97,69 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
                 OutputDevices.Add(WaveOut.GetCapabilities(i).ProductName);
         }
         catch { /* no playback devices available */ }
+    }
+
+    private void ToggleMicTest()
+    {
+        if (IsMicTesting) StopMicTest();
+        else StartMicTest();
+    }
+
+    private void StartMicTest()
+    {
+        StopMicTest();
+        try
+        {
+            _micTestWaveIn = new WaveInEvent
+            {
+                WaveFormat = MicTestFormat,
+                BufferMilliseconds = 40,
+                DeviceNumber = ResolveInputDevice(Settings.InputDevice)
+            };
+            _micTestWaveIn.DataAvailable += OnMicTestDataAvailable;
+            _micTestWaveIn.StartRecording();
+            IsMicTesting = true;
+        }
+        catch
+        {
+            StopMicTest();
+        }
+    }
+
+    public void StopMicTest()
+    {
+        if (_micTestWaveIn is not null)
+        {
+            try { _micTestWaveIn.StopRecording(); } catch { }
+            _micTestWaveIn.Dispose();
+            _micTestWaveIn = null;
+        }
+        IsMicTesting = false;
+        MicTestLevel = 0;
+    }
+
+    private void OnMicTestDataAvailable(object? sender, WaveInEventArgs e)
+    {
+        float maxSample = 0;
+        for (int i = 0; i < e.BytesRecorded - 1; i += 2)
+        {
+            short sample = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            float abs = Math.Abs(sample / 32768f);
+            if (abs > maxSample) maxSample = abs;
+        }
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.BeginInvoke(() => MicTestLevel = maxSample);
+    }
+
+    private static int ResolveInputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return 0;
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+        {
+            try { if (WaveInEvent.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return 0;
     }
 }
 
@@ -114,7 +207,7 @@ public class SettingsModalViewModel : INotifyPropertyChanged
             new("App Settings", new SettingsPageViewModel[] { appearance, voice })
         };
 
-        Close = new RelayCommand(_ => close());
+        Close = new RelayCommand(_ => { voice.StopMicTest(); close(); });
         SelectedPage = appearance;
     }
 

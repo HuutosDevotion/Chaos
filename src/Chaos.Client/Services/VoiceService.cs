@@ -21,6 +21,9 @@ public class VoiceService : IDisposable
     private bool _isDeafened;
     private bool _isActive;
 
+    public string InputDeviceName { get; set; } = "Default";
+    public string OutputDeviceName { get; set; } = "Default";
+
     private static readonly byte[] RegistrationMagic = "RGST"u8.ToArray();
     private static readonly WaveFormat VoiceFormat = new(16000, 16, 1);
 
@@ -99,7 +102,8 @@ public class VoiceService : IDisposable
             _waveIn = new WaveInEvent
             {
                 WaveFormat = VoiceFormat,
-                BufferMilliseconds = 40
+                BufferMilliseconds = 40,
+                DeviceNumber = ResolveInputDevice(InputDeviceName)
             };
             _waveIn.DataAvailable += OnDataAvailable;
             _waveIn.RecordingStopped += (_, args) =>
@@ -159,7 +163,7 @@ public class VoiceService : IDisposable
             return existing;
 
         var provider = new BufferedWaveProvider(VoiceFormat) { DiscardOnBufferOverflow = true, BufferDuration = TimeSpan.FromSeconds(2) };
-        var waveOut = new WaveOutEvent();
+        var waveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(OutputDeviceName) };
         waveOut.Init(provider);
         waveOut.Volume = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f;
         if (!_isDeafened) waveOut.Play();
@@ -243,6 +247,26 @@ public class VoiceService : IDisposable
     public void Dispose()
     {
         Stop();
+    }
+
+    private static int ResolveInputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return 0;
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+        {
+            try { if (WaveInEvent.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return 0;
+    }
+
+    private static int ResolveOutputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return -1; // wave mapper
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            try { if (WaveOut.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return -1;
     }
 
     private static IPAddress ResolveHost(string host)
