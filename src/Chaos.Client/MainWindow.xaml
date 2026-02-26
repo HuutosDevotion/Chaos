@@ -784,7 +784,7 @@
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
-                                    <Image Source="{Binding ImageUrl}"
+                                    <Image Source="{Binding ImageUrl, TargetNullValue={x:Null}}"
                                            MaxWidth="400" MaxHeight="300"
                                            Stretch="Uniform" HorizontalAlignment="Left"
                                            Margin="0,4,0,0"

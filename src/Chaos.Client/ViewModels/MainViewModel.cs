@@ -92,7 +92,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
-    private readonly IClientSettingsStore _settingsStore = new LocalJsonSettingsStore();
+    private readonly IKeyValueStore _settingsStore = new LocalJsonKeyValueStore();
     private readonly DispatcherTimer _settingsSaveTimer;
 
     public AppSettings Settings { get; }
@@ -322,7 +322,17 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public MainViewModel()
     {
-        Settings = _settingsStore.Load();
+        Settings = new AppSettings
+        {
+            FontSize        = _settingsStore.Get("FontSize",        14.0),
+            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
+            UiScale         = _settingsStore.Get("UiScale",         1.0),
+            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
+            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
+            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
+            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
+            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+        };
 
         _voiceService.InputDeviceName = Settings.InputDevice;
         _voiceService.OutputDeviceName = Settings.OutputDevice;
@@ -330,7 +340,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputVolume = Settings.OutputVolume;
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); _settingsStore.Save(Settings); };
+        _settingsSaveTimer.Tick += (_, _) =>
+        {
+            _settingsSaveTimer.Stop();
+            _settingsStore.Set("FontSize",       Settings.FontSize);
+            _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
+            _settingsStore.Set("UiScale",        Settings.UiScale);
+            _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
+            _settingsStore.Set("InputDevice",    Settings.InputDevice);
+            _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
+            _settingsStore.Set("InputVolume",    Settings.InputVolume);
+            _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        };
 
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
