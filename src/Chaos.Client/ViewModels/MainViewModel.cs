@@ -40,7 +40,7 @@ public class ChannelViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public class MainViewModel : INotifyPropertyChanged
+public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
@@ -572,6 +572,12 @@ public class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsInVoice));
             OnPropertyChanged(nameof(VoiceChannelName));
         });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _voiceService.Dispose();
+        await _chatService.DisposeAsync();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

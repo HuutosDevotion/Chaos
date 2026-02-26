@@ -21,6 +21,13 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
     }
 
+    protected override async void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        if (DataContext is MainViewModel vm)
+            await vm.DisposeAsync();
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
