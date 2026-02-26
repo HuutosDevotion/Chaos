@@ -49,13 +49,12 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
-                if (args.PropertyName == nameof(MainViewModel.IsCreateChannelModalOpen) && vm.IsCreateChannelModalOpen)
-                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
-                        () => { CreateChannelNameInput.Focus(); CreateChannelNameInput.SelectAll(); });
-
-                if (args.PropertyName == nameof(MainViewModel.IsRenameChannelModalOpen) && vm.IsRenameChannelModalOpen)
-                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
-                        () => { RenameChannelNameInput.Focus(); RenameChannelNameInput.SelectAll(); });
+                if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
+                    {
+                        var textBox = FindFirstDescendant<TextBox>(ModalContentControl);
+                        if (textBox is not null) { textBox.Focus(); textBox.SelectAll(); }
+                    });
             };
         }
     }
@@ -177,7 +176,7 @@ public partial class MainWindow : Window
     private void ModalBackdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is MainViewModel vm)
-            vm.CloseModalCommand.Execute(null);
+            vm.CloseModal();
     }
 
     private void Modal_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -189,9 +188,21 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape && DataContext is MainViewModel vm && vm.IsAnyModalOpen)
         {
-            vm.CloseModalCommand.Execute(null);
+            vm.CloseModal();
             e.Handled = true;
         }
+    }
+
+    private static T? FindFirstDescendant<T>(DependencyObject obj) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(obj); i++)
+        {
+            var child = VisualTreeHelper.GetChild(obj, i);
+            if (child is T found) return found;
+            var result = FindFirstDescendant<T>(child);
+            if (result is not null) return result;
+        }
+        return null;
     }
 
     private void SuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

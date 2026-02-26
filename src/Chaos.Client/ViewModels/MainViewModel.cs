@@ -87,14 +87,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
 
-    // Modal state
-    private bool _isCreateChannelModalOpen;
-    private bool _isRenameChannelModalOpen;
-    private bool _isDeleteChannelModalOpen;
-    private string _modalChannelName = string.Empty;
-    private bool _modalIsVoiceType;
-    private ChannelViewModel? _pendingDeleteChannel;
-    private ChannelViewModel? _pendingRenameChannel;
+    private object? _activeModal;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageDto> Messages { get; } = new();
@@ -130,41 +123,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
 
-    public bool IsCreateChannelModalOpen
+    public object? ActiveModal
     {
-        get => _isCreateChannelModalOpen;
-        set { _isCreateChannelModalOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
+        get => _activeModal;
+        private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
     }
 
-    public bool IsRenameChannelModalOpen
-    {
-        get => _isRenameChannelModalOpen;
-        set { _isRenameChannelModalOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
-    }
+    public bool IsAnyModalOpen => _activeModal is not null;
 
-    public bool IsDeleteChannelModalOpen
-    {
-        get => _isDeleteChannelModalOpen;
-        set { _isDeleteChannelModalOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
-    }
-
-    public bool IsAnyModalOpen => _isCreateChannelModalOpen || _isRenameChannelModalOpen || _isDeleteChannelModalOpen;
-
-    public string ModalChannelName
-    {
-        get => _modalChannelName;
-        set { _modalChannelName = value; OnPropertyChanged(); }
-    }
-
-    public bool ModalIsVoiceType
-    {
-        get => _modalIsVoiceType;
-        set { _modalIsVoiceType = value; OnPropertyChanged(); }
-    }
-
-    public string DeleteModalMessage => _pendingDeleteChannel is not null
-        ? $"Delete \"{_pendingDeleteChannel.Name}\"? This cannot be undone."
-        : string.Empty;
+    public void CloseModal() => ActiveModal = null;
 
     public string ConnectionStatus
     {
@@ -316,10 +283,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand CreateChannelCommand => new RelayCommand(_ => OpenCreateChannelModal(), _ => IsConnected);
     public ICommand RenameChannelCommand => new RelayCommand(p => OpenRenameChannelModal(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
     public ICommand DeleteChannelCommand => new RelayCommand(p => OpenDeleteChannelModal(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
-    public ICommand CloseModalCommand => new RelayCommand(_ => CloseModal());
-    public ICommand ConfirmCreateChannelCommand => new RelayCommand(async _ => await ConfirmCreateChannelAsync(), _ => !string.IsNullOrWhiteSpace(ModalChannelName));
-    public ICommand ConfirmRenameChannelCommand => new RelayCommand(async _ => await ConfirmRenameChannelAsync(), _ => !string.IsNullOrWhiteSpace(ModalChannelName));
-    public ICommand ConfirmDeleteChannelCommand => new RelayCommand(async _ => await ConfirmDeleteChannelAsync());
     public ICommand SendMessageCommand => new RelayCommand(async _ => await SendMessageAsync(), _ => IsConnected && (!string.IsNullOrWhiteSpace(MessageText) || HasPendingImage));
     public ICommand ToggleMuteCommand => new RelayCommand(_ => IsMuted = !IsMuted);
     public ICommand ToggleDeafenCommand => new RelayCommand(_ => IsDeafened = !IsDeafened);
@@ -599,68 +562,45 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OpenCreateChannelModal()
     {
-        ModalChannelName = string.Empty;
-        ModalIsVoiceType = false;
-        IsCreateChannelModalOpen = true;
+        ActiveModal = new CreateChannelModalViewModel(
+            confirm: async (name, type) =>
+            {
+                ActiveModal = null;
+                var dto = await _chatService.CreateChannelAsync(name, type);
+                if (dto?.Type == ChannelType.Text)
+                {
+                    var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
+                    if (channel is not null)
+                        SelectedTextChannel = channel;
+                }
+            },
+            cancel: () => ActiveModal = null);
     }
 
     private void OpenRenameChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        _pendingRenameChannel = channel;
-        ModalChannelName = channel.Name;
-        IsRenameChannelModalOpen = true;
+        ActiveModal = new RenameChannelModalViewModel(
+            initialName: channel.Name,
+            confirm: async name =>
+            {
+                ActiveModal = null;
+                await _chatService.RenameChannelAsync(channel.Id, name);
+            },
+            cancel: () => ActiveModal = null);
     }
 
     private void OpenDeleteChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        _pendingDeleteChannel = channel;
-        OnPropertyChanged(nameof(DeleteModalMessage));
-        IsDeleteChannelModalOpen = true;
-    }
-
-    private void CloseModal()
-    {
-        IsCreateChannelModalOpen = false;
-        IsRenameChannelModalOpen = false;
-        IsDeleteChannelModalOpen = false;
-        _pendingDeleteChannel = null;
-        _pendingRenameChannel = null;
-        ModalChannelName = string.Empty;
-        ModalIsVoiceType = false;
-    }
-
-    private async Task ConfirmCreateChannelAsync()
-    {
-        var name = ModalChannelName.Trim();
-        if (string.IsNullOrEmpty(name)) return;
-        var type = ModalIsVoiceType ? ChannelType.Voice : ChannelType.Text;
-        CloseModal();
-        var dto = await _chatService.CreateChannelAsync(name, type);
-        if (dto?.Type == ChannelType.Text)
-        {
-            var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
-            if (channel is not null)
-                SelectedTextChannel = channel;
-        }
-    }
-
-    private async Task ConfirmRenameChannelAsync()
-    {
-        var name = ModalChannelName.Trim();
-        if (string.IsNullOrEmpty(name) || _pendingRenameChannel is null) return;
-        var channel = _pendingRenameChannel;
-        CloseModal();
-        await _chatService.RenameChannelAsync(channel.Id, name);
-    }
-
-    private async Task ConfirmDeleteChannelAsync()
-    {
-        var channel = _pendingDeleteChannel;
-        CloseModal();
-        if (channel is null) return;
-        await _chatService.DeleteChannelAsync(channel.Id);
+        ActiveModal = new DeleteChannelModalViewModel(
+            channelName: channel.Name,
+            confirm: async () =>
+            {
+                ActiveModal = null;
+                await _chatService.DeleteChannelAsync(channel.Id);
+            },
+            cancel: () => ActiveModal = null);
     }
 
     private void OnChannelCreated(ChannelDto dto)

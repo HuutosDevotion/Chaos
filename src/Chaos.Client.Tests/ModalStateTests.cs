@@ -5,10 +5,11 @@ using Xunit;
 namespace Chaos.Client.Tests;
 
 /// <summary>
-/// Unit tests for the in-app modal overlay system on MainViewModel.
-/// Covers state transitions for the Create Channel, Rename Channel, and
-/// Delete Channel modals — open, close, pre-population, and CanExecute
-/// guards — without any server or UI thread dependency.
+/// Unit tests for the in-app modal overlay system.
+/// MainViewModel exposes a single ActiveModal property whose runtime type
+/// determines which DataTemplate WPF renders. Tests verify that the right
+/// modal ViewModel is created with the right initial state, that closing
+/// works, and that each modal's Confirm/Cancel CanExecute guards are correct.
 /// </summary>
 public class ModalStateTests
 {
@@ -18,42 +19,31 @@ public class ModalStateTests
     // ── initial defaults ──────────────────────────────────────────────────────
 
     [Fact]
-    public void InitialState_AllModalsAreClosed()
+    public void InitialState_ActiveModalIsNull()
     {
         var vm = new MainViewModel();
 
-        Assert.False(vm.IsCreateChannelModalOpen);
-        Assert.False(vm.IsRenameChannelModalOpen);
-        Assert.False(vm.IsDeleteChannelModalOpen);
+        Assert.Null(vm.ActiveModal);
+    }
+
+    [Fact]
+    public void InitialState_IsAnyModalOpenIsFalse()
+    {
+        var vm = new MainViewModel();
+
         Assert.False(vm.IsAnyModalOpen);
-    }
-
-    [Fact]
-    public void InitialState_ModalChannelNameIsEmpty()
-    {
-        var vm = new MainViewModel();
-
-        Assert.Equal(string.Empty, vm.ModalChannelName);
-    }
-
-    [Fact]
-    public void InitialState_ModalIsVoiceTypeIsFalse()
-    {
-        var vm = new MainViewModel();
-
-        Assert.False(vm.ModalIsVoiceType);
     }
 
     // ── open create channel modal ─────────────────────────────────────────────
 
     [Fact]
-    public void CreateChannelCommand_OpensCreateModal()
+    public void CreateChannelCommand_SetsActiveModalToCreateChannelModalViewModel()
     {
         var vm = new MainViewModel();
 
         vm.CreateChannelCommand.Execute(null);
 
-        Assert.True(vm.IsCreateChannelModalOpen);
+        Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
     }
 
     [Fact]
@@ -67,40 +57,29 @@ public class ModalStateTests
     }
 
     [Fact]
-    public void CreateChannelCommand_DoesNotOpenOtherModals()
+    public void CreateChannelCommand_ModalStartsWithEmptyName()
     {
         var vm = new MainViewModel();
 
         vm.CreateChannelCommand.Execute(null);
 
-        Assert.False(vm.IsRenameChannelModalOpen);
-        Assert.False(vm.IsDeleteChannelModalOpen);
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        Assert.Equal(string.Empty, modal.ChannelName);
     }
 
     [Fact]
-    public void CreateChannelCommand_ClearsModalChannelName()
+    public void CreateChannelCommand_ModalDefaultsToTextType()
     {
         var vm = new MainViewModel();
-        vm.ModalChannelName = "leftover";
 
         vm.CreateChannelCommand.Execute(null);
 
-        Assert.Equal(string.Empty, vm.ModalChannelName);
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        Assert.False(modal.IsVoiceType);
     }
 
     [Fact]
-    public void CreateChannelCommand_DefaultsToTextType()
-    {
-        var vm = new MainViewModel();
-        vm.ModalIsVoiceType = true; // simulate leftover state
-
-        vm.CreateChannelCommand.Execute(null);
-
-        Assert.False(vm.ModalIsVoiceType);
-    }
-
-    [Fact]
-    public void CreateChannelCommand_RaisesPropertyChangedForCreateModalAndAnyModal()
+    public void CreateChannelCommand_RaisesPropertyChangedForActiveModalAndIsAnyModalOpen()
     {
         var vm = new MainViewModel();
         var raised = new List<string?>();
@@ -108,20 +87,20 @@ public class ModalStateTests
 
         vm.CreateChannelCommand.Execute(null);
 
-        Assert.Contains(nameof(MainViewModel.IsCreateChannelModalOpen), raised);
+        Assert.Contains(nameof(MainViewModel.ActiveModal), raised);
         Assert.Contains(nameof(MainViewModel.IsAnyModalOpen), raised);
     }
 
     // ── open rename channel modal ─────────────────────────────────────────────
 
     [Fact]
-    public void RenameChannelCommand_OpensRenameModal()
+    public void RenameChannelCommand_SetsActiveModalToRenameChannelModalViewModel()
     {
         var vm = new MainViewModel();
 
         vm.RenameChannelCommand.Execute(TextChannel());
 
-        Assert.True(vm.IsRenameChannelModalOpen);
+        Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
     }
 
     [Fact]
@@ -131,18 +110,8 @@ public class ModalStateTests
 
         vm.RenameChannelCommand.Execute(TextChannel("announcements"));
 
-        Assert.Equal("announcements", vm.ModalChannelName);
-    }
-
-    [Fact]
-    public void RenameChannelCommand_DoesNotOpenOtherModals()
-    {
-        var vm = new MainViewModel();
-
-        vm.RenameChannelCommand.Execute(TextChannel());
-
-        Assert.False(vm.IsCreateChannelModalOpen);
-        Assert.False(vm.IsDeleteChannelModalOpen);
+        var modal = Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
+        Assert.Equal("announcements", modal.ChannelName);
     }
 
     [Fact]
@@ -152,54 +121,31 @@ public class ModalStateTests
 
         vm.RenameChannelCommand.Execute(null);
 
-        Assert.False(vm.IsRenameChannelModalOpen);
+        Assert.Null(vm.ActiveModal);
         Assert.False(vm.IsAnyModalOpen);
-    }
-
-    [Fact]
-    public void RenameChannelCommand_RaisesPropertyChangedForRenameModalAndAnyModal()
-    {
-        var vm = new MainViewModel();
-        var raised = new List<string?>();
-        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-
-        vm.RenameChannelCommand.Execute(TextChannel());
-
-        Assert.Contains(nameof(MainViewModel.IsRenameChannelModalOpen), raised);
-        Assert.Contains(nameof(MainViewModel.IsAnyModalOpen), raised);
     }
 
     // ── open delete channel modal ─────────────────────────────────────────────
 
     [Fact]
-    public void DeleteChannelCommand_OpensDeleteModal()
+    public void DeleteChannelCommand_SetsActiveModalToDeleteChannelModalViewModel()
     {
         var vm = new MainViewModel();
 
         vm.DeleteChannelCommand.Execute(TextChannel());
 
-        Assert.True(vm.IsDeleteChannelModalOpen);
+        Assert.IsType<DeleteChannelModalViewModel>(vm.ActiveModal);
     }
 
     [Fact]
-    public void DeleteChannelCommand_DeleteModalMessageContainsChannelName()
+    public void DeleteChannelCommand_ModalMessageContainsChannelName()
     {
         var vm = new MainViewModel();
 
         vm.DeleteChannelCommand.Execute(TextChannel("important-channel"));
 
-        Assert.Contains("important-channel", vm.DeleteModalMessage);
-    }
-
-    [Fact]
-    public void DeleteChannelCommand_DoesNotOpenOtherModals()
-    {
-        var vm = new MainViewModel();
-
-        vm.DeleteChannelCommand.Execute(TextChannel());
-
-        Assert.False(vm.IsCreateChannelModalOpen);
-        Assert.False(vm.IsRenameChannelModalOpen);
+        var modal = Assert.IsType<DeleteChannelModalViewModel>(vm.ActiveModal);
+        Assert.Contains("important-channel", modal.Message);
     }
 
     [Fact]
@@ -209,174 +155,199 @@ public class ModalStateTests
 
         vm.DeleteChannelCommand.Execute(null);
 
-        Assert.False(vm.IsDeleteChannelModalOpen);
+        Assert.Null(vm.ActiveModal);
         Assert.False(vm.IsAnyModalOpen);
-    }
-
-    [Fact]
-    public void DeleteChannelCommand_RaisesPropertyChangedForDeleteModalAndAnyModal()
-    {
-        var vm = new MainViewModel();
-        var raised = new List<string?>();
-        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-
-        vm.DeleteChannelCommand.Execute(TextChannel());
-
-        Assert.Contains(nameof(MainViewModel.IsDeleteChannelModalOpen), raised);
-        Assert.Contains(nameof(MainViewModel.IsAnyModalOpen), raised);
     }
 
     // ── close modal ───────────────────────────────────────────────────────────
 
     [Fact]
-    public void CloseModal_AfterCreate_ClosesModal()
+    public void CloseModal_AfterCreate_SetsActiveModalNull()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
 
-        vm.CloseModalCommand.Execute(null);
+        vm.CloseModal();
 
-        Assert.False(vm.IsCreateChannelModalOpen);
+        Assert.Null(vm.ActiveModal);
         Assert.False(vm.IsAnyModalOpen);
     }
 
     [Fact]
-    public void CloseModal_AfterRename_ClosesModalAndClearsName()
+    public void CloseModal_AfterRename_SetsActiveModalNull()
     {
         var vm = new MainViewModel();
-        vm.RenameChannelCommand.Execute(TextChannel("old-name"));
+        vm.RenameChannelCommand.Execute(TextChannel());
 
-        vm.CloseModalCommand.Execute(null);
+        vm.CloseModal();
 
-        Assert.False(vm.IsRenameChannelModalOpen);
-        Assert.Equal(string.Empty, vm.ModalChannelName);
+        Assert.Null(vm.ActiveModal);
         Assert.False(vm.IsAnyModalOpen);
     }
 
     [Fact]
-    public void CloseModal_AfterDelete_ClosesModal()
+    public void CloseModal_AfterDelete_SetsActiveModalNull()
     {
         var vm = new MainViewModel();
-        vm.DeleteChannelCommand.Execute(TextChannel("to-delete"));
+        vm.DeleteChannelCommand.Execute(TextChannel());
 
-        vm.CloseModalCommand.Execute(null);
+        vm.CloseModal();
 
-        Assert.False(vm.IsDeleteChannelModalOpen);
+        Assert.Null(vm.ActiveModal);
         Assert.False(vm.IsAnyModalOpen);
     }
 
     [Fact]
-    public void CloseModal_ResetsModalIsVoiceType()
-    {
-        var vm = new MainViewModel();
-        vm.CreateChannelCommand.Execute(null);
-        vm.ModalIsVoiceType = true;
-
-        vm.CloseModalCommand.Execute(null);
-
-        Assert.False(vm.ModalIsVoiceType);
-    }
-
-    [Fact]
-    public void CloseModal_RaisesPropertyChangedForClosedModal()
+    public void CloseModal_RaisesPropertyChangedForActiveModalAndIsAnyModalOpen()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
         var raised = new List<string?>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        vm.CloseModalCommand.Execute(null);
+        vm.CloseModal();
 
-        Assert.Contains(nameof(MainViewModel.IsCreateChannelModalOpen), raised);
+        Assert.Contains(nameof(MainViewModel.ActiveModal), raised);
         Assert.Contains(nameof(MainViewModel.IsAnyModalOpen), raised);
     }
 
-    // ── ConfirmCreate CanExecute ──────────────────────────────────────────────
+    // ── modal Cancel command closes the modal ─────────────────────────────────
 
     [Fact]
-    public void ConfirmCreate_CannotExecuteWithEmptyName()
+    public void CreateModal_CancelCommand_SetsActiveModalNull()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
-        vm.ModalChannelName = string.Empty;
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
 
-        Assert.False(vm.ConfirmCreateChannelCommand.CanExecute(null));
+        modal.Cancel.Execute(null);
+
+        Assert.Null(vm.ActiveModal);
     }
 
     [Fact]
-    public void ConfirmCreate_CannotExecuteWithWhitespaceName()
+    public void RenameModal_CancelCommand_SetsActiveModalNull()
+    {
+        var vm = new MainViewModel();
+        vm.RenameChannelCommand.Execute(TextChannel());
+        var modal = Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
+
+        modal.Cancel.Execute(null);
+
+        Assert.Null(vm.ActiveModal);
+    }
+
+    [Fact]
+    public void DeleteModal_CancelCommand_SetsActiveModalNull()
+    {
+        var vm = new MainViewModel();
+        vm.DeleteChannelCommand.Execute(TextChannel());
+        var modal = Assert.IsType<DeleteChannelModalViewModel>(vm.ActiveModal);
+
+        modal.Cancel.Execute(null);
+
+        Assert.Null(vm.ActiveModal);
+    }
+
+    // ── Confirm CanExecute guards ─────────────────────────────────────────────
+
+    [Fact]
+    public void CreateModal_Confirm_CannotExecuteWithEmptyName()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
-        vm.ModalChannelName = "   ";
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        modal.ChannelName = string.Empty;
 
-        Assert.False(vm.ConfirmCreateChannelCommand.CanExecute(null));
+        Assert.False(modal.Confirm.CanExecute(null));
     }
 
     [Fact]
-    public void ConfirmCreate_CanExecuteWithValidName()
+    public void CreateModal_Confirm_CannotExecuteWithWhitespaceName()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
-        vm.ModalChannelName = "new-channel";
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        modal.ChannelName = "   ";
 
-        Assert.True(vm.ConfirmCreateChannelCommand.CanExecute(null));
+        Assert.False(modal.Confirm.CanExecute(null));
     }
 
-    // ── ConfirmRename CanExecute ──────────────────────────────────────────────
+    [Fact]
+    public void CreateModal_Confirm_CanExecuteWithValidName()
+    {
+        var vm = new MainViewModel();
+        vm.CreateChannelCommand.Execute(null);
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        modal.ChannelName = "my-channel";
+
+        Assert.True(modal.Confirm.CanExecute(null));
+    }
 
     [Fact]
-    public void ConfirmRename_CannotExecuteWithEmptyName()
+    public void RenameModal_Confirm_CannotExecuteWithEmptyName()
     {
         var vm = new MainViewModel();
         vm.RenameChannelCommand.Execute(TextChannel("general"));
-        vm.ModalChannelName = string.Empty;
+        var modal = Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
+        modal.ChannelName = string.Empty;
 
-        Assert.False(vm.ConfirmRenameChannelCommand.CanExecute(null));
+        Assert.False(modal.Confirm.CanExecute(null));
     }
 
     [Fact]
-    public void ConfirmRename_CannotExecuteWithWhitespaceName()
+    public void RenameModal_Confirm_CanExecuteWithValidName()
     {
         var vm = new MainViewModel();
         vm.RenameChannelCommand.Execute(TextChannel("general"));
-        vm.ModalChannelName = "  ";
+        var modal = Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
+        modal.ChannelName = "renamed";
 
-        Assert.False(vm.ConfirmRenameChannelCommand.CanExecute(null));
+        Assert.True(modal.Confirm.CanExecute(null));
     }
 
-    [Fact]
-    public void ConfirmRename_CanExecuteWithValidName()
-    {
-        var vm = new MainViewModel();
-        vm.RenameChannelCommand.Execute(TextChannel("general"));
-        vm.ModalChannelName = "renamed";
-
-        Assert.True(vm.ConfirmRenameChannelCommand.CanExecute(null));
-    }
-
-    // ── ModalIsVoiceType property ─────────────────────────────────────────────
+    // ── modal ViewModel INotifyPropertyChanged ────────────────────────────────
 
     [Fact]
-    public void ModalIsVoiceType_CanBeSetToTrue()
+    public void CreateModal_ChannelName_RaisesPropertyChanged()
     {
         var vm = new MainViewModel();
         vm.CreateChannelCommand.Execute(null);
-
-        vm.ModalIsVoiceType = true;
-
-        Assert.True(vm.ModalIsVoiceType);
-    }
-
-    [Fact]
-    public void ModalIsVoiceType_RaisesPropertyChanged()
-    {
-        var vm = new MainViewModel();
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
         var raised = new List<string?>();
-        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        modal.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        vm.ModalIsVoiceType = true;
+        modal.ChannelName = "test";
 
-        Assert.Contains(nameof(MainViewModel.ModalIsVoiceType), raised);
+        Assert.Contains(nameof(CreateChannelModalViewModel.ChannelName), raised);
+    }
+
+    [Fact]
+    public void CreateModal_IsVoiceType_CanBeSetAndRaisesPropertyChanged()
+    {
+        var vm = new MainViewModel();
+        vm.CreateChannelCommand.Execute(null);
+        var modal = Assert.IsType<CreateChannelModalViewModel>(vm.ActiveModal);
+        var raised = new List<string?>();
+        modal.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        modal.IsVoiceType = true;
+
+        Assert.True(modal.IsVoiceType);
+        Assert.Contains(nameof(CreateChannelModalViewModel.IsVoiceType), raised);
+    }
+
+    [Fact]
+    public void RenameModal_ChannelName_RaisesPropertyChanged()
+    {
+        var vm = new MainViewModel();
+        vm.RenameChannelCommand.Execute(TextChannel("old"));
+        var modal = Assert.IsType<RenameChannelModalViewModel>(vm.ActiveModal);
+        var raised = new List<string?>();
+        modal.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        modal.ChannelName = "new-name";
+
+        Assert.Contains(nameof(RenameChannelModalViewModel.ChannelName), raised);
     }
 }
