@@ -22,7 +22,8 @@
         <conv:VolumeToPercentConverter x:Key="VolumeToPercent" />
 
         <DataTemplate DataType="{x:Type vm:CreateChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360">
+            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel Margin="24">
                     <TextBlock Text="CREATE CHANNEL" FontSize="13" FontWeight="Bold"
                                Foreground="{StaticResource TextSecondaryBrush}"
@@ -58,7 +59,8 @@
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type vm:RenameChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360">
+            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel Margin="24">
                     <TextBlock Text="RENAME CHANNEL" FontSize="13" FontWeight="Bold"
                                Foreground="{StaticResource TextSecondaryBrush}"
@@ -82,7 +84,8 @@
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type vm:DeleteChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360">
+            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel Margin="24">
                     <TextBlock Text="DELETE CHANNEL" FontSize="13" FontWeight="Bold"
                                Foreground="{StaticResource AccentRedBrush}"
@@ -107,7 +110,7 @@
 
         <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">
             <Border Background="{StaticResource BgMediumBrush}" CornerRadius="8"
-                    Width="800" Height="520">
+                    MinWidth="600" MinHeight="400">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="200" />
@@ -487,8 +490,11 @@
               PreviewKeyDown="ModalOverlay_PreviewKeyDown">
             <ContentControl x:Name="ModalContentControl"
                             Content="{Binding ActiveModal}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"
+                            Margin="60"
                             MouseLeftButtonDown="Modal_MouseLeftButtonDown" />
         </Grid>
 
