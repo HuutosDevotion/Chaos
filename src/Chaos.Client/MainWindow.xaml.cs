@@ -18,6 +18,19 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/app.ico"));
+
+        if (DataContext is MainViewModel vm)
+        {
+            var (left, top, width, height) = vm.GetWindowBounds();
+            if (width >= 400 && height >= 300) { Width = width; Height = height; }
+            if (IsPositionOnScreen(left, top, width > 0 ? width : Width))
+            {
+                Left = left;
+                Top = top;
+                WindowStartupLocation = WindowStartupLocation.Manual;
+            }
+        }
+
         Loaded += OnLoaded;
     }
 
@@ -25,7 +38,23 @@ public partial class MainWindow : Window
     {
         base.OnClosed(e);
         if (DataContext is MainViewModel vm)
+        {
+            vm.UpdateWindowBounds(Left, Top, Width, Height);
             await vm.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Returns true if the window's title-bar centre point falls within the virtual screen,
+    /// preventing the window from being restored to a disconnected monitor.
+    /// </summary>
+    private static bool IsPositionOnScreen(double left, double top, double width)
+    {
+        double cx = left + width / 2;
+        return cx    > SystemParameters.VirtualScreenLeft
+            && cx    < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth
+            && top   > SystemParameters.VirtualScreenTop
+            && top   < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

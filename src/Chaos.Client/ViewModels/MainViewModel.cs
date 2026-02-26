@@ -129,6 +129,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public AppSettings Settings { get; }
 
+    private double _windowLeft = -999999;
+    private double _windowTop = -999999;
+    private double _windowWidth = 0;
+    private double _windowHeight = 0;
+
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
     private string _messageText = string.Empty;
@@ -164,7 +169,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string Username
     {
         get => _username;
-        set { _username = value; OnPropertyChanged(); }
+        set { _username = value; OnPropertyChanged(); _settingsSaveTimer?.Stop(); _settingsSaveTimer?.Start(); }
     }
 
     public string MessageText
@@ -369,6 +374,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
             OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
         };
+
+        _username = _settingsStore.Get("Username", string.Empty);
+
+        _windowLeft   = _settingsStore.Get("WindowLeft",   -999999.0);
+        _windowTop    = _settingsStore.Get("WindowTop",    -999999.0);
+        _windowWidth  = _settingsStore.Get("WindowWidth",   0.0);
+        _windowHeight = _settingsStore.Get("WindowHeight",  0.0);
 
         _voiceService.InputDeviceName = Settings.InputDevice;
         _voiceService.OutputDeviceName = Settings.OutputDevice;
@@ -832,6 +844,17 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
+    public void UpdateWindowBounds(double left, double top, double width, double height)
+    {
+        _windowLeft   = left;
+        _windowTop    = top;
+        _windowWidth  = width;
+        _windowHeight = height;
+    }
+
+    public (double Left, double Top, double Width, double Height) GetWindowBounds() =>
+        (_windowLeft, _windowTop, _windowWidth, _windowHeight);
+
     public void FlushSettings()
     {
         _settingsStore.Set("FontSize",       Settings.FontSize);
@@ -842,6 +865,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        _settingsStore.Set("Username",       Username);
+        _settingsStore.Set("WindowLeft",     _windowLeft);
+        _settingsStore.Set("WindowTop",      _windowTop);
+        _settingsStore.Set("WindowWidth",    _windowWidth);
+        _settingsStore.Set("WindowHeight",   _windowHeight);
     }
 
     public async ValueTask DisposeAsync()
