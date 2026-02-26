@@ -39,6 +39,9 @@ public partial class MainWindow : Window
 
             vm.PropertyChanged += (_, args) =>
             {
+                if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => MessageInput.Focus());
+
                 if (args.PropertyName == nameof(MainViewModel.SelectedSuggestionIndex))
                 {
                     int idx = vm.SelectedSuggestionIndex;
@@ -61,20 +64,12 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void MessageInput_KeyDown(object sender, KeyEventArgs e)
+    private void LoginPanel_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && DataContext is MainViewModel vm)
         {
-            if (vm.ShowSlashSuggestions && vm.SelectedSuggestionIndex >= 0)
-            {
-                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
-                MessageInput.CaretIndex = MessageInput.Text.Length;
-                e.Handled = true;
-                return;
-            }
-
-            if (vm.SendMessageCommand.CanExecute(null))
-                vm.SendMessageCommand.Execute(null);
+            if (vm.ConnectCommand.CanExecute(null))
+                vm.ConnectCommand.Execute(null);
             e.Handled = true;
         }
     }
@@ -141,6 +136,21 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
+            if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
+            {
+                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                MessageInput.CaretIndex = MessageInput.Text.Length;
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
+        {
+            if (vm2.SendMessageCommand.CanExecute(null))
+                vm2.SendMessageCommand.Execute(null);
+            e.Handled = true;
+            return;
         }
 
         if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && Clipboard.ContainsImage())
@@ -151,8 +161,8 @@ public partial class MainWindow : Window
             encoder.Frames.Add(BitmapFrame.Create(bmp));
             using var ms = new MemoryStream();
             encoder.Save(ms);
-            if (DataContext is MainViewModel vm2)
-                vm2.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+            if (DataContext is MainViewModel vm3)
+                vm3.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
         }
     }
 

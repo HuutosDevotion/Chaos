@@ -27,7 +27,9 @@
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource InverseBoolToVis}}"
               Panel.ZIndex="10"
               Background="{StaticResource BgDarkBrush}">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="340">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="340"
+                        KeyDown="LoginPanel_KeyDown"
+                        FocusManager.FocusedElement="{Binding ElementName=UsernameInput}">
                 <TextBlock Text="CHAOS"
                            FontSize="36" FontWeight="Bold"
                            Foreground="{StaticResource AccentBlueBrush}"
@@ -49,13 +51,15 @@
                 <TextBlock Text="USERNAME" FontSize="11" FontWeight="Bold"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            Margin="0,0,0,6" />
-                <TextBox Style="{StaticResource DarkTextBox}"
+                <TextBox x:Name="UsernameInput"
+                         Style="{StaticResource DarkTextBox}"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,0,0,20" />
 
                 <Button Content="Connect"
                         Style="{StaticResource AccentButton}"
                         Command="{Binding ConnectCommand}"
+                        IsDefault="True"
                         FontSize="15" FontWeight="SemiBold"
                         Padding="0,10"
                         Margin="0,0,0,12" />
@@ -70,8 +74,9 @@
         <!-- Main Layout (visible when connected) -->
         <Grid Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="240" MinWidth="160" MaxWidth="480" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" MinWidth="300" />
             </Grid.ColumnDefinitions>
 
             <!-- Left Sidebar -->
@@ -104,6 +109,17 @@
                     <ItemsControl ItemsSource="{Binding Channels}" Margin="8,12,8,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
+                                <Border BorderThickness="3,0,0,0">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                 <StackPanel>
                                     <!-- Channel Button -->
                                     <Button HorizontalContentAlignment="Left"
@@ -138,6 +154,9 @@
                                                                 <ContentPresenter />
                                                             </Border>
                                                             <ControlTemplate.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#404249" />
+                                                                </DataTrigger>
                                                                 <Trigger Property="IsMouseOver" Value="True">
                                                                     <Setter TargetName="Bd" Property="Background" Value="#35373C" />
                                                                 </Trigger>
@@ -149,13 +168,36 @@
                                         </Button.Style>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding Icon}"
-                                                       Foreground="{StaticResource TextMutedBrush}"
                                                        FontSize="16" Margin="0,0,6,0"
-                                                       VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                             <TextBlock Text="{Binding Name}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="14"
-                                                       VerticalAlignment="Center" />
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </StackPanel>
                                     </Button>
 
@@ -230,6 +272,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -309,8 +352,14 @@
                 </Border>
             </Grid>
 
+            <!-- Resize handle between sidebar and chat -->
+            <GridSplitter Grid.Column="1"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#222326"
+                          ShowsPreview="False" />
+
             <!-- Right: Text Chat Area (always shows selected text channel) -->
-            <Grid Grid.Column="1">
+            <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="48" />
                     <RowDefinition Height="*" />
@@ -508,12 +557,12 @@
                                          BorderThickness="0"
                                          VerticalAlignment="Center"
                                          x:Name="MessageInput"
-                                         KeyDown="MessageInput_KeyDown"
                                          PreviewKeyDown="MessageInput_PreviewKeyDown" />
                                 <Button Grid.Column="1"
                                         Content="Send"
                                         Style="{StaticResource AccentButton}"
                                         Command="{Binding SendMessageCommand}"
+                                        IsDefault="True"
                                         Padding="16,6"
                                         Margin="4,0,0,0"
                                         VerticalAlignment="Center" />

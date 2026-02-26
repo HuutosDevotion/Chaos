@@ -37,6 +37,7 @@
             <Button Content="Confirm"
                     Style="{StaticResource AccentButton}"
                     Click="Confirm_Click"
+                    IsDefault="True"
                     Padding="16,8" />
         </StackPanel>
     </StackPanel>

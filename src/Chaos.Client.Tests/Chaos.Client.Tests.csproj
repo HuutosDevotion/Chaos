@@ -9,14 +9,6 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
-  <!-- Restore implicit usings that WPF SDK drops, and pin Path to System.IO to
-       avoid ambiguity with System.Windows.Shapes.Path -->
-  <ItemGroup>
-    <Using Include="System.IO" />
-    <Using Include="System.Net.Http" />
-    <Using Include="System.IO.Path" Alias="Path" />
-  </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
     <PackageReference Include="xunit" Version="2.8.1" />
@@ -28,14 +20,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.*" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.*" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Chaos.Client\Chaos.Client.csproj" />
-    <ProjectReference Include="..\Chaos.Server\Chaos.Server.csproj" />
-    <ProjectReference Include="..\Chaos.Shared\Chaos.Shared.csproj" />
   </ItemGroup>
 
 </Project>

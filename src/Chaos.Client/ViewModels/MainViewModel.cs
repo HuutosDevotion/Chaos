@@ -37,12 +37,24 @@ public class VoiceMemberInfo : INotifyPropertyChanged
 public class ChannelViewModel : INotifyPropertyChanged
 {
     private string _name;
+    private bool _isSelected;
+    private bool _isActiveVoice;
     public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
     public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
     public int Id => Channel.Id;
     public ChannelType Type => Channel.Type;
     public string Icon => Type == ChannelType.Voice ? "\U0001F50A" : "#";
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (_isSelected == value) return; _isSelected = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected))); }
+    }
+    public bool IsActiveVoice
+    {
+        get => _isActiveVoice;
+        set { if (_isActiveVoice == value) return; _isActiveVoice = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActiveVoice))); }
+    }
     public string Name
     {
         get => _name;
@@ -242,7 +254,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set
         {
             if (_selectedTextChannel?.Id == value?.Id) return;
+            if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = false;
             _selectedTextChannel = value;
+            if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = true;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasTextChannel));
             OnPropertyChanged(nameof(SelectedChannelName));
@@ -351,6 +365,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
             IsConnected = true;
             ConnectionStatus = $"Connected as {Username}";
+
+            var firstText = Channels.FirstOrDefault(c => c.Type == ChannelType.Text);
+            if (firstText is not null)
+                SelectedTextChannel = firstText;
         }
         catch (Exception ex)
         {
@@ -407,6 +425,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task JoinVoice(int channelId)
     {
+        if (_voiceChannelId.HasValue)
+        {
+            var prev = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (prev is not null) prev.IsActiveVoice = false;
+        }
+
         VoiceStatus = string.Empty;
         await _chatService.JoinVoiceChannel(channelId, _userId);
 
@@ -418,12 +442,21 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _voiceService.Start(host, 9000, _userId, channelId);
         _voiceChannelId = channelId;
+
+        var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+        if (ch is not null) ch.IsActiveVoice = true;
+
         OnPropertyChanged(nameof(IsInVoice));
         OnPropertyChanged(nameof(VoiceChannelName));
     }
 
     private async Task LeaveVoice()
     {
+        if (_voiceChannelId.HasValue)
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (ch is not null) ch.IsActiveVoice = false;
+        }
         _voiceService.Stop();
         await _chatService.LeaveVoiceChannel();
         _voiceChannelId = null;
@@ -521,7 +554,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         var dialog = new ChannelDialog("Create Channel", string.Empty, showTypeSelector: true)
             { Owner = Application.Current.MainWindow };
         if (dialog.ShowDialog() != true) return;
-        await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
+        var dto = await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
+        if (dto?.Type == ChannelType.Text)
+        {
+            var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
+            if (channel is not null)
+                SelectedTextChannel = channel;
+        }
     }
 
     private async Task RenameChannelAsync(ChannelViewModel? channel)
@@ -600,6 +639,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             IsConnected = false;
             ConnectionStatus = "Disconnected";
             _voiceService.Stop();
+            if (_voiceChannelId.HasValue)
+            {
+                var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+                if (ch is not null) ch.IsActiveVoice = false;
+            }
             _voiceChannelId = null;
             OnPropertyChanged(nameof(IsInVoice));
             OnPropertyChanged(nameof(VoiceChannelName));
