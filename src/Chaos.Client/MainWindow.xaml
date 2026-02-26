@@ -194,13 +194,31 @@
 
                     <!-- Content area -->
                     <Grid Grid.Column="1">
-                        <ContentControl Content="{Binding SelectedPage}"
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Sticky header: page name + close button -->
+                        <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
+                                Padding="24,14,12,12">
+                            <Grid>
+                                <TextBlock Text="{Binding SelectedPage.Name}"
+                                           FontSize="18" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                                <Button Content="✕" Style="{StaticResource DarkButton}"
+                                        Command="{Binding Close}"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Padding="10,6" FontSize="13" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Scrollable page content -->
+                        <ContentControl Grid.Row="1"
+                                        Content="{Binding SelectedPage}"
                                         HorizontalContentAlignment="Stretch"
                                         VerticalContentAlignment="Stretch" />
-                        <Button Content="✕" Style="{StaticResource DarkButton}"
-                                Command="{Binding Close}"
-                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                Padding="10,6" Margin="0,8,8,0" FontSize="13" />
                     </Grid>
                 </Grid>
             </Border>
