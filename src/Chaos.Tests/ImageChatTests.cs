@@ -93,7 +93,7 @@ public class ImageChatTests
             await clientB.InvokeAsync("JoinTextChannel", 1);
 
             var imageUrl = $"/uploads/test-{Guid.NewGuid():N}.png";
-            await clientA.InvokeAsync("SendMessage", 1, "check this image", imageUrl);
+            await clientA.InvokeAsync("SendMessage", 1, string.Empty, imageUrl);
 
             var received = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -119,16 +119,16 @@ public class ImageChatTests
             await client.InvokeAsync("JoinTextChannel", 1);
 
             var imageUrl = $"/uploads/persist-{Guid.NewGuid():N}.png";
-            var msgContent = $"ImagePersist_{Guid.NewGuid():N}";
-            await client.InvokeAsync("SendMessage", 1, msgContent, imageUrl);
+            await client.InvokeAsync("SendMessage", 1, string.Empty, imageUrl);
 
             await Task.Delay(100);
 
             var messages = await client.InvokeAsync<List<MessageDto>>("GetMessages", 1);
-            var found = messages.FirstOrDefault(m => m.Content == msgContent);
+            var found = messages.FirstOrDefault(m => m.ImageUrl == imageUrl);
 
             Assert.NotNull(found);
-            Assert.Equal(imageUrl, found.ImageUrl);
+            Assert.Equal(string.Empty, found.Content);
+            Assert.True(found.HasImage);
         }
         finally
         {

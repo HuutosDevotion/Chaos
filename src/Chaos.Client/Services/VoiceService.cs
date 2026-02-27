@@ -1,14 +1,13 @@
 using System.Net;
 using System.Net.Sockets;
 using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 
 namespace Chaos.Client.Services;
 
 public class VoiceService : IDisposable
 {
     private WaveInEvent? _waveIn;
-    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider)> _userStreams = new();
+    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider)> _userStreams = new();
     private readonly Dictionary<int, float> _userVolumes = new();
     private UdpClient? _udpClient;
     private CancellationTokenSource? _receiveCts;
@@ -21,6 +20,25 @@ public class VoiceService : IDisposable
     private bool _isMuted;
     private bool _isDeafened;
     private bool _isActive;
+
+    public string InputDeviceName { get; set; } = "Default";
+    public string OutputDeviceName { get; set; } = "Default";
+    public float InputVolume { get; set; } = 1.0f;
+
+    private float _outputVolume = 1.0f;
+    public float OutputVolume
+    {
+        get => _outputVolume;
+        set
+        {
+            _outputVolume = value;
+            foreach (var (userId, (waveOut, _)) in _userStreams)
+            {
+                float userVol = _userVolumes.TryGetValue(userId, out var v) ? v : 1.0f;
+                waveOut.Volume = Math.Clamp(_outputVolume * userVol, 0f, 1f);
+            }
+        }
+    }
 
     private static readonly byte[] RegistrationMagic = "RGST"u8.ToArray();
     private static readonly WaveFormat VoiceFormat = new(16000, 16, 1);
@@ -51,7 +69,7 @@ public class VoiceService : IDisposable
         set
         {
             _isDeafened = value;
-            foreach (var (waveOut, _, _) in _userStreams.Values)
+            foreach (var (waveOut, _) in _userStreams.Values)
             {
                 if (_isDeafened) waveOut.Stop();
                 else if (_isActive) waveOut.Play();
@@ -100,7 +118,8 @@ public class VoiceService : IDisposable
             _waveIn = new WaveInEvent
             {
                 WaveFormat = VoiceFormat,
-                BufferMilliseconds = 40
+                BufferMilliseconds = 40,
+                DeviceNumber = ResolveInputDevice(InputDeviceName)
             };
             _waveIn.DataAvailable += OnDataAvailable;
             _waveIn.RecordingStopped += (_, args) =>
@@ -128,11 +147,18 @@ public class VoiceService : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        // Calculate mic level from PCM samples (16-bit signed)
+        // Apply input gain and calculate mic level in one pass
         float maxSample = 0;
         for (int i = 0; i < e.BytesRecorded - 1; i += 2)
         {
-            short sample = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            short raw = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            short sample = raw;
+            if (InputVolume != 1.0f)
+            {
+                sample = (short)Math.Clamp(raw * InputVolume, short.MinValue, short.MaxValue);
+                e.Buffer[i] = (byte)(sample & 0xFF);
+                e.Buffer[i + 1] = (byte)((sample >> 8) & 0xFF);
+            }
             float abs = Math.Abs(sample / 32768f);
             if (abs > maxSample) maxSample = abs;
         }
@@ -154,29 +180,40 @@ public class VoiceService : IDisposable
         catch { }
     }
 
-    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider) GetOrCreateUserStream(int userId)
+    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
     {
         if (_userStreams.TryGetValue(userId, out var existing))
             return existing;
 
         var provider = new BufferedWaveProvider(VoiceFormat) { DiscardOnBufferOverflow = true, BufferDuration = TimeSpan.FromSeconds(2) };
-        var volumeProvider = new VolumeSampleProvider(new WaveToSampleProvider(provider))
-        {
-            Volume = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f
-        };
-        var waveOut = new WaveOutEvent();
-        waveOut.Init(volumeProvider);
+        var waveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(OutputDeviceName) };
+        waveOut.Init(provider);
         if (!_isDeafened) waveOut.Play();
-        _userStreams[userId] = (waveOut, provider, volumeProvider);
-        return (waveOut, provider, volumeProvider);
+        _userStreams[userId] = (waveOut, provider);
+        return (waveOut, provider);
     }
 
     public void SetUserVolume(int userId, float volume)
     {
-        volume = Math.Clamp(volume, 0f, 2f);
+        volume = Math.Clamp(volume, 0f, 1f);
         _userVolumes[userId] = volume;
-        if (_userStreams.TryGetValue(userId, out var stream))
-            stream.VolumeProvider.Volume = volume;
+    }
+
+    // Scales 16-bit PCM samples by volume in-place on a copy, clamping to int16 range.
+    private static byte[] ApplyVolumeToPcm(byte[] buffer, int offset, int length, float volume)
+    {
+        var result = new byte[length];
+        for (int i = 0; i < length - 1; i += 2)
+        {
+            short sample = (short)(buffer[offset + i] | (buffer[offset + i + 1] << 8));
+            float scaled = sample * volume;
+            if (scaled > 32767f) scaled = 32767f;
+            if (scaled < -32768f) scaled = -32768f;
+            short s = (short)scaled;
+            result[i] = (byte)s;
+            result[i + 1] = (byte)(s >> 8);
+        }
+        return result;
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -209,7 +246,11 @@ public class VoiceService : IDisposable
                 if (audioLength > 0 && !_isDeafened)
                 {
                     var stream = GetOrCreateUserStream(senderId);
-                    stream.Provider.AddSamples(result.Buffer, 8, audioLength);
+                    float volume = _userVolumes.TryGetValue(senderId, out var vol) ? vol : 1.0f;
+                    var audio = volume == 1.0f
+                        ? result.Buffer[8..]
+                        : ApplyVolumeToPcm(result.Buffer, 8, audioLength, volume);
+                    stream.Provider.AddSamples(audio, 0, audioLength);
                 }
             }
             catch (OperationCanceledException)
@@ -227,7 +268,7 @@ public class VoiceService : IDisposable
 
         try { _waveIn?.StopRecording(); } catch { }
 
-        foreach (var (waveOut, _, _) in _userStreams.Values)
+        foreach (var (waveOut, _) in _userStreams.Values)
         {
             try { waveOut.Stop(); } catch { }
             waveOut.Dispose();
@@ -247,6 +288,26 @@ public class VoiceService : IDisposable
     public void Dispose()
     {
         Stop();
+    }
+
+    private static int ResolveInputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return 0;
+        for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+        {
+            try { if (WaveInEvent.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return 0;
+    }
+
+    private static int ResolveOutputDevice(string deviceName)
+    {
+        if (deviceName == "Default") return -1; // wave mapper
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            try { if (WaveOut.GetCapabilities(i).ProductName == deviceName) return i; } catch { }
+        }
+        return -1;
     }
 
     private static IPAddress ResolveHost(string host)
