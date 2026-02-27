@@ -110,7 +110,8 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
         MessageViewModel? prev = null;
         foreach (var m in msgs)
         {
-            m.ShowHeader = !grouped || prev is null || prev.Author != m.Author;
+            m.ShowHeader = !grouped || prev is null || prev.Author != m.Author
+                           || (m.Timestamp - prev.Timestamp).TotalMinutes > 5;
             prev = m;
         }
     }
