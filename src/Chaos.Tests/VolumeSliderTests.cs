@@ -100,6 +100,48 @@ public class VoiceMemberVolumeTests
 
         Assert.False(fired);
     }
+
+    // ── Regression: volume-slider-max-200 — VoiceMemberInfo must accept boost range ─
+
+    [Fact]
+    public void Volume_AcceptsAndStores_BoostRangeValue()
+    {
+        var member = new VoiceMemberInfo();
+        member.Volume = 1.5f;
+        Assert.Equal(1.5f, member.Volume);
+    }
+
+    [Fact]
+    public void Volume_FiresPropertyChanged_ForBoostRangeValue()
+    {
+        var member = new VoiceMemberInfo(); // starts at 1.0
+        string? firedProperty = null;
+        member.PropertyChanged += (_, e) => firedProperty = e.PropertyName;
+
+        member.Volume = 1.5f;
+
+        Assert.Equal(nameof(VoiceMemberInfo.Volume), firedProperty);
+    }
+
+    [Fact]
+    public void Volume_AcceptsAndStores_MaxBoostValue()
+    {
+        var member = new VoiceMemberInfo();
+        member.Volume = 2.0f;
+        Assert.Equal(2.0f, member.Volume);
+    }
+
+    [Fact]
+    public void Volume_FiresPropertyChanged_ForMaxBoostValue()
+    {
+        var member = new VoiceMemberInfo(); // starts at 1.0
+        string? firedProperty = null;
+        member.PropertyChanged += (_, e) => firedProperty = e.PropertyName;
+
+        member.Volume = 2.0f;
+
+        Assert.Equal(nameof(VoiceMemberInfo.Volume), firedProperty);
+    }
 }
 
 // ── VolumeToPercentConverter ──────────────────────────────────────────────────
@@ -206,5 +248,21 @@ public class VoiceServiceVolumeTests
         svc.SetUserVolume(1, 0.5f);
         svc.Stop(); // clears _userStreams and _userVolumes
         svc.SetUserVolume(1, 0.9f); // must not throw on fresh empty state
+    }
+
+    // ── Regression: volume-slider-max-200 — clamp boundaries ─────────────────
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_AtExactMinBoundary()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 0.0f); // exact lower clamp boundary
+    }
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_AtExactMaxBoundary()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 2.0f); // exact upper clamp boundary — must not be clamped down to 1.0
     }
 }
