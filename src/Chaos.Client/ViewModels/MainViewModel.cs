@@ -133,6 +133,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private double _windowTop = -999999;
     private double _windowWidth = 0;
     private double _windowHeight = 0;
+    private bool   _windowMaximized = false;
 
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
@@ -377,10 +378,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _username = _settingsStore.Get("Username", string.Empty);
 
-        _windowLeft   = _settingsStore.Get("WindowLeft",   -999999.0);
-        _windowTop    = _settingsStore.Get("WindowTop",    -999999.0);
-        _windowWidth  = _settingsStore.Get("WindowWidth",   0.0);
-        _windowHeight = _settingsStore.Get("WindowHeight",  0.0);
+        _windowLeft      = _settingsStore.Get("WindowLeft",      -999999.0);
+        _windowTop       = _settingsStore.Get("WindowTop",       -999999.0);
+        _windowWidth     = _settingsStore.Get("WindowWidth",      0.0);
+        _windowHeight    = _settingsStore.Get("WindowHeight",     0.0);
+        _windowMaximized = _settingsStore.Get("WindowMaximized",  false);
 
         _voiceService.InputDeviceName = Settings.InputDevice;
         _voiceService.OutputDeviceName = Settings.OutputDevice;
@@ -844,16 +846,17 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
-    public void UpdateWindowBounds(double left, double top, double width, double height)
+    public void UpdateWindowBounds(double left, double top, double width, double height, bool maximized)
     {
-        _windowLeft   = left;
-        _windowTop    = top;
-        _windowWidth  = width;
-        _windowHeight = height;
+        _windowLeft      = left;
+        _windowTop       = top;
+        _windowWidth     = width;
+        _windowHeight    = height;
+        _windowMaximized = maximized;
     }
 
-    public (double Left, double Top, double Width, double Height) GetWindowBounds() =>
-        (_windowLeft, _windowTop, _windowWidth, _windowHeight);
+    public (double Left, double Top, double Width, double Height, bool Maximized) GetWindowBounds() =>
+        (_windowLeft, _windowTop, _windowWidth, _windowHeight, _windowMaximized);
 
     public void FlushSettings()
     {
@@ -866,10 +869,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
         _settingsStore.Set("Username",       Username);
-        _settingsStore.Set("WindowLeft",     _windowLeft);
-        _settingsStore.Set("WindowTop",      _windowTop);
-        _settingsStore.Set("WindowWidth",    _windowWidth);
-        _settingsStore.Set("WindowHeight",   _windowHeight);
+        _settingsStore.Set("WindowLeft",      _windowLeft);
+        _settingsStore.Set("WindowTop",       _windowTop);
+        _settingsStore.Set("WindowWidth",     _windowWidth);
+        _settingsStore.Set("WindowHeight",    _windowHeight);
+        _settingsStore.Set("WindowMaximized", _windowMaximized);
     }
 
     public async ValueTask DisposeAsync()

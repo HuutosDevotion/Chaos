@@ -15,6 +15,11 @@ public partial class MainWindow : Window
 {
     private static readonly string[] _imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
 
+    // Last known bounds while the window was in Normal state.
+    // Updated by SizeChanged/LocationChanged only when not maximized/minimized,
+    // so they always represent the correct restore geometry.
+    private double _restoreLeft, _restoreTop, _restoreWidth, _restoreHeight;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -22,7 +27,7 @@ public partial class MainWindow : Window
 
         if (DataContext is MainViewModel vm)
         {
-            var (left, top, width, height) = vm.GetWindowBounds();
+            var (left, top, width, height, maximized) = vm.GetWindowBounds();
             if (width >= 400 && height >= 300) { Width = width; Height = height; }
             if (IsPositionOnScreen(left, top, width > 0 ? width : Width))
             {
@@ -30,10 +35,20 @@ public partial class MainWindow : Window
                 Top = top;
                 WindowStartupLocation = WindowStartupLocation.Manual;
             }
+
+            // Seed restore fields from saved values before maximizing.
+            _restoreLeft   = left;
+            _restoreTop    = top;
+            _restoreWidth  = width >= 400 ? width : Width;
+            _restoreHeight = height >= 300 ? height : Height;
+
+            if (maximized) WindowState = WindowState.Maximized;
         }
 
-        Loaded += OnLoaded;
-        StateChanged += (_, _) => UpdateMaximizeIcon();
+        SizeChanged     += (_, _) => { if (WindowState == WindowState.Normal) { _restoreWidth = Width; _restoreHeight = Height; } };
+        LocationChanged += (_, _) => { if (WindowState == WindowState.Normal) { _restoreLeft  = Left;  _restoreTop    = Top;    } };
+        Loaded          += OnLoaded;
+        StateChanged    += (_, _) => UpdateMaximizeIcon();
     }
 
     private void UpdateMaximizeIcon()
@@ -62,7 +77,8 @@ public partial class MainWindow : Window
         base.OnClosed(e);
         if (DataContext is MainViewModel vm)
         {
-            vm.UpdateWindowBounds(Left, Top, Width, Height);
+            vm.UpdateWindowBounds(_restoreLeft, _restoreTop, _restoreWidth, _restoreHeight,
+                WindowState == WindowState.Maximized);
             await vm.DisposeAsync();
         }
     }
