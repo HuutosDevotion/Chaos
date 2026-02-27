@@ -245,7 +245,8 @@
                              FontWeight="SemiBold"
                              FontSize="{Binding DataContext.Settings.HeaderFontSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
                              IsReadOnly="True" Background="Transparent" BorderThickness="0"
-                             Padding="0" IsTabStop="False" />
+                             Padding="0" IsTabStop="False"
+                             IsInactiveSelectionHighlightEnabled="True" />
                     <TextBlock Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
                                Foreground="{StaticResource TextMutedBrush}"
                                FontSize="11" Margin="8,2,0,0"
@@ -256,7 +257,8 @@
                          TextWrapping="Wrap"
                          Margin="0,2,0,0"
                          IsReadOnly="True" Background="Transparent" BorderThickness="0"
-                         Padding="0" IsTabStop="False">
+                         Padding="0" IsTabStop="False"
+                         IsInactiveSelectionHighlightEnabled="True">
                     <TextBox.Style>
                         <Style TargetType="TextBox">
                             <Setter Property="Visibility" Value="Visible" />
@@ -914,40 +916,15 @@
 
                 <!-- Messages -->
                 <Grid Grid.Row="1" Background="{StaticResource BgMediumBrush}">
-                    <ListBox Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"
-                             ItemsSource="{Binding Messages}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             VirtualizingPanel.ScrollUnit="Pixel"
-                             FontSize="{Binding Settings.FontSize}"
-                             x:Name="MessageList">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Padding" Value="{Binding Padding}" />
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border Padding="{TemplateBinding Padding}"
-                                                    Background="{TemplateBinding Background}">
-                                                <ContentPresenter />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="#2E3035" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <StaticResource ResourceKey="MessageItemTemplate" />
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <RichTextBox x:Name="MessageList"
+                                 Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"
+                                 IsReadOnly="True"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 FontSize="{Binding Settings.FontSize}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 IsDocumentEnabled="True" />
 
                     <!-- No Channel Selected -->
                     <TextBlock Text="Select a text channel to start chatting"
