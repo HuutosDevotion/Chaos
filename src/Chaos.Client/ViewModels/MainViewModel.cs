@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Chaos.Client.Models;
 using Chaos.Client.Services;
 using Chaos.Shared;
 
@@ -76,8 +77,12 @@ public class VoiceMemberInfo : INotifyPropertyChanged
 {
     private bool _isSpeaking;
     private float _volume = 1.0f;
+    private bool _isStreaming;
+    private bool _isMuted;
+    private bool _isDeafened;
     public string Username { get; set; } = string.Empty;
     public int VoiceUserId { get; set; }
+    public int StreamVideoUserId { get; set; }
     public bool IsSpeaking
     {
         get => _isSpeaking;
@@ -93,6 +98,21 @@ public class VoiceMemberInfo : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Volume)));
         }
     }
+    public bool IsStreaming
+    {
+        get => _isStreaming;
+        set { _isStreaming = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsStreaming))); }
+    }
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set { _isMuted = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMuted))); }
+    }
+    public bool IsDeafened
+    {
+        get => _isDeafened;
+        set { _isDeafened = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDeafened))); }
+    }
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
@@ -101,9 +121,19 @@ public class ChannelViewModel : INotifyPropertyChanged
     private string _name;
     private bool _isSelected;
     private bool _isActiveVoice;
-    public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
+    private bool _hasActiveStream;
+    public ChannelViewModel(ChannelDto channel)
+    {
+        Channel = channel;
+        _name = channel.Name;
+        VoiceMembers.CollectionChanged += (_, _) => RefreshStreamState();
+    }
     public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
+    public void RefreshStreamState()
+    {
+        HasActiveStream = VoiceMembers.Any(m => m.IsStreaming);
+    }
     public int Id => Channel.Id;
     public ChannelType Type => Channel.Type;
     public string Icon => Type == ChannelType.Voice ? "\U0001F50A" : "#";
@@ -117,6 +147,11 @@ public class ChannelViewModel : INotifyPropertyChanged
         get => _isActiveVoice;
         set { if (_isActiveVoice == value) return; _isActiveVoice = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsActiveVoice))); }
     }
+    public bool HasActiveStream
+    {
+        get => _hasActiveStream;
+        set { if (_hasActiveStream == value) return; _hasActiveStream = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasActiveStream))); }
+    }
     public string Name
     {
         get => _name;
@@ -129,6 +164,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
+    private readonly ScreenShareService _screenShareService = new();
     private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
@@ -168,6 +204,14 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _typingText = string.Empty;
 
     private object? _activeModal;
+    private bool _isScreenSharing;
+    private bool _isWatchingStream;
+    private string _watchingStreamUsername = string.Empty;
+    private int _watchingStreamVideoUserId;
+    private BitmapSource? _streamFrame;
+    private StreamViewerWindow? _popOutWindow;
+    private bool _isPoppedOut;
+    private bool _streamMinimized;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
@@ -267,6 +311,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged();
             OnPropertyChanged(nameof(MuteButtonText));
             OnPropertyChanged(nameof(MuteTooltipText));
+            _ = _chatService.UpdateMuteState(_isMuted, _isDeafened);
         }
     }
 
@@ -280,6 +325,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged();
             OnPropertyChanged(nameof(DeafenButtonText));
             OnPropertyChanged(nameof(DeafenTooltipText));
+            _ = _chatService.UpdateMuteState(_isMuted, _isDeafened);
         }
     }
 
@@ -351,6 +397,41 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SelectedSuggestionIndex = next;
     }
 
+    // Screen sharing properties
+    public bool IsScreenSharing
+    {
+        get => _isScreenSharing;
+        set { _isScreenSharing = value; OnPropertyChanged(); OnPropertyChanged(nameof(ScreenShareButtonText)); }
+    }
+
+    public bool IsWatchingStream
+    {
+        get => _isWatchingStream;
+        set { _isWatchingStream = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowInlineStream)); OnPropertyChanged(nameof(ContentHeaderText)); }
+    }
+
+    public string WatchingStreamUsername
+    {
+        get => _watchingStreamUsername;
+        set { _watchingStreamUsername = value; OnPropertyChanged(); OnPropertyChanged(nameof(ContentHeaderText)); }
+    }
+
+    public BitmapSource? StreamFrame
+    {
+        get => _streamFrame;
+        set { _streamFrame = value; OnPropertyChanged(); }
+    }
+
+    public bool IsPoppedOut
+    {
+        get => _isPoppedOut;
+        set { _isPoppedOut = value; OnPropertyChanged(); OnPropertyChanged(nameof(ShowInlineStream)); OnPropertyChanged(nameof(ContentHeaderText)); }
+    }
+
+    public bool ShowInlineStream => _isWatchingStream && !_isPoppedOut && !_streamMinimized;
+
+    public string ScreenShareButtonText => IsScreenSharing ? "Stop Sharing" : "Share Screen";
+
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
     public string MuteTooltipText => IsMuted ? "Unmute" : "Mute";
     public string DeafenButtonText => IsDeafened ? "\U0001F508" : "\U0001F50A";
@@ -379,6 +460,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasTextChannel));
             OnPropertyChanged(nameof(SelectedChannelName));
+            OnPropertyChanged(nameof(ContentHeaderText));
             if (value is not null)
                 _ = OnTextChannelSelected(value);
         }
@@ -387,6 +469,21 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool HasTextChannel => _selectedTextChannel is not null;
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
     public string ConnectedUsersHeader => $"MEMBERS — {ConnectedUsers.Count}";
+
+    public string ContentHeaderText
+    {
+        get
+        {
+            if (_isWatchingStream && !_isPoppedOut)
+            {
+                var chName = _voiceChannelId.HasValue
+                    ? Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value)?.Name ?? "Voice"
+                    : "Voice";
+                return $"\U0001F534 {_watchingStreamUsername} - {chName}";
+            }
+            return SelectedChannelName;
+        }
+    }
 
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
     public ICommand CreateChannelCommand => new RelayCommand(_ => OpenCreateChannelModal(), _ => IsConnected);
@@ -398,6 +495,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand ChannelClickCommand => new RelayCommand(async p => await OnChannelClicked(p as ChannelViewModel));
     public ICommand DisconnectVoiceCommand => new RelayCommand(async _ => await LeaveVoice());
     public ICommand OpenSettingsCommand => new RelayCommand(_ => OpenSettingsModal());
+    public ICommand ToggleScreenShareCommand => new RelayCommand(async _ => await ToggleScreenShare(), _ => IsInVoice);
+    public ICommand WatchStreamCommand => new RelayCommand(async p => await WatchStream(p as VoiceMemberInfo), p => p is VoiceMemberInfo m && m.IsStreaming && IsConnected);
+    public ICommand StopWatchingCommand => new RelayCommand(_ => StopWatchingStream());
+    public ICommand PopOutStreamCommand => new RelayCommand(_ => PopOutStream(), _ => IsWatchingStream);
 
     public MainViewModel() : this(new LocalJsonKeyValueStore()) { }
 
@@ -465,6 +566,24 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.UserTyping += OnUserTyping;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
+        _chatService.UserStartedScreenShare += OnUserStartedScreenShare;
+        _chatService.UserStoppedScreenShare += OnUserStoppedScreenShare;
+        _chatService.UserMuteStateChanged += OnUserMuteStateChanged;
+        _screenShareService.FrameReceived += OnStreamFrameReceived;
+        _screenShareService.Error += error =>
+        {
+            Application.Current.Dispatcher.BeginInvoke(async () =>
+            {
+                VoiceStatus = error;
+                // Auto-stop screen sharing if the captured window was closed
+                if (IsScreenSharing && !_screenShareService.IsStreaming)
+                {
+                    await _chatService.StopScreenShare();
+                    IsScreenSharing = false;
+                    StopWatchingStream();
+                }
+            });
+        };
         _voiceService.MicLevelChanged += level =>
         {
             SafeDispatchAsync(() =>
@@ -594,6 +713,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            var screenShareMembers = await _chatService.GetAllScreenShareMembers();
 
             SafeDispatch(() =>
             {
@@ -605,8 +725,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     {
                         foreach (var m in members)
                         {
-                            var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                            var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId, IsMuted = m.IsMuted, IsDeafened = m.IsDeafened };
                             SubscribeVoiceMemberVolume(info);
+                            // Check if this member is screen sharing
+                            if (screenShareMembers.TryGetValue(ch.Id, out var sharers))
+                            {
+                                var sharer = sharers.FirstOrDefault(s => s.Username == m.Username);
+                                if (sharer is not null)
+                                {
+                                    info.IsStreaming = true;
+                                    info.StreamVideoUserId = sharer.VideoUserId;
+                                }
+                            }
                             vm.VoiceMembers.Add(info);
                         }
                     }
@@ -642,16 +772,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         if (channel.Type == ChannelType.Text)
         {
+            // Hide inline stream when switching to a text channel (stream keeps running)
+            _streamMinimized = true;
+            OnPropertyChanged(nameof(ShowInlineStream));
+            OnPropertyChanged(nameof(ContentHeaderText));
             SelectedTextChannel = channel;
         }
         else if (channel.Type == ChannelType.Voice)
         {
-            // Toggle: if already in this voice channel, leave it
-            if (_voiceChannelId == channel.Id)
-            {
-                await LeaveVoice();
-            }
-            else
+            // Click to join (or switch). Leave only via disconnect button.
+            if (_voiceChannelId != channel.Id)
             {
                 await JoinVoice(channel.Id);
             }
@@ -716,6 +846,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task LeaveVoice()
     {
+        // Stop screen sharing & watching first
+        if (IsScreenSharing)
+        {
+            _screenShareService.StopStreaming();
+            await _chatService.StopScreenShare();
+            IsScreenSharing = false;
+        }
+        StopWatchingStream();
+        _screenShareService.Stop();
+
         if (_voiceChannelId.HasValue)
         {
             var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
@@ -729,6 +869,204 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(IsInVoice));
         OnPropertyChanged(nameof(VoiceChannelName));
     }
+
+    // ── Screen Sharing ──────────────────────────────────
+
+    private async Task ToggleScreenShare()
+    {
+        if (IsScreenSharing)
+        {
+            _screenShareService.StopStreaming();
+            await _chatService.StopScreenShare();
+            IsScreenSharing = false;
+            StopWatchingStream();
+        }
+        else
+        {
+            var dialog = new ScreenShareDialog { Owner = Application.Current.MainWindow };
+            if (dialog.ShowDialog() != true) return;
+
+            var quality = dialog.SelectedQuality;
+            var target = dialog.SelectedTarget;
+            if (target is null) return;
+
+            var host = ServerAddress.Replace("http://", "").Replace("https://", "");
+            if (host.Contains(':')) host = host.Split(':')[0];
+            if (string.IsNullOrEmpty(host)) host = "localhost";
+
+            // Use a separate video userId (offset from voice userId)
+            var videoUserId = _userId + 50000;
+
+            _screenShareService.StartStreaming(host, 9001, videoUserId, _voiceChannelId!.Value, quality, target);
+            await _chatService.StartScreenShare(videoUserId, (int)quality);
+            IsScreenSharing = true;
+
+            // Show self-preview
+            _watchingStreamVideoUserId = videoUserId;
+            WatchingStreamUsername = Username;
+            _streamMinimized = false;
+            IsWatchingStream = true;
+        }
+    }
+
+    private async Task WatchStream(VoiceMemberInfo? member)
+    {
+        if (member is null || !member.IsStreaming) return;
+
+        // If already watching this person's stream but minimized or popped out, just restore inline
+        if (_isWatchingStream && _watchingStreamVideoUserId == member.StreamVideoUserId)
+        {
+            _streamMinimized = false;
+            IsPoppedOut = false;
+            OnPropertyChanged(nameof(ShowInlineStream));
+            OnPropertyChanged(nameof(ContentHeaderText));
+            return;
+        }
+
+        // Auto-join the voice channel if not already in one
+        var memberChannel = Channels.FirstOrDefault(c => c.VoiceMembers.Contains(member));
+        if (memberChannel is not null && _voiceChannelId != memberChannel.Id)
+            await JoinVoice(memberChannel.Id);
+
+        if (!_voiceChannelId.HasValue) return;
+
+        StopWatchingStream();
+
+        // For the streamer watching their own preview, just set the UI state —
+        // self-preview frames come from the capture loop, no receive loop needed
+        var isSelfPreview = IsScreenSharing && member.Username == Username;
+        if (!isSelfPreview)
+        {
+            var host = ServerAddress.Replace("http://", "").Replace("https://", "");
+            if (host.Contains(':')) host = host.Split(':')[0];
+            if (string.IsNullOrEmpty(host)) host = "localhost";
+
+            var viewerUserId = _userId + 200000;
+            _screenShareService.StartWatching(host, 9001, viewerUserId, _voiceChannelId!.Value);
+        }
+
+        _watchingStreamVideoUserId = member.StreamVideoUserId;
+        WatchingStreamUsername = member.Username;
+        _streamMinimized = false;
+        IsWatchingStream = true;
+    }
+
+    private void StopWatchingStream()
+    {
+        // Full cleanup for viewers (close UDP + send BYE); no-op for streamers' capture loop
+        if (!IsScreenSharing)
+            _screenShareService.Stop();
+        else
+            _screenShareService.StopWatching();
+
+        _streamMinimized = false;
+        IsWatchingStream = false;
+        IsPoppedOut = false;
+        StreamFrame = null;
+        WatchingStreamUsername = string.Empty;
+        _watchingStreamVideoUserId = 0;
+
+        if (_popOutWindow is not null)
+        {
+            _popOutWindow.Hide();
+        }
+    }
+
+    private void PopOutStream()
+    {
+        if (_popOutWindow is null)
+        {
+            _popOutWindow = new StreamViewerWindow();
+            _popOutWindow.Closed += (_, _) =>
+            {
+                // Window is dead after Close() — can't reuse, must null ref
+                _popOutWindow = null;
+                StopWatchingStream();
+            };
+            _popOutWindow.CloseRequested += () =>
+            {
+                // Custom X button uses Hide() — window stays alive for reuse
+                StopWatchingStream();
+            };
+            _popOutWindow.PopInRequested += () =>
+            {
+                _streamMinimized = false;
+                IsPoppedOut = false;
+            };
+        }
+
+        _popOutWindow.SetStreamerName(WatchingStreamUsername);
+        if (StreamFrame is not null)
+            _popOutWindow.UpdateFrame(StreamFrame);
+        _popOutWindow.Show();
+        _popOutWindow.Activate();
+        IsPoppedOut = true;
+    }
+
+    private void OnStreamFrameReceived(int senderId, BitmapSource frame)
+    {
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            if (!_isWatchingStream) return;
+
+            // Show frames from the streamer we're watching
+            // (senderId is the streamer's videoUserId, _watchingStreamVideoUserId is what we want)
+            if (_watchingStreamVideoUserId != 0 && senderId != _watchingStreamVideoUserId) return;
+
+            StreamFrame = frame;
+            _popOutWindow?.UpdateFrame(frame);
+        });
+    }
+
+    private void OnUserMuteStateChanged(string username, int channelId, bool isMuted, bool isDeafened)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+            var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
+            if (member is not null)
+            {
+                member.IsMuted = isMuted;
+                member.IsDeafened = isDeafened;
+            }
+        });
+    }
+
+    private void OnUserStartedScreenShare(string username, int channelId, int videoUserId, int quality)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+            var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
+            if (member is not null)
+            {
+                member.IsStreaming = true;
+                member.StreamVideoUserId = videoUserId;
+            }
+            ch?.RefreshStreamState();
+        });
+    }
+
+    private void OnUserStoppedScreenShare(string username, int channelId)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+            var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
+            if (member is not null)
+            {
+                member.IsStreaming = false;
+                member.StreamVideoUserId = 0;
+            }
+            ch?.RefreshStreamState();
+
+            // If we were watching this person, stop
+            if (WatchingStreamUsername == username)
+                StopWatchingStream();
+        });
+    }
+
+    // ── Messaging ──────────────────────────────────────
 
     private async Task SendMessageAsync()
     {
@@ -821,17 +1159,29 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
-    private void OnVoiceMembersReceived(int channelId, List<VoiceMemberDto> members)
+    private async void OnVoiceMembersReceived(int channelId, List<VoiceMemberDto> members)
     {
+        var screenShareMembers = await _chatService.GetAllScreenShareMembers();
+
         SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is null) return;
+
             ch.VoiceMembers.Clear();
             foreach (var m in members)
             {
-                var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId };
+                var info = new VoiceMemberInfo { Username = m.Username, VoiceUserId = m.VoiceUserId, IsMuted = m.IsMuted, IsDeafened = m.IsDeafened };
                 SubscribeVoiceMemberVolume(info);
+                if (screenShareMembers.TryGetValue(channelId, out var sharers))
+                {
+                    var sharer = sharers.FirstOrDefault(s => s.Username == m.Username);
+                    if (sharer is not null)
+                    {
+                        info.IsStreaming = true;
+                        info.StreamVideoUserId = sharer.VideoUserId;
+                    }
+                }
                 ch.VoiceMembers.Add(info);
             }
         });
@@ -979,6 +1329,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             ConnectionStatus = "Disconnected";
             ConnectedUsers.Clear();
             OnPropertyChanged(nameof(ConnectedUsersHeader));
+            _screenShareService.Stop();
+            IsScreenSharing = false;
+            StopWatchingStream();
             _voiceService.Stop();
             if (_voiceChannelId.HasValue)
             {
@@ -1028,6 +1381,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsSaveTimer.Stop();
         _remoteSpeakingTimer.Stop();
         FlushSettings();
+        _screenShareService.Dispose();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();
     }

@@ -34,6 +34,8 @@ public class VoiceMemberDto
 {
     public string Username { get; set; } = string.Empty;
     public int VoiceUserId { get; set; }
+    public bool IsMuted { get; set; }
+    public bool IsDeafened { get; set; }
 }
 
 public class VoicePacket
@@ -48,4 +50,18 @@ public class SlashCommandDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Usage { get; set; } = string.Empty;
+}
+
+public enum StreamQuality
+{
+    Low,    // 480p, 10fps
+    Medium, // 720p, 15fps
+    High    // 1080p, 30fps
+}
+
+public class ScreenShareMemberDto
+{
+    public string Username { get; set; } = string.Empty;
+    public int VideoUserId { get; set; }
+    public StreamQuality Quality { get; set; }
 }
