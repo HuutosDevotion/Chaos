@@ -223,6 +223,149 @@ public class SettingsIntegrationTests : IDisposable
         Assert.Equal(0.5f,        store.Get("OutputVolume",  1.0f));
     }
 
+    // ── username persistence ──────────────────────────────────────────────────
+
+    [Fact]
+    public void Constructor_LoadsUsernameFromStore()
+    {
+        var store = MakeStore();
+        store.Set("Username", "Alice");
+
+        var vm = new MainViewModel(store);
+
+        Assert.Equal("Alice", vm.Username);
+    }
+
+    [Fact]
+    public void Constructor_MissingUsername_DefaultsEmpty()
+    {
+        var vm = new MainViewModel(MakeStore());
+        Assert.Equal(string.Empty, vm.Username);
+    }
+
+    [Fact]
+    public void FlushSettings_SavesUsernameToStore()
+    {
+        var store = MakeStore();
+        var vm = new MainViewModel(store);
+        vm.Username = "Bob";
+
+        vm.FlushSettings();
+
+        Assert.Equal("Bob", store.Get("Username", string.Empty));
+    }
+
+    [Fact]
+    public void RoundTrip_Username_PersistedAndReloaded()
+    {
+        var vm1 = new MainViewModel(MakeStore());
+        vm1.Username = "Charlie";
+        vm1.FlushSettings();
+
+        var vm2 = new MainViewModel(MakeStore());
+
+        Assert.Equal("Charlie", vm2.Username);
+    }
+
+    // ── window bounds persistence ─────────────────────────────────────────────
+
+    [Fact]
+    public void UpdateWindowBounds_GetWindowBounds_ReturnsStoredValues()
+    {
+        var vm = new MainViewModel(MakeStore());
+        vm.UpdateWindowBounds(100, 200, 1000, 700, false);
+
+        var (left, top, width, height, maximized) = vm.GetWindowBounds();
+
+        Assert.Equal(100,   left);
+        Assert.Equal(200,   top);
+        Assert.Equal(1000,  width);
+        Assert.Equal(700,   height);
+        Assert.False(maximized);
+    }
+
+    [Fact]
+    public void UpdateWindowBounds_Maximized_GetWindowBoundsReturnsTrue()
+    {
+        var vm = new MainViewModel(MakeStore());
+        vm.UpdateWindowBounds(100, 200, 1000, 700, true);
+
+        var (_, _, _, _, maximized) = vm.GetWindowBounds();
+
+        Assert.True(maximized);
+    }
+
+    [Fact]
+    public void Constructor_MissingWindowBounds_UseSentinelDefaults()
+    {
+        var vm = new MainViewModel(MakeStore());
+        var (left, top, width, height, maximized) = vm.GetWindowBounds();
+
+        Assert.Equal(-999999.0, left);
+        Assert.Equal(-999999.0, top);
+        Assert.Equal(0.0,       width);
+        Assert.Equal(0.0,       height);
+        Assert.False(maximized);
+    }
+
+    [Fact]
+    public void FlushSettings_SavesWindowBoundsToStore()
+    {
+        var store = MakeStore();
+        var vm = new MainViewModel(store);
+        vm.UpdateWindowBounds(50, 75, 800, 600, false);
+
+        vm.FlushSettings();
+
+        Assert.Equal(50.0,  store.Get("WindowLeft",   0.0));
+        Assert.Equal(75.0,  store.Get("WindowTop",    0.0));
+        Assert.Equal(800.0, store.Get("WindowWidth",  0.0));
+        Assert.Equal(600.0, store.Get("WindowHeight", 0.0));
+        Assert.False(       store.Get("WindowMaximized", true));
+    }
+
+    [Fact]
+    public void FlushSettings_SavesWindowMaximizedTrue()
+    {
+        var store = MakeStore();
+        var vm = new MainViewModel(store);
+        vm.UpdateWindowBounds(0, 0, 1920, 1080, true);
+
+        vm.FlushSettings();
+
+        Assert.True(store.Get("WindowMaximized", false));
+    }
+
+    [Fact]
+    public void RoundTrip_WindowBounds_PersistedAndReloaded()
+    {
+        var vm1 = new MainViewModel(MakeStore());
+        vm1.UpdateWindowBounds(120, 80, 1280, 800, false);
+        vm1.FlushSettings();
+
+        var vm2 = new MainViewModel(MakeStore());
+        var (left, top, width, height, maximized) = vm2.GetWindowBounds();
+
+        Assert.Equal(120.0,  left);
+        Assert.Equal(80.0,   top);
+        Assert.Equal(1280.0, width);
+        Assert.Equal(800.0,  height);
+        Assert.False(maximized);
+    }
+
+    [Fact]
+    public void RoundTrip_WindowMaximized_PersistedAndReloaded()
+    {
+        var vm1 = new MainViewModel(MakeStore());
+        vm1.UpdateWindowBounds(0, 0, 1920, 1080, true);
+        vm1.FlushSettings();
+
+        var vm2 = new MainViewModel(MakeStore());
+        var (_, _, _, _, maximized) = vm2.GetWindowBounds();
+
+        Assert.True(maximized);
+    }
+
     // ── full round-trip ───────────────────────────────────────────────────────
 
     [Fact]

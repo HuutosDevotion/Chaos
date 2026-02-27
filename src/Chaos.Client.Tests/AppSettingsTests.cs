@@ -36,6 +36,34 @@ public class AppSettingsTests
     [Fact]
     public void OutputVolume_DefaultsTo1() => Assert.Equal(1.0f, new AppSettings().OutputVolume);
 
+    // ── HeaderFontSize computed property ──────────────────────────────────────
+
+    [Fact]
+    public void HeaderFontSize_DefaultsToFontSizePlusTwo()
+    {
+        var s = new AppSettings(); // FontSize = 14
+        Assert.Equal(16.0, s.HeaderFontSize);
+    }
+
+    [Fact]
+    public void HeaderFontSize_TracksCustomFontSize()
+    {
+        var s = new AppSettings { FontSize = 20.0 };
+        Assert.Equal(22.0, s.HeaderFontSize);
+    }
+
+    [Fact]
+    public void FontSize_SetNewValue_RaisesHeaderFontSizeChanged()
+    {
+        var s = new AppSettings();
+        var raised = new List<string?>();
+        s.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        s.FontSize = 18.0;
+
+        Assert.Contains(nameof(AppSettings.HeaderFontSize), raised);
+    }
+
     // ── MessagePadding computed property ───────────────────────────────────────
 
     [Fact]
