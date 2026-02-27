@@ -14,12 +14,13 @@ public class MessageViewModel : INotifyPropertyChanged
 {
     private bool _showHeader = true;
     private readonly AppSettings? _settings;
+    private readonly string _baseUrl = string.Empty;
 
     public MessageDto Message { get; }
     public string Author => Message.Author;
     public DateTime Timestamp => Message.Timestamp;
     public string Content => Message.Content;
-    public string? ImageUrl => Message.ImageUrl;
+    public string? ImageUrl => Message.ImageUrl is null ? null : $"{_baseUrl}{Message.ImageUrl}";
     public bool HasImage => Message.HasImage;
     public int ChannelId => Message.ChannelId;
 
@@ -48,10 +49,11 @@ public class MessageViewModel : INotifyPropertyChanged
         }
     }
 
-    public MessageViewModel(MessageDto message, AppSettings? settings = null)
+    public MessageViewModel(MessageDto message, AppSettings? settings = null, string baseUrl = "")
     {
         Message = message;
         _settings = settings;
+        _baseUrl = baseUrl;
         if (_settings is not null)
             _settings.PropertyChanged += OnSettingsChanged;
     }
@@ -584,7 +586,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             MessageViewModel? prev = null;
             foreach (var msg in messages)
             {
-                var vm = new MessageViewModel(msg, Settings);
+                var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
                 vm.ShowHeader = ShouldShowHeader(vm, prev);
                 Messages.Add(vm);
                 prev = vm;
@@ -669,7 +671,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (msg.ChannelId == _selectedTextChannel?.Id)
             SafeDispatch(() =>
             {
-                var vm = new MessageViewModel(msg, Settings);
+                var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
                 vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
                 Messages.Add(vm);
             });
