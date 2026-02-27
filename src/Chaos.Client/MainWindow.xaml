@@ -867,7 +867,7 @@
                                 Command="{Binding ToggleMuteCommand}"
                                 FontSize="11" Padding="4,4"
                                 Margin="4,0" VerticalAlignment="Center"
-                                ToolTip="Mute"
+                                ToolTip="{Binding MuteTooltipText}"
                                 ToolTipService.InitialShowDelay="0" />
 
                         <Button Grid.Column="2" Content="{Binding DeafenButtonText}"
@@ -875,7 +875,7 @@
                                 Command="{Binding ToggleDeafenCommand}"
                                 FontSize="11" Padding="4,4"
                                 VerticalAlignment="Center"
-                                ToolTip="Deafen"
+                                ToolTip="{Binding DeafenTooltipText}"
                                 ToolTipService.InitialShowDelay="0" />
 
                         <Button Grid.Column="3" Content="⚙"
