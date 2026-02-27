@@ -117,6 +117,8 @@ public class VolumeToPercentConverterTests
     [InlineData(0.333f, "33%")]
     [InlineData(0.995f, "100%")] // rounds up
     [InlineData(0.004f, "0%")]   // rounds down
+    [InlineData(1.5f,   "150%")] // boost range
+    [InlineData(2.0f,   "200%")] // max boost
     public void Convert_Float_ReturnsCorrectPercentString(float input, string expected)
     {
         var result = _converter.Convert(input, typeof(string), null!, Culture);
@@ -168,10 +170,17 @@ public class VoiceServiceVolumeTests
     }
 
     [Fact]
-    public void SetUserVolume_DoesNotThrow_ForValueAboveOne()
+    public void SetUserVolume_DoesNotThrow_ForValueAboveTwo()
     {
         using var svc = new VoiceService();
-        svc.SetUserVolume(42, 2.0f); // clamped to 1.0 internally
+        svc.SetUserVolume(42, 3.0f); // clamped to 2.0 internally
+    }
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_ForValueBetweenOneAndTwo()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 1.5f); // valid boost: 150%
     }
 
     [Fact]

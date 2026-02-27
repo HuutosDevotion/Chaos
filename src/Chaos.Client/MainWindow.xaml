@@ -227,12 +227,12 @@
                                                                                                FontSize="11" VerticalAlignment="Center"
                                                                                                MinWidth="34" TextAlignment="Right"
                                                                                                Margin="8,0,0,0" />
-                                                                                    <Slider Minimum="0" Maximum="1"
+                                                                                    <Slider Minimum="0" Maximum="2"
                                                                                             Value="{Binding PlacementTarget.DataContext.Volume,
                                                                                                             RelativeSource={RelativeSource AncestorType=ContextMenu},
                                                                                                             Mode=TwoWay}"
                                                                                             Width="130"
-                                                                                            SmallChange="0.05" LargeChange="0.1"
+                                                                                            SmallChange="0.05" LargeChange="0.2"
                                                                                             VerticalAlignment="Center" />
                                                                                 </DockPanel>
                                                                             </StackPanel>
