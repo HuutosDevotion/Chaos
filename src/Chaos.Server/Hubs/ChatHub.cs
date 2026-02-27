@@ -159,6 +159,15 @@ public class ChatHub : Hub
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);
     }
 
+    public List<string> GetConnectedUsers()
+    {
+        return _users.Values
+            .Where(u => !string.IsNullOrEmpty(u.Username))
+            .Select(u => u.Username)
+            .OrderBy(u => u)
+            .ToList();
+    }
+
     public Dictionary<int, List<VoiceMemberDto>> GetAllVoiceMembers()
     {
         return _users.Values
