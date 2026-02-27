@@ -100,15 +100,46 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
+            // Null until the ListBox is first rendered (it lives inside a Collapsed grid
+            // at startup, so its control template isn't applied until IsConnected = true).
+            ScrollViewer? chatScroll = null;
+            bool atBottom = true;
+
+            void AttachChatScroll()
+            {
+                if (chatScroll is not null) return;
+                chatScroll = FindScrollViewer(MessageList);
+                if (chatScroll is null) return;
+
+                chatScroll.ScrollChanged += (_, _) =>
+                    atBottom = chatScroll.VerticalOffset >= chatScroll.ScrollableHeight - 50;
+
+                chatScroll.SizeChanged += (_, _) =>
+                    { if (atBottom) chatScroll.ScrollToBottom(); };
+            }
+
+            // New messages always scroll to bottom (also a fallback attach in case
+            // CollectionChanged fires before SelectedTextChannel does).
             ((INotifyCollectionChanged)vm.Messages).CollectionChanged += (_, _) =>
             {
-                FindScrollViewer(MessageList)?.ScrollToBottom();
+                AttachChatScroll();
+                chatScroll?.ScrollToBottom();
             };
 
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
+                {
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => MessageInput.Focus());
+                    // ContextIdle fires after layout; by then the ListBox template is applied
+                    // and the scroll viewer exists.
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, () =>
+                    {
+                        AttachChatScroll();
+                        chatScroll?.ScrollToBottom();
+                        atBottom = true;
+                    });
+                }
 
                 if (args.PropertyName == nameof(MainViewModel.SelectedSuggestionIndex))
                 {
