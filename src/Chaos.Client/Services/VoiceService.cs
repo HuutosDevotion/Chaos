@@ -188,8 +188,6 @@ public class VoiceService : IDisposable
         var provider = new BufferedWaveProvider(VoiceFormat) { DiscardOnBufferOverflow = true, BufferDuration = TimeSpan.FromSeconds(2) };
         var waveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(OutputDeviceName) };
         waveOut.Init(provider);
-        float userVol = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f;
-        waveOut.Volume = Math.Clamp(_outputVolume * userVol, 0f, 1f);
         if (!_isDeafened) waveOut.Play();
         _userStreams[userId] = (waveOut, provider);
         return (waveOut, provider);
@@ -199,8 +197,23 @@ public class VoiceService : IDisposable
     {
         volume = Math.Clamp(volume, 0f, 1f);
         _userVolumes[userId] = volume;
-        if (_userStreams.TryGetValue(userId, out var stream))
-            stream.WaveOut.Volume = Math.Clamp(_outputVolume * volume, 0f, 1f);
+    }
+
+    // Scales 16-bit PCM samples by volume in-place on a copy, clamping to int16 range.
+    private static byte[] ApplyVolumeToPcm(byte[] buffer, int offset, int length, float volume)
+    {
+        var result = new byte[length];
+        for (int i = 0; i < length - 1; i += 2)
+        {
+            short sample = (short)(buffer[offset + i] | (buffer[offset + i + 1] << 8));
+            float scaled = sample * volume;
+            if (scaled > 32767f) scaled = 32767f;
+            if (scaled < -32768f) scaled = -32768f;
+            short s = (short)scaled;
+            result[i] = (byte)s;
+            result[i + 1] = (byte)(s >> 8);
+        }
+        return result;
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -233,7 +246,11 @@ public class VoiceService : IDisposable
                 if (audioLength > 0 && !_isDeafened)
                 {
                     var stream = GetOrCreateUserStream(senderId);
-                    stream.Provider.AddSamples(result.Buffer, 8, audioLength);
+                    float volume = _userVolumes.TryGetValue(senderId, out var vol) ? vol : 1.0f;
+                    var audio = volume == 1.0f
+                        ? result.Buffer[8..]
+                        : ApplyVolumeToPcm(result.Buffer, 8, audioLength, volume);
+                    stream.Provider.AddSamples(audio, 0, audioLength);
                 }
             }
             catch (OperationCanceledException)
