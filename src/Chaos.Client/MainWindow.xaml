@@ -874,14 +874,17 @@
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding ToggleDeafenCommand}"
                                 FontSize="11" Padding="4,4"
-                                VerticalAlignment="Center" />
+                                VerticalAlignment="Center"
+                                ToolTip="Deafen"
+                                ToolTipService.InitialShowDelay="0" />
 
                         <Button Grid.Column="3" Content="⚙"
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding OpenSettingsCommand}"
                                 FontSize="13" Padding="6,4"
                                 Margin="4,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Settings" />
+                                ToolTip="Settings"
+                                ToolTipService.InitialShowDelay="0" />
                     </Grid>
                 </Border>
             </Grid>
