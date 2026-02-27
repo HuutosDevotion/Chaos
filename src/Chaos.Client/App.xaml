@@ -329,26 +329,38 @@
 
         <!-- Tooltip Style (implicit — applies to all tooltips) -->
         <Style TargetType="ToolTip">
-            <Setter Property="Placement" Value="Top" />
+            <Setter Property="Placement" Value="Center" />
+            <Setter Property="VerticalOffset" Value="-30" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToolTip">
-                        <StackPanel TextElement.Foreground="{StaticResource TextPrimaryBrush}"
-                                    TextElement.FontSize="11"
-                                    TextElement.FontWeight="SemiBold">
-                            <Border Background="{StaticResource BgDarkestBrush}"
+                        <!-- Grid z-order: elements declared later render on top.
+                             Border (last) covers the tail's top edge so the stroke looks continuous. -->
+                        <Grid TextElement.Foreground="{StaticResource TextPrimaryBrush}"
+                              TextElement.FontSize="11"
+                              TextElement.FontWeight="SemiBold">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <!-- Tail first (lower z-order) — overlaps 1px into row 0 so Border hides the top stroke -->
+                            <Path Grid.Row="1"
+                                  Data="M 0,0 L 6,7 L 12,0 Z"
+                                  Fill="{StaticResource BgDarkestBrush}"
+                                  Stroke="#3A3C42"
+                                  StrokeThickness="1"
+                                  HorizontalAlignment="Center"
+                                  Margin="0,-1,0,0" />
+                            <!-- Bubble second (higher z-order) — renders on top, hiding the tail's top edge -->
+                            <Border Grid.Row="0"
+                                    Background="{StaticResource BgDarkestBrush}"
                                     BorderBrush="#3A3C42"
                                     BorderThickness="1"
                                     CornerRadius="6"
                                     Padding="8,5">
                                 <ContentPresenter />
                             </Border>
-                            <!-- Bubble tail pointing down toward the element -->
-                            <Path Data="M 0,0 L 6,6 L 12,0 Z"
-                                  Fill="{StaticResource BgDarkestBrush}"
-                                  HorizontalAlignment="Center"
-                                  Margin="0,-1,0,0" />
-                        </StackPanel>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
