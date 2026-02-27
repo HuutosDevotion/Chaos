@@ -59,6 +59,7 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 
     private void RebuildPreviewDocument()
     {
+        if (Application.Current is null) return;
         var res       = Application.Current.Resources;
         var primary   = (Brush)res["TextPrimaryBrush"];
         var secondary = (Brush)res["TextSecondaryBrush"];

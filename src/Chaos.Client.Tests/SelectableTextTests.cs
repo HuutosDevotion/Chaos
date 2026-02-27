@@ -5,121 +5,74 @@ using Xunit;
 namespace Chaos.Client.Tests;
 
 /// <summary>
-/// Verifies that message text is rendered with selectable, read-only TextBox
-/// elements rather than non-selectable TextBlock elements.
+/// Verifies that chat messages are rendered inside a read-only RichTextBox,
+/// which makes all text selectable. The old DataTemplate+TextBox approach has
+/// been replaced by a FlowDocument built entirely in code-behind.
 /// </summary>
 public class SelectableTextTests
 {
-    private static readonly XNamespace Wpf = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
-    private static readonly XNamespace X   = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private static readonly XNamespace Wpf  = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+    private static readonly XNamespace X    = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private static readonly XNamespace Atch = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"; // same ns, just for clarity
 
     private static XDocument LoadMainWindowXaml()
     {
-        // From bin/Debug/net8.0-windows/ navigate up to src/, then into Chaos.Client/
         var xamlPath = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
                          "Chaos.Client", "MainWindow.xaml"));
         return XDocument.Load(xamlPath);
     }
 
-    private static XElement GetMessageItemTemplate(XDocument doc) =>
-        doc.Descendants(Wpf + "DataTemplate")
-           .First(e => (string?)e.Attribute(X + "Key") == "MessageItemTemplate");
+    private static XElement GetMessageList(XDocument doc) =>
+        doc.Descendants(Wpf + "RichTextBox")
+           .First(e => (string?)e.Attribute(X + "Name") == "MessageList");
 
-    private static string TextAttr(XElement e) =>
-        (string?)e.Attribute("Text") ?? "";
-
-    // ── author ────────────────────────────────────────────────────────────────
+    // ── MessageItemTemplate is gone ───────────────────────────────────────────
 
     [Fact]
-    public void MessageItemTemplate_AuthorUsesTextBox_NotTextBlock()
+    public void MessageItemTemplate_NoLongerExists()
     {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
+        var doc = LoadMainWindowXaml();
+        var template = doc.Descendants(Wpf + "DataTemplate")
+            .FirstOrDefault(e => (string?)e.Attribute(X + "Key") == "MessageItemTemplate");
+        Assert.Null(template);
+    }
 
-        var authorNode = template.Descendants(Wpf + "TextBox")
-            .FirstOrDefault(e => TextAttr(e).Contains("Author"));
+    // ── MessageList RichTextBox ───────────────────────────────────────────────
 
-        Assert.NotNull(authorNode);
+    [Fact]
+    public void MessageList_ExistsAsRichTextBox()
+    {
+        var doc = LoadMainWindowXaml();
+        var element = GetMessageList(doc);
+        Assert.NotNull(element);
     }
 
     [Fact]
-    public void MessageItemTemplate_AuthorIsNotRenderedAsTextBlock()
+    public void MessageList_IsReadOnly()
     {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var textBlockWithAuthor = template.Descendants(Wpf + "TextBlock")
-            .Any(e => TextAttr(e).Contains("Author"));
-
-        Assert.False(textBlockWithAuthor,
-            "Author must use TextBox (selectable), not TextBlock.");
+        var element = GetMessageList(LoadMainWindowXaml());
+        Assert.Equal("True", (string?)element.Attribute("IsReadOnly"));
     }
 
     [Fact]
-    public void MessageItemTemplate_AuthorTextBox_IsReadOnly()
+    public void MessageList_HasVerticalScrollBar()
     {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var authorTextBox = template.Descendants(Wpf + "TextBox")
-            .First(e => TextAttr(e).Contains("Author"));
-
-        Assert.Equal("True", (string?)authorTextBox.Attribute("IsReadOnly"));
+        var element = GetMessageList(LoadMainWindowXaml());
+        // Attached properties are stored as dotted local names in XAML XML.
+        var raw = element.Attributes()
+            .FirstOrDefault(a => a.Name.LocalName == "ScrollViewer.VerticalScrollBarVisibility");
+        Assert.NotNull(raw);
+        Assert.Equal("Auto", raw!.Value);
     }
 
     [Fact]
-    public void MessageItemTemplate_AuthorBinding_IsOneWay()
+    public void MessageList_HorizontalScrollBarDisabled()
     {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var authorTextBox = template.Descendants(Wpf + "TextBox")
-            .First(e => TextAttr(e).Contains("Author"));
-
-        Assert.Contains("Mode=OneWay", TextAttr(authorTextBox));
-    }
-
-    // ── content ───────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void MessageItemTemplate_ContentUsesTextBox_NotTextBlock()
-    {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var contentNode = template.Descendants(Wpf + "TextBox")
-            .FirstOrDefault(e => TextAttr(e).Contains("Content"));
-
-        Assert.NotNull(contentNode);
-    }
-
-    [Fact]
-    public void MessageItemTemplate_ContentIsNotRenderedAsTextBlock()
-    {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var textBlockWithContent = template.Descendants(Wpf + "TextBlock")
-            .Any(e => TextAttr(e).Contains("Content"));
-
-        Assert.False(textBlockWithContent,
-            "Content must use TextBox (selectable), not TextBlock.");
-    }
-
-    [Fact]
-    public void MessageItemTemplate_ContentTextBox_IsReadOnly()
-    {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var contentTextBox = template.Descendants(Wpf + "TextBox")
-            .First(e => TextAttr(e).Contains("Content"));
-
-        Assert.Equal("True", (string?)contentTextBox.Attribute("IsReadOnly"));
-    }
-
-    [Fact]
-    public void MessageItemTemplate_ContentBinding_IsOneWay()
-    {
-        var template = GetMessageItemTemplate(LoadMainWindowXaml());
-
-        var contentTextBox = template.Descendants(Wpf + "TextBox")
-            .First(e => TextAttr(e).Contains("Content"));
-
-        Assert.Contains("Mode=OneWay", TextAttr(contentTextBox));
+        var element = GetMessageList(LoadMainWindowXaml());
+        var raw = element.Attributes()
+            .FirstOrDefault(a => a.Name.LocalName == "ScrollViewer.HorizontalScrollBarVisibility");
+        Assert.NotNull(raw);
+        Assert.Equal("Disabled", raw!.Value);
     }
 }

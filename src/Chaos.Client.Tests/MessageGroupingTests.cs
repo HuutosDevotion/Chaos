@@ -13,12 +13,13 @@ public class MessageGroupingTests
 {
     // ── helpers ────────────────────────────────────────────────────────────────
 
-    private static MessageViewModel Msg(string author) =>
-        new(new MessageDto { Author = author, Content = "hello", Timestamp = DateTime.UtcNow });
+    private static MessageViewModel Msg(string author, DateTime? timestamp = null) =>
+        new(new MessageDto { Author = author, Content = "hello", Timestamp = timestamp ?? DateTime.UtcNow });
 
     /// <summary>Mirrors MainViewModel.ShouldShowHeader.</summary>
     private static bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev, bool grouped) =>
-        !grouped || prev is null || prev.Author != msg.Author;
+        !grouped || prev is null || prev.Author != msg.Author
+        || (msg.Timestamp - prev.Timestamp).TotalMinutes > 5;
 
     /// <summary>Mirrors MainViewModel.RecomputeGrouping.</summary>
     private static void Regroup(IList<MessageViewModel> messages, bool grouped)
@@ -69,9 +70,10 @@ public class MessageGroupingTests
     }
 
     [Fact]
-    public void GroupingEnabled_SameAuthorConsecutive_SecondHidesHeader()
+    public void GroupingEnabled_SameAuthorWithinFiveMinutes_SecondHidesHeader()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Alice") };
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(2)) };
         Regroup(msgs, grouped: true);
         Assert.True(msgs[0].ShowHeader);
         Assert.False(msgs[1].ShowHeader);
@@ -80,7 +82,14 @@ public class MessageGroupingTests
     [Fact]
     public void GroupingEnabled_LongSameAuthorRun_OnlyFirstShowsHeader()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Alice"), Msg("Alice"), Msg("Alice") };
+        var t = DateTime.UtcNow;
+        var msgs = new[]
+        {
+            Msg("Alice", t),
+            Msg("Alice", t.AddMinutes(1)),
+            Msg("Alice", t.AddMinutes(2)),
+            Msg("Alice", t.AddMinutes(3)),
+        };
         Regroup(msgs, grouped: true);
         Assert.True(msgs[0].ShowHeader);
         Assert.False(msgs[1].ShowHeader);
@@ -91,7 +100,8 @@ public class MessageGroupingTests
     [Fact]
     public void GroupingEnabled_AuthorChange_ShowsHeaderForNewAuthor()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Bob") };
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Bob", t.AddMinutes(1)) };
         Regroup(msgs, grouped: true);
         Assert.True(msgs[0].ShowHeader);
         Assert.True(msgs[1].ShowHeader);
@@ -100,7 +110,14 @@ public class MessageGroupingTests
     [Fact]
     public void GroupingEnabled_AlternatingAuthors_AllShowHeader()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Bob"), Msg("Alice"), Msg("Bob") };
+        var t = DateTime.UtcNow;
+        var msgs = new[]
+        {
+            Msg("Alice", t),
+            Msg("Bob",   t.AddMinutes(1)),
+            Msg("Alice", t.AddMinutes(2)),
+            Msg("Bob",   t.AddMinutes(3)),
+        };
         Regroup(msgs, grouped: true);
         Assert.All(msgs, m => Assert.True(m.ShowHeader));
     }
@@ -108,22 +125,32 @@ public class MessageGroupingTests
     [Fact]
     public void GroupingEnabled_AuthorReturnsAfterOther_ShowsHeader()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Bob"), Msg("Alice") };
+        var t = DateTime.UtcNow;
+        var msgs = new[]
+        {
+            Msg("Alice", t),
+            Msg("Bob",   t.AddMinutes(1)),
+            Msg("Alice", t.AddMinutes(2)),
+        };
         Regroup(msgs, grouped: true);
         Assert.True(msgs[0].ShowHeader);  // Alice: first
         Assert.True(msgs[1].ShowHeader);  // Bob: new author
-        Assert.True(msgs[2].ShowHeader);  // Alice: returns, different from prev (Bob)
+        Assert.True(msgs[2].ShowHeader);  // Alice: different from prev (Bob)
     }
 
     [Fact]
     public void GroupingEnabled_MixedRuns_CorrectHeaders()
     {
-        // Alice x2, Bob x3, Alice x1
+        // Alice x2, Bob x3, Alice x1  — all within 5 min of each other
+        var t = DateTime.UtcNow;
         var msgs = new[]
         {
-            Msg("Alice"), Msg("Alice"),
-            Msg("Bob"),   Msg("Bob"), Msg("Bob"),
-            Msg("Alice")
+            Msg("Alice", t),
+            Msg("Alice", t.AddMinutes(1)),
+            Msg("Bob",   t.AddMinutes(2)),
+            Msg("Bob",   t.AddMinutes(2).AddSeconds(30)),
+            Msg("Bob",   t.AddMinutes(3)),
+            Msg("Alice", t.AddMinutes(4)),
         };
         Regroup(msgs, grouped: true);
         Assert.True(msgs[0].ShowHeader);  // Alice (1st)
@@ -134,12 +161,63 @@ public class MessageGroupingTests
         Assert.True(msgs[5].ShowHeader);  // Alice (new run)
     }
 
+    // ── 5-minute timeout ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void GroupingEnabled_SameAuthorAfterFiveMinutes_ShowsHeader()
+    {
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(6)) };
+        Regroup(msgs, grouped: true);
+        Assert.True(msgs[0].ShowHeader);
+        Assert.True(msgs[1].ShowHeader);
+    }
+
+    [Fact]
+    public void GroupingEnabled_SameAuthorExactlyFiveMinutes_GroupsMessages()
+    {
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(5)) };
+        Regroup(msgs, grouped: true);
+        Assert.True(msgs[0].ShowHeader);
+        Assert.False(msgs[1].ShowHeader);
+    }
+
+    [Fact]
+    public void GroupingEnabled_SameAuthorJustOverFiveMinutes_ShowsHeader()
+    {
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(5).AddSeconds(1)) };
+        Regroup(msgs, grouped: true);
+        Assert.True(msgs[0].ShowHeader);
+        Assert.True(msgs[1].ShowHeader);
+    }
+
+    [Fact]
+    public void GroupingEnabled_TimeoutBreaksGroup_ThenResumesIfClose()
+    {
+        var t = DateTime.UtcNow;
+        var msgs = new[]
+        {
+            Msg("Alice", t),
+            Msg("Alice", t.AddMinutes(1)),   // grouped
+            Msg("Alice", t.AddMinutes(8)),   // timeout — new header
+            Msg("Alice", t.AddMinutes(9)),   // grouped again
+        };
+        Regroup(msgs, grouped: true);
+        Assert.True(msgs[0].ShowHeader);
+        Assert.False(msgs[1].ShowHeader);
+        Assert.True(msgs[2].ShowHeader);
+        Assert.False(msgs[3].ShowHeader);
+    }
+
     // ── toggling grouping ──────────────────────────────────────────────────────
 
     [Fact]
     public void ToggleGroupingOn_UpdatesShowHeaderInPlace()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Alice") };
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(1)) };
         Regroup(msgs, grouped: false); // both show header
         Regroup(msgs, grouped: true);  // second should now hide
 
@@ -150,7 +228,8 @@ public class MessageGroupingTests
     [Fact]
     public void ToggleGroupingOff_AllMessagesShowHeader()
     {
-        var msgs = new[] { Msg("Alice"), Msg("Alice") };
+        var t = DateTime.UtcNow;
+        var msgs = new[] { Msg("Alice", t), Msg("Alice", t.AddMinutes(1)) };
         Regroup(msgs, grouped: true);  // second hidden
         Regroup(msgs, grouped: false); // both should show now
 
