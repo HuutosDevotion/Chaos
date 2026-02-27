@@ -198,6 +198,14 @@
                                                     </Style>
                                                 </TextBlock.Style>
                                             </TextBlock>
+                                            <!-- Stream active indicator on channel -->
+                                            <Border CornerRadius="3" Padding="4,1" Margin="6,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    Background="{StaticResource AccentRedBrush}"
+                                                    Visibility="{Binding HasActiveStream, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="LIVE" FontSize="8" FontWeight="Bold"
+                                                           Foreground="White" />
+                                            </Border>
                                         </StackPanel>
                                     </Button>
 
@@ -206,7 +214,7 @@
                                                   Margin="28,0,0,0">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <StackPanel Margin="0,2">
                                                     <StackPanel.ContextMenu>
                                                         <ContextMenu>
                                                             <MenuItem StaysOpenOnClick="True">
@@ -243,30 +251,79 @@
                                                         </ContextMenu>
                                                     </StackPanel.ContextMenu>
 
-                                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="Fill" Value="{StaticResource TextMutedBrush}" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
-                                                                        <Setter Property="Fill" Value="{StaticResource AccentGreenBrush}" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
-                                                    <TextBlock Text="{Binding Username}" FontSize="13" VerticalAlignment="Center">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
-                                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </TextBlock.Style>
-                                                    </TextBlock>
+                                                    <!-- Username row -->
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <!-- Speaking glow border around username -->
+                                                        <Border CornerRadius="3" Padding="4,2" Margin="0,1">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="BorderThickness" Value="1.5" />
+                                                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
+                                                                            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding Username}" FontSize="13" VerticalAlignment="Center">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsSpeaking}" Value="True">
+                                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </Border>
+                                                        <!-- Mute icon -->
+                                                        <TextBlock Text="&#x1F507;" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"
+                                                                   ToolTip="Muted"
+                                                                   Visibility="{Binding IsMuted, Converter={StaticResource BoolToVis}}" />
+                                                        <!-- Deafen icon -->
+                                                        <TextBlock Text="&#x1F508;" FontSize="11" VerticalAlignment="Center" Margin="2,0,0,0"
+                                                                   ToolTip="Deafened"
+                                                                   Visibility="{Binding IsDeafened, Converter={StaticResource BoolToVis}}" />
+                                                        <!-- LIVE badge -->
+                                                        <Border CornerRadius="3" Padding="5,1" Margin="6,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                Background="{StaticResource AccentRedBrush}"
+                                                                Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVis}}">
+                                                            <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold"
+                                                                       Foreground="White" />
+                                                        </Border>
+                                                    </StackPanel>
+
+                                                    <!-- Watch Stream button (shown below streaming users) -->
+                                                    <Button Margin="4,3,8,2"
+                                                            Visibility="{Binding IsStreaming, Converter={StaticResource BoolToVis}}"
+                                                            Command="{Binding DataContext.WatchStreamCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}"
+                                                            Cursor="Hand">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="WatchBorder" CornerRadius="4" Padding="8,4"
+                                                                        Background="#2D2F34" BorderBrush="#3F4147" BorderThickness="1">
+                                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                                        <TextBlock Text="&#x1F4FA;" FontSize="11" VerticalAlignment="Center"
+                                                                                   Margin="0,0,6,0" />
+                                                                        <TextBlock Text="Watch Stream" FontSize="11"
+                                                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                                                   VerticalAlignment="Center" />
+                                                                    </StackPanel>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="WatchBorder" Property="Background" Value="#3A3D44" />
+                                                                        <Setter TargetName="WatchBorder" Property="BorderBrush" Value="{StaticResource AccentBlueBrush}" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -315,6 +372,70 @@
                                      Value="{Binding MicLevel, Mode=OneWay}"
                                      Background="#3A3C42" Foreground="{StaticResource AccentGreenBrush}"
                                      BorderThickness="0" />
+
+                        <!-- Screen Share Button -->
+                        <Button Content="{Binding ScreenShareButtonText}"
+                                Command="{Binding ToggleScreenShareCommand}"
+                                FontSize="11" Padding="0,5" Margin="0,6,0,0"
+                                Cursor="Hand" BorderThickness="0">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="{StaticResource AccentBlueBrush}" />
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsScreenSharing}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource AccentRedBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Watching Stream indicator -->
+                        <Border CornerRadius="4" Padding="6,4" Margin="0,6,0,0"
+                                Background="#2D2F34" BorderBrush="#3F4147" BorderThickness="1"
+                                Visibility="{Binding IsWatchingStream, Converter={StaticResource BoolToVis}}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right"
+                                        Command="{Binding StopWatchingCommand}"
+                                        Cursor="Hand" ToolTip="Stop watching">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="StopBd" CornerRadius="3" Padding="5,2"
+                                                    Background="{StaticResource AccentRedBrush}">
+                                                <TextBlock Text="X" FontSize="9" FontWeight="Bold"
+                                                           Foreground="White" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="StopBd" Property="Background" Value="#FF5F62" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#x1F534;" FontSize="9" VerticalAlignment="Center"
+                                               Margin="0,0,5,0" />
+                                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" VerticalAlignment="Center">
+                                        <Run Text="Watching" />
+                                        <Run Text="{Binding WatchingStreamUsername, Mode=OneWay}"
+                                             Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -370,14 +491,71 @@
                 <Border Grid.Row="0" Background="{StaticResource BgMediumBrush}"
                         BorderBrush="#222326" BorderThickness="0,0,0,1"
                         Padding="16,0">
-                    <TextBlock Text="{Binding SelectedChannelName}"
+                    <TextBlock Text="{Binding ContentHeaderText}"
                                FontSize="15" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}"
                                VerticalAlignment="Center" />
                 </Border>
 
-                <!-- Messages -->
-                <Grid Grid.Row="1" Background="{StaticResource BgMediumBrush}">
+                <!-- Content Area: Stream Viewer OR Messages (visibility-toggled) -->
+                <Grid Grid.Row="1">
+                    <!-- Stream Viewer (shown when watching inline - fills full height) -->
+                    <Border Visibility="{Binding ShowInlineStream, Converter={StaticResource BoolToVis}}"
+                            Background="{StaticResource BgDarkestBrush}">
+                        <Grid>
+                            <!-- Stream header bar -->
+                            <DockPanel VerticalAlignment="Top" Background="#80000000"
+                                       Panel.ZIndex="1" Margin="0">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,4">
+                                    <Button Content="&#x2197;" Style="{StaticResource DarkButton}"
+                                            Command="{Binding PopOutStreamCommand}"
+                                            FontSize="14" Padding="8,3" Margin="0,0,4,0"
+                                            ToolTip="Pop out" />
+                                    <Button Content="X" Style="{StaticResource DarkButton}"
+                                            Command="{Binding StopWatchingCommand}"
+                                            FontSize="11" Padding="8,3" FontWeight="Bold"
+                                            Background="{StaticResource AccentRedBrush}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="10,4">
+                                    <Border CornerRadius="3" Padding="5,1" Margin="0,0,6,0"
+                                            Background="{StaticResource AccentRedBrush}" VerticalAlignment="Center">
+                                        <TextBlock Text="LIVE" FontSize="9" FontWeight="Bold"
+                                                   Foreground="White" />
+                                    </Border>
+                                    <TextBlock Text="{Binding WatchingStreamUsername}"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DockPanel>
+
+                            <!-- Video frame -->
+                            <Image Source="{Binding StreamFrame}"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapScalingMode="LowQuality" />
+
+                            <!-- No frame yet -->
+                            <TextBlock Text="Waiting for stream..."
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding StreamFrame}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+                    <!-- Messages (shown when NOT watching stream inline) -->
+                    <Grid Background="{StaticResource BgMediumBrush}"
+                          Visibility="{Binding ShowInlineStream, Converter={StaticResource InverseBoolToVis}}">
                     <ListBox Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"
                              ItemsSource="{Binding Messages}"
                              Background="Transparent"
@@ -451,9 +629,10 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Visibility="{Binding HasTextChannel, Converter={StaticResource InverseBoolToVis}}" />
+                    </Grid>
                 </Grid>
 
-                <!-- Message Input -->
+                <!-- Message Input (always visible at bottom) -->
                 <Border Grid.Row="2" Padding="16,8,16,16"
                         Background="{StaticResource BgMediumBrush}"
                         Visibility="{Binding HasTextChannel, Converter={StaticResource BoolToVis}}"

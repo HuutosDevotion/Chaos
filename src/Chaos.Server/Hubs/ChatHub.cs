@@ -15,6 +15,11 @@ public class ConnectedUser
     public int? TextChannelId { get; set; }
     public int? VoiceChannelId { get; set; }
     public int VoiceUserId { get; set; } // matches the userId in UDP packets
+    public bool IsMuted { get; set; }
+    public bool IsDeafened { get; set; }
+    public bool IsScreenSharing { get; set; }
+    public int ScreenShareVideoUserId { get; set; }
+    public StreamQuality ScreenShareQuality { get; set; }
 }
 
 public class ChatHub : Hub
@@ -115,6 +120,15 @@ public class ChatHub : Hub
     {
         if (_users.TryGetValue(Context.ConnectionId, out var user) && user.VoiceChannelId.HasValue)
         {
+            // Stop screen share if active
+            if (user.IsScreenSharing)
+            {
+                int chId = user.VoiceChannelId.Value;
+                user.IsScreenSharing = false;
+                user.ScreenShareVideoUserId = 0;
+                await Clients.All.SendAsync("UserStoppedScreenShare", user.Username, chId);
+            }
+
             int oldId = user.VoiceChannelId.Value;
             user.VoiceChannelId = null;
             await Clients.All.SendAsync("UserLeftVoice", user.Username, oldId);
@@ -159,6 +173,43 @@ public class ChatHub : Hub
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);
     }
 
+    // Screen sharing: must be in a voice channel to share
+    public async Task StartScreenShare(int videoUserId, StreamQuality quality)
+    {
+        if (_users.TryGetValue(Context.ConnectionId, out var user) && user.VoiceChannelId.HasValue)
+        {
+            user.IsScreenSharing = true;
+            user.ScreenShareVideoUserId = videoUserId;
+            user.ScreenShareQuality = quality;
+            await Clients.All.SendAsync("UserStartedScreenShare",
+                user.Username, user.VoiceChannelId.Value, videoUserId, (int)quality);
+        }
+    }
+
+    public async Task StopScreenShare()
+    {
+        if (_users.TryGetValue(Context.ConnectionId, out var user) && user.IsScreenSharing)
+        {
+            int channelId = user.VoiceChannelId ?? 0;
+            user.IsScreenSharing = false;
+            user.ScreenShareVideoUserId = 0;
+            await Clients.All.SendAsync("UserStoppedScreenShare", user.Username, channelId);
+        }
+    }
+
+    public Dictionary<int, List<ScreenShareMemberDto>> GetAllScreenShareMembers()
+    {
+        return _users.Values
+            .Where(u => u.IsScreenSharing && u.VoiceChannelId.HasValue && !string.IsNullOrEmpty(u.Username))
+            .GroupBy(u => u.VoiceChannelId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(u => new ScreenShareMemberDto
+            {
+                Username = u.Username,
+                VideoUserId = u.ScreenShareVideoUserId,
+                Quality = u.ScreenShareQuality
+            }).ToList());
+    }
+
     public Dictionary<int, List<VoiceMemberDto>> GetAllVoiceMembers()
     {
         return _users.Values
@@ -167,8 +218,20 @@ public class ChatHub : Hub
             .ToDictionary(g => g.Key, g => g.Select(u => new VoiceMemberDto
             {
                 Username = u.Username,
-                VoiceUserId = u.VoiceUserId
+                VoiceUserId = u.VoiceUserId,
+                IsMuted = u.IsMuted,
+                IsDeafened = u.IsDeafened
             }).ToList());
+    }
+
+    public async Task UpdateMuteState(bool isMuted, bool isDeafened)
+    {
+        if (_users.TryGetValue(Context.ConnectionId, out var user) && user.VoiceChannelId.HasValue)
+        {
+            user.IsMuted = isMuted;
+            user.IsDeafened = isDeafened;
+            await Clients.All.SendAsync("UserMuteStateChanged", user.Username, user.VoiceChannelId.Value, isMuted, isDeafened);
+        }
     }
 
     public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
@@ -210,6 +273,9 @@ public class ChatHub : Hub
     {
         if (_users.TryRemove(Context.ConnectionId, out var user))
         {
+            if (user.IsScreenSharing && user.VoiceChannelId.HasValue)
+                await Clients.All.SendAsync("UserStoppedScreenShare", user.Username, user.VoiceChannelId.Value);
+
             if (user.VoiceChannelId.HasValue)
                 await Clients.All.SendAsync("UserLeftVoice", user.Username, user.VoiceChannelId.Value);
 
