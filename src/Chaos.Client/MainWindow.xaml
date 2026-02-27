@@ -866,7 +866,9 @@
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding ToggleMuteCommand}"
                                 FontSize="11" Padding="4,4"
-                                Margin="4,0" VerticalAlignment="Center" />
+                                Margin="4,0" VerticalAlignment="Center"
+                                ToolTip="Mute"
+                                ToolTipService.InitialShowDelay="0" />
 
                         <Button Grid.Column="2" Content="{Binding DeafenButtonText}"
                                 Style="{StaticResource DarkButton}"
