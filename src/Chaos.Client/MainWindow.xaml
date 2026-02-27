@@ -621,7 +621,8 @@
                                 Command="{Binding CreateChannelCommand}"
                                 FontSize="18" FontWeight="Bold"
                                 Padding="8,0" VerticalAlignment="Center"
-                                ToolTip="Create Channel" />
+                                ToolTip="Create Channel"
+                                ToolTipService.InitialShowDelay="0" />
                         <TextBlock Text="Chaos Server" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    VerticalAlignment="Center" />
