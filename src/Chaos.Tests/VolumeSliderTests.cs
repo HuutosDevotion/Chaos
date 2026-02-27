@@ -100,6 +100,48 @@ public class VoiceMemberVolumeTests
 
         Assert.False(fired);
     }
+
+    // ── Regression: volume-slider-max-200 — VoiceMemberInfo must accept boost range ─
+
+    [Fact]
+    public void Volume_AcceptsAndStores_BoostRangeValue()
+    {
+        var member = new VoiceMemberInfo();
+        member.Volume = 1.5f;
+        Assert.Equal(1.5f, member.Volume);
+    }
+
+    [Fact]
+    public void Volume_FiresPropertyChanged_ForBoostRangeValue()
+    {
+        var member = new VoiceMemberInfo(); // starts at 1.0
+        string? firedProperty = null;
+        member.PropertyChanged += (_, e) => firedProperty = e.PropertyName;
+
+        member.Volume = 1.5f;
+
+        Assert.Equal(nameof(VoiceMemberInfo.Volume), firedProperty);
+    }
+
+    [Fact]
+    public void Volume_AcceptsAndStores_MaxBoostValue()
+    {
+        var member = new VoiceMemberInfo();
+        member.Volume = 2.0f;
+        Assert.Equal(2.0f, member.Volume);
+    }
+
+    [Fact]
+    public void Volume_FiresPropertyChanged_ForMaxBoostValue()
+    {
+        var member = new VoiceMemberInfo(); // starts at 1.0
+        string? firedProperty = null;
+        member.PropertyChanged += (_, e) => firedProperty = e.PropertyName;
+
+        member.Volume = 2.0f;
+
+        Assert.Equal(nameof(VoiceMemberInfo.Volume), firedProperty);
+    }
 }
 
 // ── VolumeToPercentConverter ──────────────────────────────────────────────────
@@ -117,6 +159,8 @@ public class VolumeToPercentConverterTests
     [InlineData(0.333f, "33%")]
     [InlineData(0.995f, "100%")] // rounds up
     [InlineData(0.004f, "0%")]   // rounds down
+    [InlineData(1.5f,   "150%")] // boost range
+    [InlineData(2.0f,   "200%")] // max boost
     public void Convert_Float_ReturnsCorrectPercentString(float input, string expected)
     {
         var result = _converter.Convert(input, typeof(string), null!, Culture);
@@ -168,10 +212,17 @@ public class VoiceServiceVolumeTests
     }
 
     [Fact]
-    public void SetUserVolume_DoesNotThrow_ForValueAboveOne()
+    public void SetUserVolume_DoesNotThrow_ForValueAboveTwo()
     {
         using var svc = new VoiceService();
-        svc.SetUserVolume(42, 2.0f); // clamped to 1.0 internally
+        svc.SetUserVolume(42, 3.0f); // clamped to 2.0 internally
+    }
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_ForValueBetweenOneAndTwo()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 1.5f); // valid boost: 150%
     }
 
     [Fact]
@@ -197,5 +248,21 @@ public class VoiceServiceVolumeTests
         svc.SetUserVolume(1, 0.5f);
         svc.Stop(); // clears _userStreams and _userVolumes
         svc.SetUserVolume(1, 0.9f); // must not throw on fresh empty state
+    }
+
+    // ── Regression: volume-slider-max-200 — clamp boundaries ─────────────────
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_AtExactMinBoundary()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 0.0f); // exact lower clamp boundary
+    }
+
+    [Fact]
+    public void SetUserVolume_DoesNotThrow_AtExactMaxBoundary()
+    {
+        using var svc = new VoiceService();
+        svc.SetUserVolume(42, 2.0f); // exact upper clamp boundary — must not be clamped down to 1.0
     }
 }

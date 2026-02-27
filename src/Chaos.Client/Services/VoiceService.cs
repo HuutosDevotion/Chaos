@@ -1,13 +1,14 @@
 using System.Net;
 using System.Net.Sockets;
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 
 namespace Chaos.Client.Services;
 
 public class VoiceService : IDisposable
 {
     private WaveInEvent? _waveIn;
-    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider)> _userStreams = new();
+    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider)> _userStreams = new();
     private readonly Dictionary<int, float> _userVolumes = new();
     private UdpClient? _udpClient;
     private CancellationTokenSource? _receiveCts;
@@ -69,7 +70,7 @@ public class VoiceService : IDisposable
         set
         {
             _isDeafened = value;
-            foreach (var (waveOut, _) in _userStreams.Values)
+            foreach (var (waveOut, _, _) in _userStreams.Values)
             {
                 if (_isDeafened) waveOut.Stop();
                 else if (_isActive) waveOut.Play();
@@ -180,7 +181,7 @@ public class VoiceService : IDisposable
         catch { }
     }
 
-    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
+    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider) GetOrCreateUserStream(int userId)
     {
         if (_userStreams.TryGetValue(userId, out var existing))
             return existing;
@@ -189,13 +190,13 @@ public class VoiceService : IDisposable
         var waveOut = new WaveOutEvent { DeviceNumber = ResolveOutputDevice(OutputDeviceName) };
         waveOut.Init(provider);
         if (!_isDeafened) waveOut.Play();
-        _userStreams[userId] = (waveOut, provider);
-        return (waveOut, provider);
+        _userStreams[userId] = (waveOut, provider, volumeProvider);
+        return (waveOut, provider, volumeProvider);
     }
 
     public void SetUserVolume(int userId, float volume)
     {
-        volume = Math.Clamp(volume, 0f, 1f);
+        volume = Math.Clamp(volume, 0f, 2f);
         _userVolumes[userId] = volume;
     }
 
@@ -268,7 +269,7 @@ public class VoiceService : IDisposable
 
         try { _waveIn?.StopRecording(); } catch { }
 
-        foreach (var (waveOut, _) in _userStreams.Values)
+        foreach (var (waveOut, _, _) in _userStreams.Values)
         {
             try { waveOut.Stop(); } catch { }
             waveOut.Dispose();
