@@ -330,7 +330,7 @@
         <!-- Tooltip Style (implicit — applies to all tooltips) -->
         <Style TargetType="ToolTip">
             <Setter Property="Placement" Value="Center" />
-            <Setter Property="VerticalOffset" Value="-30" />
+            <Setter Property="MaxWidth" Value="200" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToolTip">
@@ -358,7 +358,8 @@
                                     BorderThickness="1"
                                     CornerRadius="6"
                                     Padding="8,5">
-                                <ContentPresenter />
+                                <TextBlock Text="{TemplateBinding Content}"
+                                           TextWrapping="Wrap" />
                             </Border>
                         </Grid>
                     </ControlTemplate>

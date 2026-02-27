@@ -32,32 +32,19 @@ public static class TooltipHelper
     {
         if (sender is not FrameworkElement element || element.ToolTip is not ToolTip tooltip) return;
 
-        // Force the template so Measure has something to work with.
+        // If the element's Tag holds a string, use it as the tooltip text.
+        // Tag is bound on the Button (correct DataContext) so this always resolves,
+        // avoiding the DataContext inheritance problem inside the popup.
+        if (element.Tag is string tag && tag.Length > 0)
+            tooltip.Content = tag;
+
+        // Measure so the height reflects the actual content.
         tooltip.ApplyTemplate();
-        tooltip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        tooltip.Measure(new Size(200, double.PositiveInfinity));
 
-        // ToolTipOpening fires before PopupControlService configures the popup, so offsets
-        // set here are picked up before positioning. Write to both the ToolTip's own
-        // HorizontalOffset *and* the ToolTipService attached property on the owner — different
-        // WPF versions/code paths may read either one.
-        Apply(element, tooltip, tooltip.DesiredSize.Width);
-
-        // Opened fires once the popup is visible and laid out. ActualWidth is the real
-        // rendered width, correcting any inaccuracy from Measure (e.g. unresolved bindings).
-        RoutedEventHandler? handler = null;
-        handler = (_, _) =>
-        {
-            tooltip.Opened -= handler;
-            Apply(element, tooltip, tooltip.ActualWidth);
-        };
-        tooltip.Opened += handler;
-    }
-
-    private static void Apply(FrameworkElement element, ToolTip tooltip, double tooltipWidth)
-    {
-        if (tooltipWidth <= 0) return;
-        double offset = (element.ActualWidth - tooltipWidth) / 2;
-        tooltip.HorizontalOffset = offset;
-        ToolTipService.SetHorizontalOffset(element, offset);
+        // Placement="Center" handles horizontal centering automatically.
+        // Set VerticalOffset so the tail tip sits flush against the element's top edge.
+        if (tooltip.DesiredSize.Height > 0)
+            tooltip.VerticalOffset = -(element.ActualHeight / 2 + tooltip.DesiredSize.Height / 2);
     }
 }
