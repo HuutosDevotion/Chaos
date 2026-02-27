@@ -9,6 +9,7 @@ public class ChatService : IAsyncDisposable
 {
     private HubConnection? _connection;
     private string _baseUrl = string.Empty;
+    public string BaseUrl => _baseUrl;
 
     public event Action<MessageDto>? MessageReceived;
     public event Action<string, int, int>? UserJoinedVoice; // username, channelId, voiceUserId
@@ -121,7 +122,7 @@ public class ChatService : IAsyncDisposable
         if (!response.IsSuccessStatusCode) return null;
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var relative = doc.RootElement.GetProperty("url").GetString();
-        return relative is null ? null : $"{_baseUrl}{relative}";
+        return relative;
     }
 
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)

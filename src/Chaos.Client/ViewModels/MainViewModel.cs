@@ -4,11 +4,73 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Chaos.Client.Services;
 using Chaos.Shared;
-using Chaos.Client;
 
 namespace Chaos.Client.ViewModels;
+
+public class MessageViewModel : INotifyPropertyChanged
+{
+    private bool _showHeader = true;
+    private readonly AppSettings? _settings;
+    private readonly string _baseUrl = string.Empty;
+
+    public MessageDto Message { get; }
+    public string Author => Message.Author;
+    public DateTime Timestamp => Message.Timestamp;
+    public string Content => Message.Content;
+    public string? ImageUrl => Message.ImageUrl is null ? null
+        : (Message.ImageUrl.StartsWith("http://") || Message.ImageUrl.StartsWith("https://"))
+            ? Message.ImageUrl
+            : $"{_baseUrl}{Message.ImageUrl}";
+    public bool HasImage => Message.HasImage;
+    public int ChannelId => Message.ChannelId;
+
+    public bool ShowHeader
+    {
+        get => _showHeader;
+        set
+        {
+            if (_showHeader == value) return;
+            _showHeader = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Padding));
+        }
+    }
+
+    /// <summary>
+    /// Per-message padding. Group starters get MessageSpacing on top;
+    /// continuation messages within a group get a fixed 1px gap.
+    /// </summary>
+    public Thickness Padding
+    {
+        get
+        {
+            double top = _showHeader ? (_settings?.MessageSpacing ?? 4.0) : 1.0;
+            return new Thickness(16, top, 16, 0);
+        }
+    }
+
+    public MessageViewModel(MessageDto message, AppSettings? settings = null, string baseUrl = "")
+    {
+        Message = message;
+        _settings = settings;
+        _baseUrl = baseUrl;
+        if (_settings is not null)
+            _settings.PropertyChanged += OnSettingsChanged;
+    }
+
+    private void OnSettingsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AppSettings.MessageSpacing) && _showHeader)
+            OnPropertyChanged(nameof(Padding));
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
 
 public class VoiceMemberInfo : INotifyPropertyChanged
 {
@@ -67,6 +129,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
+    private readonly IKeyValueStore _settingsStore;
+    private readonly DispatcherTimer _settingsSaveTimer;
+
+    public AppSettings Settings { get; }
+
+    private double _windowLeft = -999999;
+    private double _windowTop = -999999;
+    private double _windowWidth = 0;
+    private double _windowHeight = 0;
+    private bool   _windowMaximized = false;
 
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
@@ -88,8 +160,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
 
+    private object? _activeModal;
+
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
-    public ObservableCollection<MessageDto> Messages { get; } = new();
+    public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
 
     public string ServerAddress
@@ -101,7 +175,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string Username
     {
         get => _username;
-        set { _username = value; OnPropertyChanged(); }
+        set { _username = value; OnPropertyChanged(); _settingsSaveTimer?.Stop(); _settingsSaveTimer?.Start(); }
     }
 
     public string MessageText
@@ -121,6 +195,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         get => _selectedSuggestionIndex;
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
+
+    public object? ActiveModal
+    {
+        get => _activeModal;
+        private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
+    }
+
+    public bool IsAnyModalOpen => _activeModal is not null;
+
+    public void CloseModal() => ActiveModal = null;
 
     public string ConnectionStatus
     {
@@ -269,17 +353,50 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
 
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
-    public ICommand CreateChannelCommand => new RelayCommand(async _ => await CreateChannelAsync(), _ => IsConnected);
-    public ICommand RenameChannelCommand => new RelayCommand(async p => await RenameChannelAsync(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
-    public ICommand DeleteChannelCommand => new RelayCommand(async p => await DeleteChannelAsync(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
+    public ICommand CreateChannelCommand => new RelayCommand(_ => OpenCreateChannelModal(), _ => IsConnected);
+    public ICommand RenameChannelCommand => new RelayCommand(p => OpenRenameChannelModal(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
+    public ICommand DeleteChannelCommand => new RelayCommand(p => OpenDeleteChannelModal(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
     public ICommand SendMessageCommand => new RelayCommand(async _ => await SendMessageAsync(), _ => IsConnected && (!string.IsNullOrWhiteSpace(MessageText) || HasPendingImage));
     public ICommand ToggleMuteCommand => new RelayCommand(_ => IsMuted = !IsMuted);
     public ICommand ToggleDeafenCommand => new RelayCommand(_ => IsDeafened = !IsDeafened);
     public ICommand ChannelClickCommand => new RelayCommand(async p => await OnChannelClicked(p as ChannelViewModel));
     public ICommand DisconnectVoiceCommand => new RelayCommand(async _ => await LeaveVoice());
+    public ICommand OpenSettingsCommand => new RelayCommand(_ => OpenSettingsModal());
 
-    public MainViewModel()
+    public MainViewModel() : this(new LocalJsonKeyValueStore()) { }
+
+    public MainViewModel(IKeyValueStore store)
     {
+        _settingsStore = store;
+
+        Settings = new AppSettings
+        {
+            FontSize        = _settingsStore.Get("FontSize",        14.0),
+            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
+            UiScale         = _settingsStore.Get("UiScale",         1.0),
+            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
+            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
+            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
+            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
+            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+        };
+
+        _username = _settingsStore.Get("Username", string.Empty);
+
+        _windowLeft      = _settingsStore.Get("WindowLeft",      -999999.0);
+        _windowTop       = _settingsStore.Get("WindowTop",       -999999.0);
+        _windowWidth     = _settingsStore.Get("WindowWidth",      0.0);
+        _windowHeight    = _settingsStore.Get("WindowHeight",     0.0);
+        _windowMaximized = _settingsStore.Get("WindowMaximized",  false);
+
+        _voiceService.InputDeviceName = Settings.InputDevice;
+        _voiceService.OutputDeviceName = Settings.OutputDevice;
+        _voiceService.InputVolume = Settings.InputVolume;
+        _voiceService.OutputVolume = Settings.OutputVolume;
+
+        _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
+
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
         _chatService.UserLeftVoice += OnUserLeftVoice;
@@ -292,7 +409,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelRenamed += OnChannelRenamed;
         _voiceService.MicLevelChanged += level =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() =>
+            SafeDispatchAsync(() =>
             {
                 MicLevel = level * 200;
                 // Update speaking indicator for self
@@ -307,7 +424,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         };
         _voiceService.RemoteAudioLevel += (remoteUserId, level) =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() =>
+            SafeDispatchAsync(() =>
             {
                 if (!_voiceChannelId.HasValue) return;
                 var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
@@ -318,10 +435,70 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         };
         _voiceService.Error += error =>
         {
-            Application.Current.Dispatcher.BeginInvoke(() => VoiceStatus = error);
+            SafeDispatchAsync(() => VoiceStatus = error);
         };
 
         _userId = Random.Shared.Next(1, 100000);
+
+        Settings.PropertyChanged += (_, e) =>
+        {
+            _settingsSaveTimer.Stop();
+            _settingsSaveTimer.Start();
+
+            if (e.PropertyName == nameof(AppSettings.GroupMessages))
+                RecomputeGrouping();
+            if (e.PropertyName == nameof(AppSettings.InputDevice))
+            {
+                _voiceService.InputDeviceName = Settings.InputDevice;
+                if (IsInVoice) RestartVoice();
+            }
+            if (e.PropertyName == nameof(AppSettings.OutputDevice))
+            {
+                _voiceService.OutputDeviceName = Settings.OutputDevice;
+                if (IsInVoice) RestartVoice();
+            }
+            if (e.PropertyName == nameof(AppSettings.InputVolume))
+                _voiceService.InputVolume = Settings.InputVolume;
+            if (e.PropertyName == nameof(AppSettings.OutputVolume))
+                _voiceService.OutputVolume = Settings.OutputVolume;
+        };
+    }
+
+    private static void SafeDispatch(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.Invoke(action);
+    }
+
+    private static void SafeDispatchAsync(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.BeginInvoke(action);
+    }
+
+    private void RestartVoice()
+    {
+        if (!_voiceChannelId.HasValue) return;
+        var host = ServerAddress.Replace("http://", "").Replace("https://", "");
+        if (host.Contains('/')) host = host.Split('/')[0];
+        if (host.Contains(':')) host = host.Split(':')[0];
+        if (string.IsNullOrEmpty(host)) host = "localhost";
+        _voiceService.Start(host, 9000, _userId, _voiceChannelId.Value);
+    }
+
+    private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>
+        !Settings.GroupMessages || prev is null || prev.Author != msg.Author;
+
+    private void RecomputeGrouping()
+    {
+        MessageViewModel? prev = null;
+        foreach (var msg in Messages)
+        {
+            msg.ShowHeader = ShouldShowHeader(msg, prev);
+            prev = msg;
+        }
     }
 
     private async Task ConnectAsync()
@@ -344,7 +521,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
 
-            Application.Current.Dispatcher.Invoke(() =>
+            SafeDispatch(() =>
             {
                 Channels.Clear();
                 foreach (var ch in channels.OrderBy(c => c.Type))
@@ -406,11 +583,17 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         await _chatService.JoinTextChannel(channel.Id);
         var messages = await _chatService.GetMessages(channel.Id);
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             Messages.Clear();
+            MessageViewModel? prev = null;
             foreach (var msg in messages)
-                Messages.Add(msg);
+            {
+                var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
+                vm.ShowHeader = ShouldShowHeader(vm, prev);
+                Messages.Add(vm);
+                prev = vm;
+            }
         });
     }
 
@@ -489,12 +672,17 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnMessageReceived(MessageDto msg)
     {
         if (msg.ChannelId == _selectedTextChannel?.Id)
-            Application.Current.Dispatcher.Invoke(() => Messages.Add(msg));
+            SafeDispatch(() =>
+            {
+                var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
+                vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
+                Messages.Add(vm);
+            });
     }
 
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is not null && !ch.VoiceMembers.Any(m => m.Username == username))
@@ -508,7 +696,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnUserLeftVoice(string username, int channelId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
@@ -519,7 +707,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnVoiceMembersReceived(int channelId, List<VoiceMemberDto> members)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var ch = Channels.FirstOrDefault(c => c.Id == channelId);
             if (ch is null) return;
@@ -537,8 +725,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnUserDisconnected(string username)
     {
-        // Remove from all voice channels
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             foreach (var ch in Channels)
             {
@@ -549,41 +736,55 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
-    private async Task CreateChannelAsync()
+    private void OpenCreateChannelModal()
     {
-        var dialog = new ChannelDialog("Create Channel", string.Empty, showTypeSelector: true)
-            { Owner = Application.Current.MainWindow };
-        if (dialog.ShowDialog() != true) return;
-        var dto = await _chatService.CreateChannelAsync(dialog.ChannelName, dialog.SelectedType);
-        if (dto?.Type == ChannelType.Text)
-        {
-            var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
-            if (channel is not null)
-                SelectedTextChannel = channel;
-        }
+        ActiveModal = new CreateChannelModalViewModel(
+            confirm: async (name, type) =>
+            {
+                ActiveModal = null;
+                var dto = await _chatService.CreateChannelAsync(name, type);
+                if (dto?.Type == ChannelType.Text)
+                {
+                    var channel = Channels.FirstOrDefault(c => c.Id == dto.Id);
+                    if (channel is not null)
+                        SelectedTextChannel = channel;
+                }
+            },
+            cancel: () => ActiveModal = null);
     }
 
-    private async Task RenameChannelAsync(ChannelViewModel? channel)
+    private void OpenRenameChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        var dialog = new ChannelDialog("Rename Channel", channel.Name, showTypeSelector: false)
-            { Owner = Application.Current.MainWindow };
-        if (dialog.ShowDialog() != true) return;
-        await _chatService.RenameChannelAsync(channel.Id, dialog.ChannelName);
+        ActiveModal = new RenameChannelModalViewModel(
+            initialName: channel.Name,
+            confirm: async name =>
+            {
+                ActiveModal = null;
+                await _chatService.RenameChannelAsync(channel.Id, name);
+            },
+            cancel: () => ActiveModal = null);
     }
 
-    private async Task DeleteChannelAsync(ChannelViewModel? channel)
+    private void OpenDeleteChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        var result = MessageBox.Show($"Delete \"{channel.Name}\"? This cannot be undone.",
-            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) return;
-        await _chatService.DeleteChannelAsync(channel.Id);
+        ActiveModal = new DeleteChannelModalViewModel(
+            channelName: channel.Name,
+            confirm: async () =>
+            {
+                ActiveModal = null;
+                await _chatService.DeleteChannelAsync(channel.Id);
+            },
+            cancel: () => ActiveModal = null);
     }
+
+    private void OpenSettingsModal() =>
+        ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
 
     private void OnChannelCreated(ChannelDto dto)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             if (Channels.Any(c => c.Id == dto.Id)) return;
             var vm = new ChannelViewModel(dto);
@@ -602,7 +803,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnChannelDeleted(int channelId)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var vm = Channels.FirstOrDefault(c => c.Id == channelId);
             if (vm is null) return;
@@ -622,7 +823,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnChannelRenamed(ChannelDto dto)
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             var vm = Channels.FirstOrDefault(c => c.Id == dto.Id);
             if (vm is null) return;
@@ -634,7 +835,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnDisconnected()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        SafeDispatch(() =>
         {
             IsConnected = false;
             ConnectionStatus = "Disconnected";
@@ -650,8 +851,40 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
+    public void UpdateWindowBounds(double left, double top, double width, double height, bool maximized)
+    {
+        _windowLeft      = left;
+        _windowTop       = top;
+        _windowWidth     = width;
+        _windowHeight    = height;
+        _windowMaximized = maximized;
+    }
+
+    public (double Left, double Top, double Width, double Height, bool Maximized) GetWindowBounds() =>
+        (_windowLeft, _windowTop, _windowWidth, _windowHeight, _windowMaximized);
+
+    public void FlushSettings()
+    {
+        _settingsStore.Set("FontSize",       Settings.FontSize);
+        _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
+        _settingsStore.Set("UiScale",        Settings.UiScale);
+        _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
+        _settingsStore.Set("InputDevice",    Settings.InputDevice);
+        _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
+        _settingsStore.Set("InputVolume",    Settings.InputVolume);
+        _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        _settingsStore.Set("Username",       Username);
+        _settingsStore.Set("WindowLeft",      _windowLeft);
+        _settingsStore.Set("WindowTop",       _windowTop);
+        _settingsStore.Set("WindowWidth",     _windowWidth);
+        _settingsStore.Set("WindowHeight",    _windowHeight);
+        _settingsStore.Set("WindowMaximized", _windowMaximized);
+    }
+
     public async ValueTask DisposeAsync()
     {
+        _settingsSaveTimer.Stop();
+        FlushSettings();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();
     }
