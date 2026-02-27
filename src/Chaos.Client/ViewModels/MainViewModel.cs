@@ -20,7 +20,10 @@ public class MessageViewModel : INotifyPropertyChanged
     public string Author => Message.Author;
     public DateTime Timestamp => Message.Timestamp;
     public string Content => Message.Content;
-    public string? ImageUrl => Message.ImageUrl is null ? null : $"{_baseUrl}{Message.ImageUrl}";
+    public string? ImageUrl => Message.ImageUrl is null ? null
+        : (Message.ImageUrl.StartsWith("http://") || Message.ImageUrl.StartsWith("https://"))
+            ? Message.ImageUrl
+            : $"{_baseUrl}{Message.ImageUrl}";
     public bool HasImage => Message.HasImage;
     public int ChannelId => Message.ChannelId;
 
