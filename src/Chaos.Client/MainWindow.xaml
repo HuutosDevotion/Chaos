@@ -6,6 +6,7 @@
         xmlns:vm="clr-namespace:Chaos.Client.ViewModels"
         xmlns:conv="clr-namespace:Chaos.Client.Converters"
         xmlns:shared="clr-namespace:Chaos.Shared;assembly=Chaos.Shared"
+        xmlns:behaviors="clr-namespace:Chaos.Client.Behaviors"
         mc:Ignorable="d"
         Title="Chaos" Height="700" Width="1100"
         Background="{StaticResource BgMediumBrush}"
@@ -621,7 +622,12 @@
                                 Command="{Binding CreateChannelCommand}"
                                 FontSize="18" FontWeight="Bold"
                                 Padding="8,0" VerticalAlignment="Center"
-                                ToolTip="Create Channel" />
+                                behaviors:TooltipHelper.CenterOnElement="True"
+                                ToolTipService.InitialShowDelay="0">
+                            <Button.ToolTip>
+                                <ToolTip Content="Create Channel" />
+                            </Button.ToolTip>
+                        </Button>
                         <TextBlock Text="Chaos Server" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    VerticalAlignment="Center" />
@@ -866,20 +872,39 @@
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding ToggleMuteCommand}"
                                 FontSize="11" Padding="4,4"
-                                Margin="4,0" VerticalAlignment="Center" />
+                                Margin="4,0" VerticalAlignment="Center"
+                                Tag="{Binding MuteTooltipText}"
+                                behaviors:TooltipHelper.CenterOnElement="True"
+                                ToolTipService.InitialShowDelay="0">
+                            <Button.ToolTip>
+                                <ToolTip />
+                            </Button.ToolTip>
+                        </Button>
 
                         <Button Grid.Column="2" Content="{Binding DeafenButtonText}"
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding ToggleDeafenCommand}"
                                 FontSize="11" Padding="4,4"
-                                VerticalAlignment="Center" />
+                                VerticalAlignment="Center"
+                                Tag="{Binding DeafenTooltipText}"
+                                behaviors:TooltipHelper.CenterOnElement="True"
+                                ToolTipService.InitialShowDelay="0">
+                            <Button.ToolTip>
+                                <ToolTip />
+                            </Button.ToolTip>
+                        </Button>
 
                         <Button Grid.Column="3" Content="⚙"
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding OpenSettingsCommand}"
                                 FontSize="13" Padding="6,4"
                                 Margin="4,0,0,0" VerticalAlignment="Center"
-                                ToolTip="Settings" />
+                                behaviors:TooltipHelper.CenterOnElement="True"
+                                ToolTipService.InitialShowDelay="0">
+                            <Button.ToolTip>
+                                <ToolTip Content="Settings" />
+                            </Button.ToolTip>
+                        </Button>
                     </Grid>
                 </Border>
             </Grid>

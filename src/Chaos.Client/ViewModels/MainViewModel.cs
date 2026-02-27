@@ -235,6 +235,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _voiceService.IsMuted = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(MuteButtonText));
+            OnPropertyChanged(nameof(MuteTooltipText));
         }
     }
 
@@ -247,6 +248,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _voiceService.IsDeafened = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(DeafenButtonText));
+            OnPropertyChanged(nameof(DeafenTooltipText));
         }
     }
 
@@ -318,8 +320,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SelectedSuggestionIndex = next;
     }
 
-    public string MuteButtonText => IsMuted ? "\U0001F507 Unmute" : "\U0001F3A4 Mute";
-    public string DeafenButtonText => IsDeafened ? "\U0001F508 Undeafen" : "\U0001F50A Deafen";
+    public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
+    public string MuteTooltipText => IsMuted ? "Unmute" : "Mute";
+    public string DeafenButtonText => IsDeafened ? "\U0001F508" : "\U0001F50A";
+    public string DeafenTooltipText => IsDeafened ? "Undeafen" : "Deafen";
 
     public bool IsInVoice => _voiceChannelId.HasValue;
     public string VoiceChannelName

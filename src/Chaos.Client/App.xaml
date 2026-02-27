@@ -326,5 +326,48 @@
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="FontSize" Value="14" />
         </Style>
+
+        <!-- Tooltip Style (implicit — applies to all tooltips) -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Placement" Value="Center" />
+            <Setter Property="MaxWidth" Value="200" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <!-- Grid z-order: elements declared later render on top.
+                             Bubble is declared first (behind); tail is declared last (in front).
+                             The tail's fill covers the bubble's bottom stroke at the junction.
+                             The open path (no Z) means only the two diagonal sides are stroked — no top edge line. -->
+                        <Grid TextElement.Foreground="{StaticResource TextPrimaryBrush}"
+                              TextElement.FontSize="11"
+                              TextElement.FontWeight="SemiBold">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <!-- Bubble first (lower z-order) -->
+                            <Border Grid.Row="0"
+                                    Background="{StaticResource BgDarkestBrush}"
+                                    BorderBrush="#3A3C42"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="8,5">
+                                <TextBlock Text="{TemplateBinding Content}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+                            <!-- Tail second (higher z-order) — fill covers the bubble's bottom stroke at the junction;
+                                 open path (no Z) so no stroke is drawn along the top edge of the triangle. -->
+                            <Path Grid.Row="1"
+                                  Data="M 0,0 L 6,7 L 12,0"
+                                  Fill="{StaticResource BgDarkestBrush}"
+                                  Stroke="#3A3C42"
+                                  StrokeThickness="1"
+                                  HorizontalAlignment="Center"
+                                  Margin="0,-1,0,0" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>
