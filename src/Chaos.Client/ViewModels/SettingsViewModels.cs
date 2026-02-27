@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Media;
 using Chaos.Shared;
 using NAudio.Wave;
 
@@ -36,18 +38,53 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 {
     public AppSettings Settings { get; }
     public IReadOnlyList<MessageViewModel> SampleMessages { get; }
+    public FlowDocument PreviewDocument { get; private set; } = new();
 
     public AppearanceSettingsViewModel(AppSettings settings, Action<SettingsPageViewModel> select)
         : base("Appearance", select)
     {
         Settings = settings;
         SampleMessages = BuildSampleMessages();
+        RebuildPreviewDocument();
 
         settings.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(AppSettings.GroupMessages))
                 RecomputeGrouping();
+
+            if (e.PropertyName is nameof(AppSettings.GroupMessages) or nameof(AppSettings.MessageSpacing))
+                RebuildPreviewDocument();
         };
+    }
+
+    private void RebuildPreviewDocument()
+    {
+        var res       = Application.Current.Resources;
+        var primary   = (Brush)res["TextPrimaryBrush"];
+        var secondary = (Brush)res["TextSecondaryBrush"];
+        var muted     = (Brush)res["TextMutedBrush"];
+
+        var doc = new FlowDocument { PagePadding = new Thickness(0) };
+        foreach (var msg in SampleMessages)
+        {
+            if (msg.ShowHeader)
+            {
+                var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+                p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold });
+                p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
+                doc.Blocks.Add(p);
+            }
+            if (!string.IsNullOrEmpty(msg.Content))
+            {
+                double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
+                var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
+                        { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
+                doc.Blocks.Add(p);
+            }
+        }
+
+        PreviewDocument = doc;
+        OnPropertyChanged(nameof(PreviewDocument));
     }
 
     private MessageViewModel[] BuildSampleMessages()

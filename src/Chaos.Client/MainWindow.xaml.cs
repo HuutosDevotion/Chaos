@@ -139,6 +139,13 @@ public partial class MainWindow : Window
                     { if (atBottom) chatScroll.ScrollToBottom(); };
             }
 
+            // Rebuild the document when appearance settings that affect layout change.
+            vm.Settings.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName is nameof(AppSettings.MessageSpacing) or nameof(AppSettings.GroupMessages))
+                    RebuildMessageDoc(vm);
+            };
+
             // Rebuild / append to the FlowDocument and scroll to bottom on every change.
             ((INotifyCollectionChanged)vm.Messages).CollectionChanged += (_, args) =>
             {
