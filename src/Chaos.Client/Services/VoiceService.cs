@@ -1,14 +1,13 @@
 using System.Net;
 using System.Net.Sockets;
 using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 
 namespace Chaos.Client.Services;
 
 public class VoiceService : IDisposable
 {
     private WaveInEvent? _waveIn;
-    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider)> _userStreams = new();
+    private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider)> _userStreams = new();
     private readonly Dictionary<int, float> _userVolumes = new();
     private UdpClient? _udpClient;
     private CancellationTokenSource? _receiveCts;
@@ -51,7 +50,7 @@ public class VoiceService : IDisposable
         set
         {
             _isDeafened = value;
-            foreach (var (waveOut, _, _) in _userStreams.Values)
+            foreach (var (waveOut, _) in _userStreams.Values)
             {
                 if (_isDeafened) waveOut.Stop();
                 else if (_isActive) waveOut.Play();
@@ -154,29 +153,40 @@ public class VoiceService : IDisposable
         catch { }
     }
 
-    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider, VolumeSampleProvider VolumeProvider) GetOrCreateUserStream(int userId)
+    private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
     {
         if (_userStreams.TryGetValue(userId, out var existing))
             return existing;
 
         var provider = new BufferedWaveProvider(VoiceFormat) { DiscardOnBufferOverflow = true, BufferDuration = TimeSpan.FromSeconds(2) };
-        var volumeProvider = new VolumeSampleProvider(new WaveToSampleProvider(provider))
-        {
-            Volume = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f
-        };
         var waveOut = new WaveOutEvent();
-        waveOut.Init(volumeProvider);
+        waveOut.Init(provider);
         if (!_isDeafened) waveOut.Play();
-        _userStreams[userId] = (waveOut, provider, volumeProvider);
-        return (waveOut, provider, volumeProvider);
+        _userStreams[userId] = (waveOut, provider);
+        return (waveOut, provider);
     }
 
     public void SetUserVolume(int userId, float volume)
     {
         volume = Math.Clamp(volume, 0f, 2f);
         _userVolumes[userId] = volume;
-        if (_userStreams.TryGetValue(userId, out var stream))
-            stream.VolumeProvider.Volume = volume;
+    }
+
+    // Scales 16-bit PCM samples by volume in-place on a copy, clamping to int16 range.
+    private static byte[] ApplyVolumeToPcm(byte[] buffer, int offset, int length, float volume)
+    {
+        var result = new byte[length];
+        for (int i = 0; i < length - 1; i += 2)
+        {
+            short sample = (short)(buffer[offset + i] | (buffer[offset + i + 1] << 8));
+            float scaled = sample * volume;
+            if (scaled > 32767f) scaled = 32767f;
+            if (scaled < -32768f) scaled = -32768f;
+            short s = (short)scaled;
+            result[i] = (byte)s;
+            result[i + 1] = (byte)(s >> 8);
+        }
+        return result;
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -209,7 +219,11 @@ public class VoiceService : IDisposable
                 if (audioLength > 0 && !_isDeafened)
                 {
                     var stream = GetOrCreateUserStream(senderId);
-                    stream.Provider.AddSamples(result.Buffer, 8, audioLength);
+                    float volume = _userVolumes.TryGetValue(senderId, out var vol) ? vol : 1.0f;
+                    var audio = volume == 1.0f
+                        ? result.Buffer[8..]
+                        : ApplyVolumeToPcm(result.Buffer, 8, audioLength, volume);
+                    stream.Provider.AddSamples(audio, 0, audioLength);
                 }
             }
             catch (OperationCanceledException)
@@ -227,7 +241,7 @@ public class VoiceService : IDisposable
 
         try { _waveIn?.StopRecording(); } catch { }
 
-        foreach (var (waveOut, _, _) in _userStreams.Values)
+        foreach (var (waveOut, _) in _userStreams.Values)
         {
             try { waveOut.Stop(); } catch { }
             waveOut.Dispose();
