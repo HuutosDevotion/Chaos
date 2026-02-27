@@ -16,6 +16,7 @@
         <Color x:Key="AccentBlue">#5865F2</Color>
         <Color x:Key="AccentGreen">#23A559</Color>
         <Color x:Key="AccentRed">#ED4245</Color>
+        <Color x:Key="WarningYellow">#FEE75C</Color>
 
         <SolidColorBrush x:Key="BgDarkestBrush" Color="{StaticResource BgDarkest}" />
         <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDark}" />
@@ -28,6 +29,7 @@
         <SolidColorBrush x:Key="AccentBlueBrush" Color="{StaticResource AccentBlue}" />
         <SolidColorBrush x:Key="AccentGreenBrush" Color="{StaticResource AccentGreen}" />
         <SolidColorBrush x:Key="AccentRedBrush" Color="{StaticResource AccentRed}" />
+        <SolidColorBrush x:Key="WarningYellowBrush" Color="{StaticResource WarningYellow}" />
 
         <!-- Button Style -->
         <Style x:Key="DarkButton" TargetType="Button">

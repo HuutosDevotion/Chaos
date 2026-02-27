@@ -42,6 +42,11 @@ public class ScreenShareService : IDisposable
     private StreamQuality _quality = StreamQuality.Medium;
     private int _frameId;
 
+    // Adaptive quality tracking
+    private int _framesComplete;
+    private int _framesDropped;
+    private DateTime _lastQualityCheck = DateTime.UtcNow;
+
     public event Action<int, BitmapSource>? FrameReceived; // senderId, frame
     public event Action<string>? Error;
 
@@ -112,12 +117,14 @@ public class ScreenShareService : IDisposable
 
     private void CaptureLoop(CancellationToken ct)
     {
-        var preset = Presets[_quality];
-        var frameInterval = TimeSpan.FromMilliseconds(1000.0 / preset.Fps);
         var target = _captureTarget!;
 
         while (!ct.IsCancellationRequested)
         {
+            // Use current quality (may change via adaptive adjustment)
+            var preset = Presets[_quality];
+            var frameInterval = TimeSpan.FromMilliseconds(1000.0 / preset.Fps);
+
             // Check if window target is still alive
             if (target.Type == CaptureTargetType.Window && !IsWindow(target.Handle))
             {
@@ -142,23 +149,23 @@ public class ScreenShareService : IDisposable
                 //   Fragmented: [4B userId][4B channelId][4B frameId][1B flags=0x01][2B chunkIdx][2B totalChunks][chunkData]
                 const int singleHeaderSize = 13;
                 const int fragHeaderSize = 17;
-                const int maxChunk = 60000;
+                const int maxPayload = 1200; // MTU-safe for all networks
 
-                if (jpegData.Length + singleHeaderSize <= maxChunk)
+                if (jpegData.Length + singleHeaderSize <= maxPayload)
                 {
-                    // Single packet
+                    // Single packet (small frames only — rare at reasonable quality)
                     var packet = new byte[singleHeaderSize + jpegData.Length];
                     BitConverter.GetBytes(_videoUserId).CopyTo(packet, 0);
                     BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
                     BitConverter.GetBytes(_frameId).CopyTo(packet, 8);
-                    packet[12] = 0x00; // single-frame flag
+                    packet[12] = 0x00;
                     Buffer.BlockCopy(jpegData, 0, packet, singleHeaderSize, jpegData.Length);
 
                     _udpClient?.Send(packet, packet.Length, _serverEndpoint);
                 }
                 else
                 {
-                    int chunkDataSize = maxChunk - fragHeaderSize;
+                    int chunkDataSize = maxPayload - fragHeaderSize; // 1183 bytes per fragment
                     int totalChunks = (jpegData.Length + chunkDataSize - 1) / chunkDataSize;
 
                     for (int i = 0; i < totalChunks && !ct.IsCancellationRequested; i++)
@@ -170,7 +177,7 @@ public class ScreenShareService : IDisposable
                         BitConverter.GetBytes(_videoUserId).CopyTo(packet, 0);
                         BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
                         BitConverter.GetBytes(_frameId).CopyTo(packet, 8);
-                        packet[12] = 0x01; // fragmented flag
+                        packet[12] = 0x01;
                         BitConverter.GetBytes((short)i).CopyTo(packet, 13);
                         BitConverter.GetBytes((short)totalChunks).CopyTo(packet, 15);
                         Buffer.BlockCopy(jpegData, offset, packet, fragHeaderSize, len);
@@ -179,10 +186,16 @@ public class ScreenShareService : IDisposable
                     }
                 }
 
+                _framesComplete++;
+
                 // Local self-preview
                 var preview = DecodeJpeg(jpegData);
                 if (preview is not null)
                     FrameReceived?.Invoke(_videoUserId, preview);
+
+                // Adaptive quality check every 5 seconds
+                if ((DateTime.UtcNow - _lastQualityCheck).TotalSeconds >= 5)
+                    AdjustQuality();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -195,6 +208,22 @@ public class ScreenShareService : IDisposable
             if (elapsed < frameInterval)
                 Thread.Sleep(frameInterval - elapsed);
         }
+    }
+
+    private void AdjustQuality()
+    {
+        var total = _framesComplete + _framesDropped;
+        _lastQualityCheck = DateTime.UtcNow;
+        if (total == 0) return;
+
+        var lossRate = (double)_framesDropped / total;
+        if (lossRate > 0.20 && _quality > StreamQuality.Low)
+            _quality = _quality - 1;
+        else if (lossRate < 0.05 && _quality < StreamQuality.High)
+            _quality = _quality + 1;
+
+        _framesComplete = 0;
+        _framesDropped = 0;
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -239,9 +268,13 @@ public class ScreenShareService : IDisposable
                         frameBuffer[frameId] = entry;
                     }
 
-                    // Clean stale incomplete frames on every packet to prevent unbounded growth
+                    // Clean stale incomplete frames — count as dropped for adaptive quality
                     var staleIds = frameBuffer.Keys.Where(k => k < frameId - 10).ToList();
-                    foreach (var id in staleIds) frameBuffer.Remove(id);
+                    foreach (var id in staleIds)
+                    {
+                        _framesDropped++;
+                        frameBuffer.Remove(id);
+                    }
 
                     if (entry.Received < entry.Total)
                         continue;

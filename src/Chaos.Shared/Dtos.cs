@@ -52,6 +52,12 @@ public class SlashCommandDto
     public string Usage { get; set; } = string.Empty;
 }
 
+public enum VoiceMode
+{
+    VoiceActivity,
+    PushToTalk
+}
+
 public enum StreamQuality
 {
     Low,    // 480p, 10fps

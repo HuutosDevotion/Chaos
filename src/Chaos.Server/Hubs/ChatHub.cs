@@ -46,6 +46,8 @@ public class ChatHub : Hub
         await Clients.Caller.SendAsync("UsernameSet", username);
     }
 
+    public Task Ping() => Clients.Caller.SendAsync("Pong");
+
     public List<SlashCommandDto> GetAvailableCommands() => _commandDispatcher.GetCommandInfos();
 
     public async Task<List<ChannelDto>> GetChannels()

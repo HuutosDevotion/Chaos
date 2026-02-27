@@ -81,7 +81,7 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 
 public class VoiceSettingsViewModel : SettingsPageViewModel
 {
-    private static readonly WaveFormat MicTestFormat = new(16000, 16, 1);
+    private static readonly WaveFormat MicTestFormat = new(48000, 16, 1);
 
     private WaveInEvent? _micTestWaveIn;
     private WaveOutEvent? _micTestWaveOut;
@@ -92,6 +92,22 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
     public AppSettings Settings { get; }
     public ObservableCollection<string> InputDevices { get; } = new();
     public ObservableCollection<string> OutputDevices { get; } = new();
+
+    // Voice mode
+    public bool IsVoiceActivity
+    {
+        get => Settings.VoiceMode == VoiceMode.VoiceActivity;
+        set { if (value) Settings.VoiceMode = VoiceMode.VoiceActivity; OnPropertyChanged(); OnPropertyChanged(nameof(IsPushToTalk)); }
+    }
+
+    public bool IsPushToTalk
+    {
+        get => Settings.VoiceMode == VoiceMode.PushToTalk;
+        set { if (value) Settings.VoiceMode = VoiceMode.PushToTalk; OnPropertyChanged(); OnPropertyChanged(nameof(IsVoiceActivity)); }
+    }
+
+    // Opus bitrate options
+    public int[] BitrateOptions { get; } = { 32000, 48000, 64000, 96000 };
 
     public bool IsMicTesting
     {
@@ -125,6 +141,11 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         {
             if (e.PropertyName == nameof(AppSettings.OutputVolume) && _micTestWaveOut is not null)
                 _micTestWaveOut.Volume = Math.Clamp(Settings.OutputVolume, 0f, 1f);
+            if (e.PropertyName == nameof(AppSettings.VoiceMode))
+            {
+                OnPropertyChanged(nameof(IsVoiceActivity));
+                OnPropertyChanged(nameof(IsPushToTalk));
+            }
         };
 
         InputDevices.Add("Default");
@@ -168,7 +189,7 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
             _micTestWaveIn = new WaveInEvent
             {
                 WaveFormat = MicTestFormat,
-                BufferMilliseconds = 40,
+                BufferMilliseconds = 20,
                 DeviceNumber = ResolveInputDevice(Settings.InputDevice)
             };
             _micTestWaveIn.DataAvailable += OnMicTestDataAvailable;
@@ -246,6 +267,17 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
     }
 }
 
+public class ScreenShareSettingsViewModel : SettingsPageViewModel
+{
+    public AppSettings Settings { get; }
+
+    public ScreenShareSettingsViewModel(AppSettings settings, Action<SettingsPageViewModel> select)
+        : base("Screen Share", select)
+    {
+        Settings = settings;
+    }
+}
+
 public class SettingsCategoryViewModel
 {
     public string Name { get; }
@@ -284,10 +316,11 @@ public class SettingsModalViewModel : INotifyPropertyChanged
 
         var appearance = new AppearanceSettingsViewModel(settings, select);
         var voice = new VoiceSettingsViewModel(settings, select);
+        var screenShare = new ScreenShareSettingsViewModel(settings, select);
 
         Categories = new List<SettingsCategoryViewModel>
         {
-            new("App Settings", new SettingsPageViewModel[] { appearance, voice })
+            new("App Settings", new SettingsPageViewModel[] { appearance, voice, screenShare })
         };
 
         Close = new RelayCommand(_ => { voice.StopMicTest(); close(); });

@@ -51,10 +51,10 @@ public class SettingsModalViewModelTests
     }
 
     [Fact]
-    public void Category_HasTwoPages()
+    public void Category_HasThreePages()
     {
         var (modal, _) = Make();
-        Assert.Equal(2, modal.Categories[0].Pages.Count);
+        Assert.Equal(3, modal.Categories[0].Pages.Count);
     }
 
     [Fact]

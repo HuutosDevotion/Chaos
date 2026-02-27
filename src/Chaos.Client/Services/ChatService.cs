@@ -25,6 +25,7 @@ public class ChatService : IAsyncDisposable
     public event Action<string, int, int, int>? UserStartedScreenShare; // username, channelId, videoUserId, quality
     public event Action<string, int>? UserStoppedScreenShare; // username, channelId
     public event Action<string, int, bool, bool>? UserMuteStateChanged; // username, channelId, isMuted, isDeafened
+    public event Action? PongReceived;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -68,6 +69,7 @@ public class ChatService : IAsyncDisposable
             UserStoppedScreenShare?.Invoke(user, channelId));
         _connection.On<string, int, bool, bool>("UserMuteStateChanged", (user, channelId, muted, deafened) =>
             UserMuteStateChanged?.Invoke(user, channelId, muted, deafened));
+        _connection.On("Pong", () => PongReceived?.Invoke());
 
         _connection.Closed += _ =>
         {
@@ -165,6 +167,12 @@ public class ChatService : IAsyncDisposable
     {
         if (_connection is not null)
             await _connection.InvokeAsync("RenameChannel", channelId, newName);
+    }
+
+    public async Task SendPing()
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("Ping");
     }
 
     public async Task UpdateMuteState(bool isMuted, bool isDeafened)
