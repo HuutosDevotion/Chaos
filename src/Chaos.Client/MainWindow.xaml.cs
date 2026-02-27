@@ -142,7 +142,7 @@ public partial class MainWindow : Window
             // Rebuild the document when appearance settings that affect layout change.
             vm.Settings.PropertyChanged += (_, args) =>
             {
-                if (args.PropertyName is nameof(AppSettings.MessageSpacing) or nameof(AppSettings.GroupMessages))
+                if (args.PropertyName is nameof(AppSettings.MessageSpacing) or nameof(AppSettings.GroupMessages) or nameof(AppSettings.FontSize))
                     RebuildMessageDoc(vm);
             };
 
@@ -369,11 +369,12 @@ public partial class MainWindow : Window
         var primary   = (Brush)FindResource("TextPrimaryBrush");
         var secondary = (Brush)FindResource("TextSecondaryBrush");
         var muted     = (Brush)FindResource("TextMutedBrush");
+        double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
 
         if (msg.ShowHeader)
         {
             var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
-            p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold });
+            p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
         }

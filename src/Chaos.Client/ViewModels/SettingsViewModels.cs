@@ -52,7 +52,7 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
             if (e.PropertyName == nameof(AppSettings.GroupMessages))
                 RecomputeGrouping();
 
-            if (e.PropertyName is nameof(AppSettings.GroupMessages) or nameof(AppSettings.MessageSpacing))
+            if (e.PropertyName is nameof(AppSettings.GroupMessages) or nameof(AppSettings.MessageSpacing) or nameof(AppSettings.FontSize))
                 RebuildPreviewDocument();
         };
     }
@@ -70,7 +70,7 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
             if (msg.ShowHeader)
             {
                 var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
-                p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold });
+                p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = Settings.FontSize + 2 });
                 p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
                 doc.Blocks.Add(p);
             }

@@ -870,6 +870,7 @@
                                  Padding="0"
                                  FontSize="{Binding Settings.FontSize}"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  IsDocumentEnabled="True" />
 
                     <!-- No Channel Selected -->
