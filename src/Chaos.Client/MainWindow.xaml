@@ -1135,6 +1135,14 @@
                             </ListBox>
                         </Border>
 
+                        <!-- Typing Indicator -->
+                        <TextBlock Text="{Binding TypingText}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="11"
+                                   FontStyle="Italic"
+                                   Margin="4,2,0,4"
+                                   Visibility="{Binding HasTypingUsers, Converter={StaticResource BoolToVis}}" />
+
                         <!-- Text input row -->
                         <Border Background="{StaticResource BgInputBrush}"
                                 CornerRadius="8"
