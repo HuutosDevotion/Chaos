@@ -47,7 +47,11 @@ public class VoiceService : IDisposable
     }
 
     private static readonly byte[] RegistrationMagic = "RGST"u8.ToArray();
-    private static readonly WaveFormat VoiceFormat = new(16000, 16, 1);
+    private static readonly WaveFormat VoiceFormat = new(48000, 16, 1);
+
+    // Pre-buffer: holds last ~3 frames (120ms) to capture speech onset
+    private const int PreBufferFrames = 3;
+    private readonly Queue<byte[]> _preBuffer = new();
 
     public event Action<float>? MicLevelChanged; // 0.0 to 1.0
     public event Action<string>? Error;
@@ -173,6 +177,12 @@ public class VoiceService : IDisposable
         if (_isMuted || _udpClient is null || _serverEndpoint is null)
             return;
 
+        // Copy current frame for pre-buffer
+        var frameCopy = new byte[e.BytesRecorded];
+        Buffer.BlockCopy(e.Buffer, 0, frameCopy, 0, e.BytesRecorded);
+
+        bool wasGateOpen = _isGateOpen;
+
         // Voice gate: only send when level exceeds threshold, hold open for GateHoldTime
         if (maxSample >= MicThreshold)
         {
@@ -185,19 +195,36 @@ public class VoiceService : IDisposable
         }
 
         if (!_isGateOpen)
+        {
+            // Gate closed: buffer frames for speech onset capture
+            _preBuffer.Enqueue(frameCopy);
+            while (_preBuffer.Count > PreBufferFrames)
+                _preBuffer.Dequeue();
             return;
+        }
 
-        // Build packet: 4 bytes userId + 4 bytes channelId + audio data
-        var packet = new byte[8 + e.BytesRecorded];
+        // Gate just opened: flush pre-buffer to capture speech onset
+        if (!wasGateOpen)
+        {
+            while (_preBuffer.Count > 0)
+            {
+                var buffered = _preBuffer.Dequeue();
+                SendAudioFrame(buffered, buffered.Length);
+            }
+        }
+
+        // Send current frame
+        SendAudioFrame(e.Buffer, e.BytesRecorded);
+    }
+
+    private void SendAudioFrame(byte[] audioData, int length)
+    {
+        if (_udpClient is null || _serverEndpoint is null) return;
+        var packet = new byte[8 + length];
         BitConverter.GetBytes(_userId).CopyTo(packet, 0);
         BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
-        Buffer.BlockCopy(e.Buffer, 0, packet, 8, e.BytesRecorded);
-
-        try
-        {
-            _udpClient.Send(packet, packet.Length, _serverEndpoint);
-        }
-        catch { }
+        Buffer.BlockCopy(audioData, 0, packet, 8, length);
+        try { _udpClient.Send(packet, packet.Length, _serverEndpoint); } catch { }
     }
 
     private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
@@ -303,6 +330,7 @@ public class VoiceService : IDisposable
         _waveIn = null;
         _udpClient = null;
         _receiveCts = null;
+        _preBuffer.Clear();
     }
 
     public void Dispose()

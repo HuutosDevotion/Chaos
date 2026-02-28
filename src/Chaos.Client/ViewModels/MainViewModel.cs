@@ -131,6 +131,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
+    private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
+    private readonly DispatcherTimer _remoteSpeakingTimer;
+    private static readonly TimeSpan RemoteSpeakingHoldTime = TimeSpan.FromMilliseconds(500);
 
     public AppSettings Settings { get; }
 
@@ -404,6 +407,24 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
 
+        _remoteSpeakingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _remoteSpeakingTimer.Tick += (_, _) =>
+        {
+            if (!_voiceChannelId.HasValue || _remoteLastSpoke.Count == 0) return;
+            var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (ch is null) return;
+            var now = DateTime.UtcNow;
+            foreach (var (userId, lastSpoke) in _remoteLastSpoke)
+            {
+                if ((now - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    var member = ch.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == userId);
+                    if (member is not null) member.IsSpeaking = false;
+                }
+            }
+        };
+        _remoteSpeakingTimer.Start();
+
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
         _chatService.UserLeftVoice += OnUserLeftVoice;
@@ -436,8 +457,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 if (!_voiceChannelId.HasValue) return;
                 var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                 var member = ch?.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == remoteUserId);
-                if (member is not null)
-                    member.IsSpeaking = level > 0.02f;
+                if (member is null) return;
+
+                if (level > Settings.MicThreshold)
+                {
+                    member.IsSpeaking = true;
+                    _remoteLastSpoke[remoteUserId] = DateTime.UtcNow;
+                }
+                else if (_remoteLastSpoke.TryGetValue(remoteUserId, out var lastSpoke)
+                         && (DateTime.UtcNow - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    member.IsSpeaking = false;
+                }
             });
         };
         _voiceService.Error += error =>
@@ -919,6 +950,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _settingsSaveTimer.Stop();
+        _remoteSpeakingTimer.Stop();
         FlushSettings();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();

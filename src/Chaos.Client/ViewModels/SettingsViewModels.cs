@@ -120,7 +120,7 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 
 public class VoiceSettingsViewModel : SettingsPageViewModel
 {
-    private static readonly WaveFormat MicTestFormat = new(16000, 16, 1);
+    private static readonly WaveFormat MicTestFormat = new(48000, 16, 1);
 
     private WaveInEvent? _micTestWaveIn;
     private WaveOutEvent? _micTestWaveOut;
