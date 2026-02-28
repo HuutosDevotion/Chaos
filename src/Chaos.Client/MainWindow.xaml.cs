@@ -1254,17 +1254,27 @@ internal static class MarkdownRenderer
     private static readonly System.Text.RegularExpressions.Regex WholeLine_TripleCode =
         new(@"^```(.+)```$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    private static Paragraph MakeCodeBlock(string content, Brush textBrush) =>
-        new()
+    private static readonly System.Windows.Media.SolidColorBrush CodeBlockBg =
+        new(System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)); // BgDarkest
+
+    private static Block MakeCodeBlock(string content, Brush textBrush)
+    {
+        var tb = new System.Windows.Controls.TextBlock
         {
-            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-            Foreground = textBrush,
-            Margin     = new Thickness(4, 2, 0, 2),
-            Padding    = new Thickness(6, 2, 6, 2),
-            Background = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
-            Inlines    = { new Run(content) { Foreground = textBrush } },
+            Text         = content,
+            FontFamily   = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground   = textBrush,
+            TextWrapping = System.Windows.TextWrapping.Wrap,
         };
+        return new BlockUIContainer(new System.Windows.Controls.Border
+        {
+            Background   = CodeBlockBg,
+            CornerRadius = new CornerRadius(4),
+            Padding      = new Thickness(10, 8, 10, 8),
+            Margin       = new Thickness(0, 2, 0, 2),
+            Child        = tb,
+        });
+    }
 
     public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
     {
@@ -1426,15 +1436,22 @@ internal static class MarkdownRenderer
         return run;
     }
 
-    private static Run MakeCodeRun(string text, Brush brush)
+    private static Inline MakeCodeRun(string text, Brush brush)
     {
-        return new Run(text)
+        var tb = new System.Windows.Controls.TextBlock
         {
-            Foreground = brush,
+            Text       = text,
             FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-            Background = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+            Foreground = brush,
         };
+        return new InlineUIContainer(new System.Windows.Controls.Border
+        {
+            Background   = CodeBlockBg,
+            CornerRadius = new CornerRadius(3),
+            Padding      = new Thickness(4, 1, 4, 1),
+            Margin       = new Thickness(1, 0, 1, 0),
+            Child        = tb,
+        }) { BaselineAlignment = BaselineAlignment.Center };
     }
 
     private static Hyperlink MakeLink(string label, string url, Brush brush)
