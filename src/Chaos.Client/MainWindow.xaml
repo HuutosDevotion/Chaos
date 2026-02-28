@@ -112,6 +112,11 @@
             </Border>
         </DataTemplate>
 
+        <DataTemplate DataType="{x:Type vm:ImagePreviewModalViewModel}">
+            <Image Source="{Binding ImageSource}" Stretch="Uniform"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </DataTemplate>
+
         <!-- ── Settings modal ──────────────────────────────────────────────── -->
 
         <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">

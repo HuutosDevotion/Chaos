@@ -393,7 +393,15 @@ public partial class MainWindow : Window
             {
                 var bmp = new BitmapImage(new Uri(msg.ImageUrl));
                 var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
-                                      Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+                                      Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left,
+                                      Cursor = Cursors.Hand };
+                var capturedUrl = msg.ImageUrl;
+                img.MouseLeftButtonDown += (_, e) =>
+                {
+                    if (DataContext is MainViewModel vm)
+                        vm.OpenImagePreviewModal(capturedUrl);
+                    e.Handled = true;
+                };
                 var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
                 doc.Blocks.Add(p);
             }

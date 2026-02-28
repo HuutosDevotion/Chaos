@@ -812,6 +812,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OpenSettingsModal() =>
         ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
 
+    public void OpenImagePreviewModal(string imageUrl) =>
+        ActiveModal = new ImagePreviewModalViewModel(imageUrl);
+
     private void OnChannelCreated(ChannelDto dto)
     {
         SafeDispatch(() =>

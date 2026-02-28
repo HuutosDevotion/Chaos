@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using Chaos.Shared;
 
 namespace Chaos.Client.ViewModels;
@@ -91,5 +92,15 @@ public class DeleteChannelModalViewModel
         _cancel = cancel;
         Confirm = new RelayCommand(async _ => await _confirm());
         Cancel = new RelayCommand(_ => _cancel());
+    }
+}
+
+public class ImagePreviewModalViewModel
+{
+    public BitmapImage ImageSource { get; }
+
+    public ImagePreviewModalViewModel(string imageUrl)
+    {
+        ImageSource = new BitmapImage(new Uri(imageUrl));
     }
 }
