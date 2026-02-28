@@ -1259,20 +1259,59 @@ internal static class MarkdownRenderer
 
     private static Block MakeCodeBlock(string content, Brush textBrush)
     {
-        var tb = new System.Windows.Controls.TextBlock
+        var mutedBrush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x6D, 0x6F, 0x78)); // TextMuted
+        var sepBrush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x3B, 0x3D, 0x43));
+
+        string[] codeLines = content.Split('\n');
+        string lineNums = string.Join("\n", Enumerable.Range(1, codeLines.Length));
+
+        var lineNumTb = new System.Windows.Controls.TextBlock
         {
-            Text         = content,
-            FontFamily   = new System.Windows.Media.FontFamily("Consolas"),
-            Foreground   = textBrush,
-            TextWrapping = System.Windows.TextWrapping.Wrap,
+            Text              = lineNums,
+            FontFamily        = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground        = mutedBrush,
+            TextAlignment     = System.Windows.TextAlignment.Right,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
         };
+        var sep = new System.Windows.Controls.Border
+        {
+            Width             = 1,
+            Background        = sepBrush,
+            Margin            = new Thickness(8, 0, 8, 0),
+            VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+        };
+        var codeTb = new System.Windows.Controls.TextBlock
+        {
+            Text              = content,
+            FontFamily        = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground        = textBrush,
+            TextWrapping      = System.Windows.TextWrapping.Wrap,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
+        };
+
+        var grid = new System.Windows.Controls.Grid();
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = System.Windows.GridLength.Auto });
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = System.Windows.GridLength.Auto });
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+        System.Windows.Controls.Grid.SetColumn(lineNumTb, 0);
+        System.Windows.Controls.Grid.SetColumn(sep,       1);
+        System.Windows.Controls.Grid.SetColumn(codeTb,    2);
+        grid.Children.Add(lineNumTb);
+        grid.Children.Add(sep);
+        grid.Children.Add(codeTb);
+
         return new BlockUIContainer(new System.Windows.Controls.Border
         {
             Background   = CodeBlockBg,
             CornerRadius = new CornerRadius(4),
             Padding      = new Thickness(10, 8, 10, 8),
             Margin       = new Thickness(0, 2, 0, 2),
-            Child        = tb,
+            Child        = grid,
         });
     }
 
