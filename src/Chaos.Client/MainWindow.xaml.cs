@@ -1360,7 +1360,7 @@ internal static class MarkdownRenderer
             }
 
             // Opening fence: ``` or ```<number> (e.g. ```42 starts at line 42)
-            string fenceSuffix = line == "```" ? ""
+            string? fenceSuffix = line == "```" ? ""
                 : (line.StartsWith("```") && line[3..].Trim() is { Length: > 0 } s
                    && s.All(char.IsDigit)) ? s : null;
             if (fenceSuffix != null)
@@ -1381,13 +1381,47 @@ internal static class MarkdownRenderer
 
             if (line.StartsWith("> "))
             {
-                var quotePara = new Paragraph { Foreground = textBrush, Margin = new Thickness(4, 0, 0, 0) };
-                var barBrush  = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(0x46, 0x56, 0x6E));
-                quotePara.Inlines.Add(new Run("▌ ") { Foreground = barBrush });
-                ParseInlines(line[2..], quotePara.Inlines, textBrush, linkBrush);
-                doc.Blocks.Add(quotePara);
-                i++;
+                // Collect consecutive quote lines into one block so the bar is continuous
+                var contentTb = new System.Windows.Controls.TextBlock
+                {
+                    Foreground   = textBrush,
+                    TextWrapping = System.Windows.TextWrapping.Wrap,
+                };
+                bool firstQuoteLine = true;
+                while (i < rawLines.Length && rawLines[i].StartsWith("> "))
+                {
+                    if (!firstQuoteLine) contentTb.Inlines.Add(new LineBreak());
+                    // ParseInlines fills a Paragraph (Documents.InlineCollection);
+                    // migrate inlines to the TextBlock (Controls.InlineCollection)
+                    var tempPara = new Paragraph();
+                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush);
+                    foreach (var il in tempPara.Inlines.ToList())
+                    {
+                        tempPara.Inlines.Remove(il);
+                        contentTb.Inlines.Add(il);
+                    }
+                    firstQuoteLine = false;
+                    i++;
+                }
+
+                var bar = new System.Windows.Controls.Border
+                {
+                    Width             = 2,
+                    Background        = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0x4E, 0x50, 0x58)),
+                    Margin            = new Thickness(0, 0, 10, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+                };
+                var grid = new System.Windows.Controls.Grid();
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+                    { Width = System.Windows.GridLength.Auto });
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+                    { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+                System.Windows.Controls.Grid.SetColumn(bar,       0);
+                System.Windows.Controls.Grid.SetColumn(contentTb, 1);
+                grid.Children.Add(bar);
+                grid.Children.Add(contentTb);
+                doc.Blocks.Add(new BlockUIContainer(grid) { Margin = new Thickness(4, 2, 0, 2) });
                 continue;
             }
 
