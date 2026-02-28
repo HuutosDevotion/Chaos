@@ -179,15 +179,6 @@ public partial class MainWindow : Window
                 chatScroll?.ScrollToBottom();
             };
 
-            // Keep vm.MessageText in sync with the RichTextBox plain text so that
-            // CanExecute and slash-command suggestions continue to work.
-            MessageInput.TextChanged += (_, _) =>
-            {
-                var range = new TextRange(MessageInput.Document.ContentStart,
-                                          MessageInput.Document.ContentEnd);
-                vm.MessageText = range.Text;
-            };
-
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
@@ -312,21 +303,9 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                return; // Shift+Enter inserts a paragraph break (RichTextBox default)
+                return; // Shift+Enter inserts a newline naturally
             if (vm2.SendMessageCommand.CanExecute(null))
-            {
-                // Serialize rich content before clearing the input
-                var fullRange = new TextRange(MessageInput.Document.ContentStart,
-                                              MessageInput.Document.ContentEnd);
-                if (!string.IsNullOrWhiteSpace(fullRange.Text))
-                {
-                    using var ms = new MemoryStream();
-                    fullRange.Save(ms, DataFormats.Xaml);
-                    vm2.PendingRichContent = Encoding.UTF8.GetString(ms.ToArray());
-                }
                 vm2.SendMessageCommand.Execute(null);
-                MessageInput.Document = new FlowDocument(); // clear input optimistically
-            }
             e.Handled = true;
             return;
         }
@@ -387,15 +366,10 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// Accepts a slash-command suggestion: updates the VM and repopulates the RichTextBox.
-    /// </summary>
     private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
     {
         vm.SelectSuggestion(cmd);
-        // Reflect the selected text in the RichTextBox (vm.MessageText was just set by SelectSuggestion)
-        MessageInput.Document = new FlowDocument(new Paragraph(new Run(vm.MessageText)));
-        MessageInput.CaretPosition = MessageInput.Document.ContentEnd;
+        MessageInput.CaretIndex = MessageInput.Text.Length;
         MessageInput.Focus();
     }
 
@@ -561,45 +535,88 @@ public partial class MainWindow : Window
     }
 
     // ── Formatting toolbar handlers ────────────────────────────────────────────
+    // Buttons insert markdown syntax into the TextBox rather than applying WPF
+    // text properties, keeping the input fast and the content plain text.
 
-    private void Strikethrough_Click(object sender, RoutedEventArgs e)
+    private void FormatBold_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("**");
+    private void FormatItalic_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("*");
+    private void FormatUnderline_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("__");
+    private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("~~");
+
+    private void InsertMarkdownAround(string marker)
     {
-        var sel = MessageInput.Selection;
-        if (sel.IsEmpty) return;
-        var existing = sel.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
-        bool hasStrike = existing?.Any(d => d.Location == TextDecorationLocation.Strikethrough) == true;
-        sel.ApplyPropertyValue(Inline.TextDecorationsProperty,
-            hasStrike ? null : TextDecorations.Strikethrough);
+        int start = MessageInput.SelectionStart;
+        int len   = MessageInput.SelectionLength;
+        string sel = MessageInput.SelectedText;
+        MessageInput.Text = MessageInput.Text.Remove(start, len)
+                                             .Insert(start, marker + sel + marker);
+        MessageInput.SelectionStart  = start + marker.Length;
+        MessageInput.SelectionLength = sel.Length;
+        MessageInput.Focus();
+    }
+
+    private void FormatBullets_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => "- ");
+
+    private void FormatNumbering_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => $"{i + 1}. ");
+
+    private void FormatIndent_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => "    ");
+
+    private void FormatOutdent_Click(object sender, RoutedEventArgs e)
+    {
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Split('\n');
+        string newRegion = string.Join("\n", lines.Select(l =>
+            l.StartsWith("    ") ? l[4..] : l.TrimStart(' ')));
+        ApplyToLineRegion(lineStart, lineEnd, newRegion);
+    }
+
+    private void PrefixSelectedLines(Func<int, string> prefixFor)
+    {
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Split('\n');
+        string newRegion = string.Join("\n", lines.Select((l, i) => prefixFor(i) + l));
+        ApplyToLineRegion(lineStart, lineEnd, newRegion);
+    }
+
+    private void GetSelectedLineRegion(out int lineStart, out int lineEnd)
+    {
+        string text = MessageInput.Text;
+        int selStart = MessageInput.SelectionStart;
+        int selEnd   = selStart + MessageInput.SelectionLength;
+        lineStart = selStart == 0 ? 0 : text.LastIndexOf('\n', selStart - 1) + 1;
+        int nl = selEnd < text.Length ? text.IndexOf('\n', selEnd) : -1;
+        lineEnd = nl >= 0 ? nl : text.Length;
+    }
+
+    private void ApplyToLineRegion(int lineStart, int lineEnd, string newRegion)
+    {
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+        MessageInput.SelectionStart  = lineStart;
+        MessageInput.SelectionLength = newRegion.Length;
         MessageInput.Focus();
     }
 
     private void InsertHyperlink_Click(object sender, RoutedEventArgs e)
     {
-        string displayText = MessageInput.Selection.Text;
+        string display = MessageInput.SelectedText;
         string? url = Microsoft.VisualBasic.Interaction.InputBox(
-            "Enter URL:", "Insert Hyperlink", displayText.StartsWith("http") ? displayText : "https://");
+            "Enter URL:", "Insert Hyperlink",
+            display.StartsWith("http") ? display : "https://");
         if (string.IsNullOrWhiteSpace(url)) { MessageInput.Focus(); return; }
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-        {
-            MessageBox.Show("Please enter a valid URL.", "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Warning);
-            MessageInput.Focus();
-            return;
-        }
+        string md = string.IsNullOrEmpty(display) || display.StartsWith("http")
+            ? url
+            : $"[{display}]({url})";
 
-        var link = new Hyperlink(new Run(string.IsNullOrEmpty(displayText) ? url : displayText))
-        {
-            NavigateUri = uri,
-            Foreground = (Brush)FindResource("AccentBlueBrush")
-        };
-        link.RequestNavigate += (_, ev) =>
-            Process.Start(new ProcessStartInfo(ev.Uri.AbsoluteUri) { UseShellExecute = true });
-
-        // Replace selected content with the hyperlink
-        MessageInput.Selection.Text = string.Empty;
-        var insert = MessageInput.CaretPosition;
-        var para = insert.Paragraph ?? new Paragraph();
-        para.Inlines.Add(link);
+        int start = MessageInput.SelectionStart;
+        int len   = MessageInput.SelectionLength;
+        MessageInput.Text = MessageInput.Text.Remove(start, len).Insert(start, md);
+        MessageInput.CaretIndex = start + md.Length;
         MessageInput.Focus();
     }
 
@@ -615,6 +632,30 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm)
             vm.SetPendingImage(data, Path.GetFileName(dlg.FileName), BytesToBitmapSource(data));
         MessageInput.Focus();
+    }
+
+    private bool _previewMode;
+
+    private void TogglePreview_Click(object sender, RoutedEventArgs e)
+    {
+        _previewMode = !_previewMode;
+        if (_previewMode)
+        {
+            var secondary = (Brush)FindResource("TextSecondaryBrush");
+            var accent    = (Brush)FindResource("AccentBlueBrush");
+            MessagePreview.Document = MarkdownRenderer.Render(
+                MessageInput.Text, secondary, accent);
+            MessageInput.Visibility  = Visibility.Collapsed;
+            MessagePreview.Visibility = Visibility.Visible;
+            PreviewToggleButton.ToolTip = "Back to edit";
+        }
+        else
+        {
+            MessagePreview.Visibility = Visibility.Collapsed;
+            MessageInput.Visibility  = Visibility.Visible;
+            MessageInput.Focus();
+            PreviewToggleButton.ToolTip = "Preview rendered message";
+        }
     }
 
     // ── Message FlowDocument ──────────────────────────────────────────────────
@@ -647,12 +688,24 @@ public partial class MainWindow : Window
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
             if (IsRichContent(msg.Content))
+            {
+                // Legacy XAML-serialised messages from the previous rich-text build
                 AppendRichContent(doc, msg.Content, secondary, top);
+            }
             else
             {
-                var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
-                        { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
-                doc.Blocks.Add(p);
+                // Markdown (or plain) text — render inline formatting, lists, links
+                var rendered = MarkdownRenderer.Render(msg.Content, secondary,
+                                   (Brush)FindResource("AccentBlueBrush"));
+                double blockTop = top;
+                foreach (var block in rendered.Blocks.ToList())
+                {
+                    rendered.Blocks.Remove(block);
+                    block.Margin = new Thickness(16, blockTop, 16, 0);
+                    if (block is Paragraph p) p.LineHeight = double.NaN;
+                    doc.Blocks.Add(block);
+                    blockTop = 1;
+                }
             }
         }
 
@@ -738,5 +791,116 @@ public partial class MainWindow : Window
                     { Margin = new Thickness(16, topMargin, 16, 0), LineHeight = double.NaN };
             doc.Blocks.Add(p);
         }
+    }
+}
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+// Converts a simple markdown string to a WPF FlowDocument.
+// Supported syntax:
+//   **bold**  *italic*  __underline__  ~~strike~~
+//   [text](url)  bare https:// URLs
+//   - item / * item  (bullet list lines)
+//   1. item           (numbered list lines)
+//   Plain text passes through unchanged.
+internal static class MarkdownRenderer
+{
+    // Inline pattern: order matters — longer tokens first.
+    private static readonly System.Text.RegularExpressions.Regex InlinePattern =
+        new(@"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex NumberedLine =
+        new(@"^\d+\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
+    {
+        var doc = new FlowDocument();
+        if (string.IsNullOrEmpty(text)) return doc;
+
+        string[] rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        int i = 0;
+        while (i < rawLines.Length)
+        {
+            string line = rawLines[i];
+
+            if (line.StartsWith("- ") || line.StartsWith("* "))
+            {
+                var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+                while (i < rawLines.Length && (rawLines[i].StartsWith("- ") || rawLines[i].StartsWith("* ")))
+                {
+                    var li = new ListItem(new Paragraph());
+                    ParseInlines(rawLines[i][2..], ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(li);
+                    i++;
+                }
+                doc.Blocks.Add(list);
+                continue;
+            }
+
+            if (NumberedLine.IsMatch(line))
+            {
+                var list = new List { MarkerStyle = TextMarkerStyle.Decimal };
+                while (i < rawLines.Length && NumberedLine.IsMatch(rawLines[i]))
+                {
+                    string item = NumberedLine.Replace(rawLines[i], string.Empty);
+                    var li = new ListItem(new Paragraph());
+                    ParseInlines(item, ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(li);
+                    i++;
+                }
+                doc.Blocks.Add(list);
+                continue;
+            }
+
+            var para = new Paragraph { Foreground = textBrush };
+            ParseInlines(line, para.Inlines, textBrush, linkBrush);
+            doc.Blocks.Add(para);
+            i++;
+        }
+
+        return doc;
+    }
+
+    private static void ParseInlines(string text, InlineCollection inlines,
+                                     Brush textBrush, Brush linkBrush)
+    {
+        int lastEnd = 0;
+        foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
+        {
+            if (m.Index > lastEnd)
+                inlines.Add(new Run(text[lastEnd..m.Index]) { Foreground = textBrush });
+
+            if (m.Groups[1].Success)       // **bold**
+                inlines.Add(new Run(m.Groups[2].Value) { FontWeight = FontWeights.Bold, Foreground = textBrush });
+            else if (m.Groups[3].Success)  // *italic*
+                inlines.Add(new Run(m.Groups[4].Value) { FontStyle = FontStyles.Italic, Foreground = textBrush });
+            else if (m.Groups[5].Success)  // __underline__
+                inlines.Add(new Run(m.Groups[6].Value) { TextDecorations = TextDecorations.Underline, Foreground = textBrush });
+            else if (m.Groups[7].Success)  // ~~strike~~
+                inlines.Add(new Run(m.Groups[8].Value) { TextDecorations = TextDecorations.Strikethrough, Foreground = textBrush });
+            else if (m.Groups[9].Success)  // [text](url)
+                inlines.Add(MakeLink(m.Groups[10].Value, m.Groups[11].Value, linkBrush));
+            else                           // bare URL
+                inlines.Add(MakeLink(m.Value, m.Value, linkBrush));
+
+            lastEnd = m.Index + m.Length;
+        }
+
+        if (lastEnd < text.Length)
+            inlines.Add(new Run(text[lastEnd..]) { Foreground = textBrush });
+
+        if (!inlines.Any())
+            inlines.Add(new Run(string.Empty) { Foreground = textBrush });
+    }
+
+    private static Hyperlink MakeLink(string label, string url, Brush brush)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return new Hyperlink(new Run(label)) { Foreground = brush };
+
+        var link = new Hyperlink(new Run(label)) { NavigateUri = uri, Foreground = brush };
+        link.RequestNavigate += (_, e) =>
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        return link;
     }
 }

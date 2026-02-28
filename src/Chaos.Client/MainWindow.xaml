@@ -1140,8 +1140,7 @@
                                 CornerRadius="8">
                             <StackPanel>
                                 <!-- Formatting toolbar — visible only while the input area has keyboard focus.
-                                     Toolbar buttons have Focusable=False so clicks don't steal focus from
-                                     the RichTextBox; IsKeyboardFocusWithin therefore stays True. -->
+                                     Buttons are Focusable=False so clicks don't steal focus from the TextBox. -->
                                 <Border Padding="6,4"
                                         BorderBrush="#30FFFFFF" BorderThickness="0,0,0,1">
                                     <Border.Style>
@@ -1158,134 +1157,61 @@
                                     </Border.Style>
                                     <WrapPanel Orientation="Horizontal">
 
-                                        <!-- ── Inline formatting ── -->
+                                        <!-- ── Inline formatting (inserts markdown syntax) ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.ToggleBold}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Bold (Ctrl+B)">
+                                                Click="FormatBold_Click" ToolTip="Bold — wraps selection in **">
                                             <TextBlock Text="B" FontWeight="Bold" FontSize="13" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.ToggleItalic}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Italic (Ctrl+I)">
+                                                Click="FormatItalic_Click" ToolTip="Italic — wraps selection in *">
                                             <TextBlock Text="I" FontStyle="Italic" FontSize="13" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.ToggleUnderline}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Underline (Ctrl+U)">
+                                                Click="FormatUnderline_Click" ToolTip="Underline — wraps selection in __">
                                             <TextBlock Text="U" FontSize="13" TextDecorations="Underline" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="Strikethrough_Click"
-                                                ToolTip="Strikethrough">
+                                                Click="FormatStrikethrough_Click" ToolTip="Strikethrough — wraps selection in ~~">
                                             <TextBlock Text="S" FontSize="13" TextDecorations="Strikethrough" />
-                                        </Button>
-
-                                        <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
-
-                                        <!-- ── Alignment ── -->
-                                        <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.AlignLeft}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Align Left">
-                                            <Viewbox Width="14" Height="14">
-                                                <Canvas Width="14" Height="14">
-                                                    <Path Data="M1,2 L13,2 M1,6 L9,6 M1,10 L13,10 M1,14 L7,14"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                </Canvas>
-                                            </Viewbox>
-                                        </Button>
-                                        <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.AlignCenter}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Align Center">
-                                            <Viewbox Width="14" Height="14">
-                                                <Canvas Width="14" Height="14">
-                                                    <Path Data="M1,2 L13,2 M3,6 L11,6 M1,10 L13,10 M4,14 L10,14"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                </Canvas>
-                                            </Viewbox>
-                                        </Button>
-                                        <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.AlignRight}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Align Right">
-                                            <Viewbox Width="14" Height="14">
-                                                <Canvas Width="14" Height="14">
-                                                    <Path Data="M1,2 L13,2 M5,6 L13,6 M1,10 L13,10 M7,14 L13,14"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                </Canvas>
-                                            </Viewbox>
-                                        </Button>
-                                        <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.AlignJustify}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Justify">
-                                            <Viewbox Width="14" Height="14">
-                                                <Canvas Width="14" Height="14">
-                                                    <Path Data="M1,2 L13,2 M1,6 L13,6 M1,10 L13,10 M1,14 L13,14"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                </Canvas>
-                                            </Viewbox>
                                         </Button>
 
                                         <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
 
                                         <!-- ── Lists ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.ToggleBullets}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Bullet List">
+                                                Click="FormatBullets_Click" ToolTip="Bullet List — prefixes lines with -">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Ellipse Canvas.Left="1" Canvas.Top="2" Width="2.5" Height="2.5"
                                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                                                    <Path Data="M6,3 L13,3"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,3 L13,3" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                                     <Ellipse Canvas.Left="1" Canvas.Top="6.5" Width="2.5" Height="2.5"
                                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                                                    <Path Data="M6,7.75 L13,7.75"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,7.75 L13,7.75" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                                     <Ellipse Canvas.Left="1" Canvas.Top="11" Width="2.5" Height="2.5"
                                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                                                    <Path Data="M6,12.25 L13,12.25"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,12.25 L13,12.25" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                                 </Canvas>
                                             </Viewbox>
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.ToggleNumbering}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Numbered List">
+                                                Click="FormatNumbering_Click" ToolTip="Numbered List — prefixes lines with 1. 2. …">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
-                                                    <!-- Three short vertical tick marks + horizontal lines -->
-                                                    <Path Data="M1,1 L1,4 M2.5,4 L1,4"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M1,1 L1,4 M2.5,4 L1,4" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                    <Path Data="M6,3 L13,3"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,3 L13,3" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                    <Path Data="M1,6 Q2.5,5 2.5,6.5 Q2.5,8 1,8 L3,8"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M1,6 Q2.5,5 2.5,6.5 Q2.5,8 1,8 L3,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                                    <Path Data="M6,7.75 L13,7.75"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,7.75 L13,7.75" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                    <Path Data="M1,10.5 Q2.5,9.5 2.5,11 L1,13 L3,13"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M1,10.5 Q2.5,9.5 2.5,11 L1,13 L3,13" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                                    <Path Data="M6,12.25 L13,12.25"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                    <Path Data="M6,12.25 L13,12.25" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                                 </Canvas>
                                             </Viewbox>
@@ -1295,9 +1221,7 @@
 
                                         <!-- ── Indent ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.DecreaseIndentation}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Decrease Indent">
+                                                Click="FormatOutdent_Click" ToolTip="Decrease Indent">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M5,4 L2,7 L5,10 M2,7 L13,7 M5,1 L13,1 M5,13 L13,13"
@@ -1307,9 +1231,7 @@
                                             </Viewbox>
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Command="{x:Static EditingCommands.IncreaseIndentation}"
-                                                CommandTarget="{Binding ElementName=MessageInput}"
-                                                ToolTip="Increase Indent">
+                                                Click="FormatIndent_Click" ToolTip="Increase Indent">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M9,4 L12,7 L9,10 M12,7 L1,7 M1,1 L9,1 M1,13 L9,13"
@@ -1323,11 +1245,9 @@
 
                                         <!-- ── Hyperlink ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="InsertHyperlink_Click"
-                                                ToolTip="Insert Hyperlink">
+                                                Click="InsertHyperlink_Click" ToolTip="Insert Hyperlink">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
-                                                    <!-- Chain link: two rounded rectangles overlapping -->
                                                     <Path Data="M5,8 A3,3,0,0,1,5,5 L8,5 A3,3,0,0,1,8,8"
                                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="Transparent" />
@@ -1343,20 +1263,34 @@
 
                                         <!-- ── Image ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="PickImage_Click"
-                                                ToolTip="Insert Image">
+                                                Click="PickImage_Click" ToolTip="Insert Image">
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
-                                                    <!-- Rectangle frame -->
                                                     <Path Data="M1,2 L13,2 L13,12 L1,12 Z"
                                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
-                                                    <!-- Mountain / landscape -->
                                                     <Path Data="M1,10 L4,6 L7,9 L9,7 L13,12"
                                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                           StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                                    <!-- Sun dot -->
                                                     <Ellipse Canvas.Left="9.5" Canvas.Top="3.5" Width="2" Height="2"
+                                                             Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+
+                                        <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
+
+                                        <!-- ── Preview toggle ── -->
+                                        <Button Style="{StaticResource ToolbarButton}"
+                                                x:Name="PreviewToggleButton"
+                                                Click="TogglePreview_Click" ToolTip="Preview rendered message">
+                                            <!-- Eye icon -->
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M1,7 Q7,1 13,7 Q7,13 1,7 Z"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeLineJoin="Round" Fill="Transparent" />
+                                                    <Ellipse Canvas.Left="5" Canvas.Top="5" Width="4" Height="4"
                                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                                 </Canvas>
                                             </Viewbox>
@@ -1365,20 +1299,32 @@
                                     </WrapPanel>
                                 </Border>
 
-                                <!-- Rich text input -->
-                                <RichTextBox x:Name="MessageInput"
+                                <!-- Edit mode: fast plain TextBox -->
+                                <TextBox x:Name="MessageInput"
+                                         Style="{StaticResource DarkTextBox}"
+                                         Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         VerticalAlignment="Center"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MaxHeight="120"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         PreviewKeyDown="MessageInput_PreviewKeyDown" />
+
+                                <!-- Preview mode: read-only rendered markdown -->
+                                <RichTextBox x:Name="MessagePreview"
+                                             Visibility="Collapsed"
+                                             IsReadOnly="True"
                                              Background="Transparent"
                                              Foreground="{StaticResource TextPrimaryBrush}"
-                                             CaretBrush="{StaticResource TextPrimaryBrush}"
-                                             SelectionBrush="{StaticResource AccentBlueBrush}"
                                              BorderThickness="0"
                                              Padding="8,6"
                                              FontSize="14"
-                                             AcceptsReturn="True"
                                              MaxHeight="120"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                             PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                             IsDocumentEnabled="True" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
