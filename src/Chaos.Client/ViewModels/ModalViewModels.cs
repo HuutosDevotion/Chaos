@@ -1,8 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
 using Chaos.Shared;
+
 
 namespace Chaos.Client.ViewModels;
 
@@ -97,10 +97,6 @@ public class DeleteChannelModalViewModel
 
 public class ImagePreviewModalViewModel
 {
-    public BitmapImage ImageSource { get; }
-
-    public ImagePreviewModalViewModel(string imageUrl)
-    {
-        ImageSource = new BitmapImage(new Uri(imageUrl));
-    }
+    public string ImageUrl { get; }
+    public ImagePreviewModalViewModel(string imageUrl) => ImageUrl = imageUrl;
 }

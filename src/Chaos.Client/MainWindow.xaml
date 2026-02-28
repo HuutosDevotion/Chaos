@@ -112,11 +112,6 @@
             </Border>
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type vm:ImagePreviewModalViewModel}">
-            <Image Source="{Binding ImageSource}" Stretch="Uniform"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-        </DataTemplate>
-
         <!-- ── Settings modal ──────────────────────────────────────────────── -->
 
         <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">
@@ -542,12 +537,42 @@
               PreviewKeyDown="ModalOverlay_PreviewKeyDown">
             <ContentControl x:Name="ModalContentControl"
                             Content="{Binding ActiveModal}"
+                            Visibility="{Binding IsImagePreviewOpen, Converter={StaticResource InverseBoolToVis}}"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"
                             Margin="60"
                             MouseLeftButtonDown="Modal_MouseLeftButtonDown" />
+
+            <!-- Image preview overlay (zoom + pan) -->
+            <Grid x:Name="ImagePreviewPanel"
+                  Visibility="{Binding IsImagePreviewOpen, Converter={StaticResource BoolToVis}}"
+                  MouseLeftButtonDown="ImagePreview_MouseLeftButtonDown"
+                  MouseMove="ImagePreview_MouseMove"
+                  MouseLeftButtonUp="ImagePreview_MouseLeftButtonUp">
+                <ScrollViewer x:Name="ImagePreviewScroll"
+                              HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Hidden"
+                              Focusable="False">
+                    <Image x:Name="ImagePreviewImg"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Stretch="Uniform" />
+                </ScrollViewer>
+                <Button x:Name="ImagePreviewCloseBtn"
+                        Content="✕"
+                        Style="{StaticResource DarkButton}"
+                        Click="ImagePreviewClose_Click"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="16"
+                        Panel.ZIndex="10"
+                        Padding="10,6"
+                        FontSize="16">
+                    <Button.ToolTip>Close</Button.ToolTip>
+                </Button>
+            </Grid>
         </Grid>
 
         <!-- Main Layout (visible when connected) -->
