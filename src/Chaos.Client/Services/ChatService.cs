@@ -22,6 +22,7 @@ public class ChatService : IAsyncDisposable
     public event Action<ChannelDto>? ChannelCreated;
     public event Action<int>? ChannelDeleted;
     public event Action<ChannelDto>? ChannelRenamed;
+    public event Action<int, string>? UserTyping; // channelId, username
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -58,6 +59,7 @@ public class ChatService : IAsyncDisposable
         _connection.On<ChannelDto>("ChannelCreated", dto => ChannelCreated?.Invoke(dto));
         _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
         _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
+        _connection.On<int, string>("UserTyping", (channelId, username) => UserTyping?.Invoke(channelId, username));
 
         _connection.Closed += _ =>
         {
@@ -145,6 +147,12 @@ public class ChatService : IAsyncDisposable
             System.Diagnostics.Debug.WriteLine($"[Upload] FAILED: {ex}");
             return null;
         }
+    }
+
+    public async Task StartTypingAsync(int channelId)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("StartTyping", channelId);
     }
 
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)

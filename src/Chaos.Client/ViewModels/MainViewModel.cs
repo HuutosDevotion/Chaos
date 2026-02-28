@@ -159,6 +159,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
+    private readonly Dictionary<string, DateTime> _typingUsers = new();
+    private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
+    private DateTime _lastTypingSent = DateTime.MinValue;
+    private string _typingText = string.Empty;
 
     private object? _activeModal;
 
@@ -179,10 +183,32 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set { _username = value; OnPropertyChanged(); _settingsSaveTimer?.Stop(); _settingsSaveTimer?.Start(); }
     }
 
+    public string TypingText
+    {
+        get => _typingText;
+        private set { _typingText = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasTypingUsers)); }
+    }
+
+    public bool HasTypingUsers => !string.IsNullOrEmpty(_typingText);
+
     public string MessageText
     {
         get => _messageText;
-        set { _messageText = value; OnPropertyChanged(); UpdateSlashSuggestions(value); }
+        set
+        {
+            _messageText = value;
+            OnPropertyChanged();
+            UpdateSlashSuggestions(value);
+            if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
+            {
+                var now = DateTime.UtcNow;
+                if ((now - _lastTypingSent).TotalSeconds >= 2)
+                {
+                    _lastTypingSent = now;
+                    _ = _chatService.StartTypingAsync(_selectedTextChannel.Id);
+                }
+            }
+        }
     }
 
     public bool ShowSlashSuggestions
@@ -414,6 +440,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelCreated += OnChannelCreated;
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
+        _chatService.UserTyping += OnUserTyping;
+        _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
+        _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
         {
             SafeDispatchAsync(() =>
@@ -608,6 +637,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 Messages.Add(vm);
                 prev = vm;
             }
+            _typingUsers.Clear();
+            TypingText = string.Empty;
         });
     }
 
@@ -694,6 +725,41 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             });
     }
 
+    private void OnUserTyping(int channelId, string username)
+    {
+        if (channelId != _selectedTextChannel?.Id) return;
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            _typingUsers[username] = DateTime.UtcNow;
+            UpdateTypingText();
+        });
+    }
+
+    private void CleanupTypingUsers()
+    {
+        var cutoff = DateTime.UtcNow.AddSeconds(-3);
+        var expired = _typingUsers.Where(kv => kv.Value < cutoff).Select(kv => kv.Key).ToList();
+        if (expired.Count == 0) return;
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            foreach (var key in expired)
+                _typingUsers.Remove(key);
+            UpdateTypingText();
+        });
+    }
+
+    private void UpdateTypingText()
+    {
+        var users = _typingUsers.Keys.ToList();
+        TypingText = users.Count switch
+        {
+            0 => string.Empty,
+            1 => $"{users[0]} is typing...",
+            2 => $"{users[0]} and {users[1]} are typing...",
+            _ => "Several people are typing..."
+        };
+    }
+
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)
     {
         SafeDispatch(() =>
@@ -764,6 +830,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 if (member is not null)
                     ch.VoiceMembers.Remove(member);
             }
+            if (_typingUsers.Remove(username))
+                UpdateTypingText();
         });
     }
 
@@ -919,6 +987,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _typingCleanupTimer.Stop();
+        _typingCleanupTimer.Dispose();
         _settingsSaveTimer.Stop();
         FlushSettings();
         _voiceService.Dispose();
