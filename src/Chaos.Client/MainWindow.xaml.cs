@@ -647,14 +647,14 @@ public partial class MainWindow : Window
                 MessageInput.Text, secondary, accent);
             MessageInput.Visibility  = Visibility.Collapsed;
             MessagePreview.Visibility = Visibility.Visible;
-            PreviewToggleButton.ToolTip = "Back to edit";
+            PreviewToggleButton.Tag = "Back to edit";
         }
         else
         {
             MessagePreview.Visibility = Visibility.Collapsed;
             MessageInput.Visibility  = Visibility.Visible;
             MessageInput.Focus();
-            PreviewToggleButton.ToolTip = "Preview rendered message";
+            PreviewToggleButton.Tag = "Preview rendered message";
         }
     }
 

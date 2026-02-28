@@ -1159,19 +1159,23 @@
 
                                         <!-- ── Inline formatting (inserts markdown syntax) ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatBold_Click" ToolTip="Bold — wraps selection in **">
+                                                Click="FormatBold_Click" Tag="Bold — wraps selection in **">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="B" FontWeight="Bold" FontSize="13" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatItalic_Click" ToolTip="Italic — wraps selection in *">
+                                                Click="FormatItalic_Click" Tag="Italic — wraps selection in *">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="I" FontStyle="Italic" FontSize="13" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatUnderline_Click" ToolTip="Underline — wraps selection in __">
+                                                Click="FormatUnderline_Click" Tag="Underline — wraps selection in __">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="U" FontSize="13" TextDecorations="Underline" />
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatStrikethrough_Click" ToolTip="Strikethrough — wraps selection in ~~">
+                                                Click="FormatStrikethrough_Click" Tag="Strikethrough — wraps selection in ~~">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="S" FontSize="13" TextDecorations="Strikethrough" />
                                         </Button>
 
@@ -1179,7 +1183,8 @@
 
                                         <!-- ── Lists ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatBullets_Click" ToolTip="Bullet List — prefixes lines with -">
+                                                Click="FormatBullets_Click" Tag="Bullet List — prefixes lines with -">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Ellipse Canvas.Left="1" Canvas.Top="2" Width="2.5" Height="2.5"
@@ -1198,7 +1203,8 @@
                                             </Viewbox>
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatNumbering_Click" ToolTip="Numbered List — prefixes lines with 1. 2. …">
+                                                Click="FormatNumbering_Click" Tag="Numbered List — prefixes lines with 1. 2. …">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M1,1 L1,4 M2.5,4 L1,4" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -1221,7 +1227,8 @@
 
                                         <!-- ── Indent ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatOutdent_Click" ToolTip="Decrease Indent">
+                                                Click="FormatOutdent_Click" Tag="Decrease Indent">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M5,4 L2,7 L5,10 M2,7 L13,7 M5,1 L13,1 M5,13 L13,13"
@@ -1231,7 +1238,8 @@
                                             </Viewbox>
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatIndent_Click" ToolTip="Increase Indent">
+                                                Click="FormatIndent_Click" Tag="Increase Indent">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M9,4 L12,7 L9,10 M12,7 L1,7 M1,1 L9,1 M1,13 L9,13"
@@ -1245,7 +1253,8 @@
 
                                         <!-- ── Hyperlink ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="InsertHyperlink_Click" ToolTip="Insert Hyperlink">
+                                                Click="InsertHyperlink_Click" Tag="Insert Hyperlink">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M5,8 A3,3,0,0,1,5,5 L8,5 A3,3,0,0,1,8,8"
@@ -1263,7 +1272,8 @@
 
                                         <!-- ── Image ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="PickImage_Click" ToolTip="Insert Image">
+                                                Click="PickImage_Click" Tag="Insert Image">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
                                                     <Path Data="M1,2 L13,2 L13,12 L1,12 Z"
@@ -1283,7 +1293,8 @@
                                         <!-- ── Preview toggle ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
                                                 x:Name="PreviewToggleButton"
-                                                Click="TogglePreview_Click" ToolTip="Preview rendered message">
+                                                Click="TogglePreview_Click" Tag="Preview rendered message">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <!-- Eye icon -->
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
