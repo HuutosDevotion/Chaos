@@ -399,6 +399,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputDeviceName = Settings.OutputDevice;
         _voiceService.InputVolume = Settings.InputVolume;
         _voiceService.OutputVolume = Settings.OutputVolume;
+        _voiceService.MicThreshold = Settings.MicThreshold;
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
@@ -418,13 +419,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             SafeDispatchAsync(() =>
             {
                 MicLevel = level * 200;
-                // Update speaking indicator for self
+                // Update speaking indicator for self — matches when audio is actually being sent
                 if (_voiceChannelId.HasValue)
                 {
                     var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                     var me = ch?.VoiceMembers.FirstOrDefault(m => m.Username == Username);
                     if (me is not null)
-                        me.IsSpeaking = level > 0.02f;
+                        me.IsSpeaking = _voiceService.IsGateOpen;
                 }
             });
         };
@@ -467,6 +468,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.InputVolume = Settings.InputVolume;
             if (e.PropertyName == nameof(AppSettings.OutputVolume))
                 _voiceService.OutputVolume = Settings.OutputVolume;
+            if (e.PropertyName == nameof(AppSettings.MicThreshold))
+                _voiceService.MicThreshold = Settings.MicThreshold;
         };
     }
 

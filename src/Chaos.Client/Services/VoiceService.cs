@@ -24,6 +24,12 @@ public class VoiceService : IDisposable
     public string InputDeviceName { get; set; } = "Default";
     public string OutputDeviceName { get; set; } = "Default";
     public float InputVolume { get; set; } = 1.0f;
+    public float MicThreshold { get; set; } = 0.02f;
+
+    public bool IsGateOpen => _isGateOpen;
+    private bool _isGateOpen;
+    private DateTime _lastAboveThreshold = DateTime.MinValue;
+    private static readonly TimeSpan GateHoldTime = TimeSpan.FromSeconds(1);
 
     private float _outputVolume = 1.0f;
     public float OutputVolume
@@ -165,6 +171,20 @@ public class VoiceService : IDisposable
         MicLevelChanged?.Invoke(maxSample);
 
         if (_isMuted || _udpClient is null || _serverEndpoint is null)
+            return;
+
+        // Voice gate: only send when level exceeds threshold, hold open for GateHoldTime
+        if (maxSample >= MicThreshold)
+        {
+            _isGateOpen = true;
+            _lastAboveThreshold = DateTime.UtcNow;
+        }
+        else if (_isGateOpen && (DateTime.UtcNow - _lastAboveThreshold) > GateHoldTime)
+        {
+            _isGateOpen = false;
+        }
+
+        if (!_isGateOpen)
             return;
 
         // Build packet: 4 bytes userId + 4 bytes channelId + audio data

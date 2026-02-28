@@ -368,6 +368,28 @@
                                 SmallChange="0.05" LargeChange="0.1" />
                     </DockPanel>
 
+                    <TextBlock Text="MIC THRESHOLD" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <Grid Margin="0,0,0,4">
+                            <!-- Always-on voice level bar behind the slider -->
+                            <ProgressBar Height="6" Minimum="0" Maximum="0.20"
+                                         Value="{Binding ThresholdLevel, Mode=OneWay}"
+                                         Background="#3A3C42"
+                                         Foreground="{StaticResource AccentGreenBrush}"
+                                         BorderThickness="0"
+                                         VerticalAlignment="Center"
+                                         IsHitTestVisible="False" />
+                            <!-- Threshold slider overlaid on top -->
+                            <Slider Minimum="0" Maximum="0.20"
+                                    Value="{Binding Settings.MicThreshold, Mode=TwoWay}"
+                                    SmallChange="0.005" LargeChange="0.02"
+                                    Background="Transparent"
+                                    Opacity="0.85" />
+                    </Grid>
+                    <TextBlock Text="Audio is only sent when your mic level exceeds this threshold."
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,0,0,24" />
+
                     <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
 
                     <TextBlock Text="SPEAKER" FontSize="11" FontWeight="Bold"
