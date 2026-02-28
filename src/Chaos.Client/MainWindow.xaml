@@ -1104,6 +1104,7 @@
                                         Content="✕"
                                         Style="{StaticResource DarkButton}"
                                         Command="{Binding ClearPendingImageCommand}"
+                                        Focusable="False"
                                         Padding="6,4" Margin="8,0,0,0"
                                         VerticalAlignment="Top" />
                                 <Image Source="{Binding PendingImagePreview}"
