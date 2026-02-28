@@ -437,12 +437,32 @@ public partial class MainWindow : Window
     private void ImagePreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        var pos = e.GetPosition(ImagePreviewPanel);
+        var hit = VisualTreeHelper.HitTest(ImagePreviewPanel, pos);
+        if (!IsDescendantOrSelf(hit?.VisualHit, ImagePreviewImg))
+        {
+            // Clicked empty space — close the modal
+            if (DataContext is MainViewModel vm)
+                vm.CloseModal();
+            return;
+        }
         _isPanning = true;
         _isDragging = false;
-        _panStart = e.GetPosition(ImagePreviewPanel);
+        _panStart = pos;
         _panScrollX = ImagePreviewScroll.HorizontalOffset;
         _panScrollY = ImagePreviewScroll.VerticalOffset;
         ImagePreviewPanel.CaptureMouse();
+    }
+
+    private static bool IsDescendantOrSelf(DependencyObject? element, DependencyObject target)
+    {
+        var current = element;
+        while (current is not null)
+        {
+            if (current == target) return true;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return false;
     }
 
     private void ImagePreview_MouseMove(object sender, MouseEventArgs e)
