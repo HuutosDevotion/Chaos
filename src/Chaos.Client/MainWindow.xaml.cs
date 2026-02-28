@@ -403,6 +403,7 @@ public partial class MainWindow : Window
         {
             ImagePreviewImg.MaxWidth = double.PositiveInfinity;
             ImagePreviewImg.MaxHeight = double.PositiveInfinity;
+            ImageActionButtons.Visibility = Visibility.Collapsed;
             double viewW = ImagePreviewScroll.ActualWidth;
             double viewH = ImagePreviewScroll.ActualHeight;
             double scale = 1.5;
@@ -429,6 +430,7 @@ public partial class MainWindow : Window
             ImagePreviewImg.Stretch = Stretch.Uniform;
             ImagePreviewImg.LayoutTransform = Transform.Identity;
             ImagePreviewPanel.Cursor = Cursors.Hand;
+            ImageActionButtons.Visibility = Visibility.Visible;
         }
     }
 
@@ -474,6 +476,36 @@ public partial class MainWindow : Window
         e.Handled = true;
         if (DataContext is MainViewModel vm)
             vm.CloseModal();
+    }
+
+    private void ImagePreviewSave_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (ImagePreviewImg.Source is not BitmapSource bmp) return;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save Image",
+            Filter = "PNG Image|*.png|JPEG Image|*.jpg;*.jpeg|All Files|*.*",
+            DefaultExt = ".png",
+            FileName = "image"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        BitmapEncoder encoder = dlg.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                                dlg.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+            ? new JpegBitmapEncoder()
+            : new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(dlg.FileName);
+        encoder.Save(fs);
+    }
+
+    private void ImagePreviewCopy_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (ImagePreviewImg.Source is BitmapSource bmp)
+            Clipboard.SetImage(bmp);
     }
 
     // ── Message FlowDocument ──────────────────────────────────────────────────

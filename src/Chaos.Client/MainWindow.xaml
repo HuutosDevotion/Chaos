@@ -27,6 +27,30 @@
         <conv:InverseBoolConverter x:Key="InverseBool" />
         <conv:VolumeToPercentConverter x:Key="VolumeToPercent" />
 
+        <!-- Flat button for use inside a shared container (image preview action bar) -->
+        <Style x:Key="ImageActionButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#20FFFFFF" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <DataTemplate DataType="{x:Type vm:CreateChannelModalViewModel}">
             <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -560,18 +584,51 @@
                            VerticalAlignment="Center"
                            Stretch="Uniform" />
                 </ScrollViewer>
-                <Button x:Name="ImagePreviewCloseBtn"
-                        Content="✕"
-                        Style="{StaticResource DarkButton}"
-                        Click="ImagePreviewClose_Click"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        Margin="16"
-                        Panel.ZIndex="10"
-                        Padding="10,6"
-                        FontSize="16">
-                    <Button.ToolTip>Close</Button.ToolTip>
-                </Button>
+                <!-- Top-right button row -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Margin="16" Panel.ZIndex="10">
+
+                    <!-- Save + Copy grouped in one box (hidden when zoomed) -->
+                    <Border x:Name="ImageActionButtons"
+                            Background="{StaticResource BgLightBrush}"
+                            CornerRadius="4"
+                            Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource ImageActionButton}"
+                                    Width="36" Click="ImagePreviewSave_Click">
+                                <Button.ToolTip>Save Image</Button.ToolTip>
+                                <!-- Download icon: arrow shaft + V-head + bar -->
+                                <Viewbox Width="14" Height="14">
+                                    <Canvas Width="14" Height="14">
+                                        <Path Data="M7,1 L7,8 M3,5 L7,10 L11,5 M1,12 L13,12"
+                                              Stroke="{StaticResource TextPrimaryBrush}"
+                                              StrokeThickness="1.5"
+                                              StrokeLineJoin="Round"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" />
+                                    </Canvas>
+                                </Viewbox>
+                            </Button>
+                            <Rectangle Width="1" Fill="#30FFFFFF" Margin="0,6" />
+                            <Button Style="{StaticResource ImageActionButton}"
+                                    Width="36" Click="ImagePreviewCopy_Click">
+                                <Button.ToolTip>Copy</Button.ToolTip>
+                                <TextBlock Text="⧉" />
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Close (always visible) -->
+                    <Button x:Name="ImagePreviewCloseBtn"
+                            Content="✕"
+                            Style="{StaticResource DarkButton}"
+                            Click="ImagePreviewClose_Click"
+                            Padding="10,6"
+                            FontSize="16">
+                        <Button.ToolTip>Close</Button.ToolTip>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Grid>
 
