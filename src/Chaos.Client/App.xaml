@@ -327,6 +327,36 @@
             <Setter Property="FontSize" Value="14" />
         </Style>
 
+        <!-- Flipped tooltip template: tail △ on top (row 0), bubble on bottom (row 1).
+             Bubble declared first so Tail (declared last) has higher z-order and its fill
+             covers the bubble's top border at the junction. -->
+        <ControlTemplate x:Key="TooltipTemplateFlipped" TargetType="ToolTip">
+            <Grid TextElement.Foreground="{StaticResource TextPrimaryBrush}"
+                  TextElement.FontSize="11"
+                  TextElement.FontWeight="SemiBold">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Border Grid.Row="1"
+                        Background="{StaticResource BgDarkestBrush}"
+                        BorderBrush="#3A3C42"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="8,5">
+                    <TextBlock Text="{TemplateBinding Content}"
+                               TextWrapping="Wrap" />
+                </Border>
+                <Path Grid.Row="0"
+                      Data="M 0,7 L 6,0 L 12,7"
+                      Fill="{StaticResource BgDarkestBrush}"
+                      Stroke="#3A3C42"
+                      StrokeThickness="1"
+                      HorizontalAlignment="Center"
+                      Margin="0,0,0,-1" />
+            </Grid>
+        </ControlTemplate>
+
         <!-- Tooltip Style (implicit — applies to all tooltips) -->
         <Style TargetType="ToolTip">
             <Setter Property="Placement" Value="Center" />
@@ -334,10 +364,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToolTip">
-                        <!-- Grid z-order: elements declared later render on top.
-                             Bubble is declared first (behind); tail is declared last (in front).
-                             The tail's fill covers the bubble's bottom stroke at the junction.
-                             The open path (no Z) means only the two diagonal sides are stroked — no top edge line. -->
+                        <!-- Default: bubble (row 0) above tail ▽ (row 1).
+                             Tail has higher z-order (declared last) so its fill covers the bubble's
+                             bottom border at the junction. Open path (no Z) = no top-edge stroke.
+                             When IsFlipped=True: rows swap and tail flips to △ pointing up. -->
                         <Grid TextElement.Foreground="{StaticResource TextPrimaryBrush}"
                               TextElement.FontSize="11"
                               TextElement.FontWeight="SemiBold">
@@ -345,8 +375,8 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <!-- Bubble first (lower z-order) -->
-                            <Border Grid.Row="0"
+                            <Border x:Name="Bubble"
+                                    Grid.Row="0"
                                     Background="{StaticResource BgDarkestBrush}"
                                     BorderBrush="#3A3C42"
                                     BorderThickness="1"
@@ -355,9 +385,8 @@
                                 <TextBlock Text="{TemplateBinding Content}"
                                            TextWrapping="Wrap" />
                             </Border>
-                            <!-- Tail second (higher z-order) — fill covers the bubble's bottom stroke at the junction;
-                                 open path (no Z) so no stroke is drawn along the top edge of the triangle. -->
-                            <Path Grid.Row="1"
+                            <Path x:Name="Tail"
+                                  Grid.Row="1"
                                   Data="M 0,0 L 6,7 L 12,0"
                                   Fill="{StaticResource BgDarkestBrush}"
                                   Stroke="#3A3C42"

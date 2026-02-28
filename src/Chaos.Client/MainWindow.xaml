@@ -596,8 +596,12 @@
                             Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
                             <Button Style="{StaticResource ImageActionButton}"
-                                    Width="36" Click="ImagePreviewSave_Click">
-                                <Button.ToolTip>Save Image</Button.ToolTip>
+                                    Width="36" Click="ImagePreviewSave_Click"
+                                    behaviors:TooltipHelper.CenterOnElement="True"
+                                    ToolTipService.InitialShowDelay="0">
+                                <Button.ToolTip>
+                                    <ToolTip Content="Save Image" />
+                                </Button.ToolTip>
                                 <!-- Download icon: arrow shaft + V-head + bar -->
                                 <Viewbox Width="14" Height="14">
                                     <Canvas Width="14" Height="14">
@@ -612,8 +616,12 @@
                             </Button>
                             <Rectangle Width="1" Fill="#30FFFFFF" Margin="0,6" />
                             <Button Style="{StaticResource ImageActionButton}"
-                                    Width="36" Click="ImagePreviewCopy_Click">
-                                <Button.ToolTip>Copy</Button.ToolTip>
+                                    Width="36" Click="ImagePreviewCopy_Click"
+                                    behaviors:TooltipHelper.CenterOnElement="True"
+                                    ToolTipService.InitialShowDelay="0">
+                                <Button.ToolTip>
+                                    <ToolTip Content="Copy" />
+                                </Button.ToolTip>
                                 <TextBlock Text="⧉" />
                             </Button>
                         </StackPanel>
@@ -625,8 +633,12 @@
                             Style="{StaticResource DarkButton}"
                             Click="ImagePreviewClose_Click"
                             Padding="10,6"
-                            FontSize="16">
-                        <Button.ToolTip>Close</Button.ToolTip>
+                            FontSize="16"
+                            behaviors:TooltipHelper.CenterOnElement="True"
+                            ToolTipService.InitialShowDelay="0">
+                        <Button.ToolTip>
+                            <ToolTip Content="Close" />
+                        </Button.ToolTip>
                     </Button>
                 </StackPanel>
             </Grid>
