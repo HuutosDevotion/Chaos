@@ -649,7 +649,9 @@ public partial class MainWindow : Window
         string prefix = text[..lineStartPos];
         int fenceCount = prefix.Replace("\r\n", "\n").Replace("\r", "\n")
                                .Split('\n')
-                               .Count(l => l == "```");
+                               .Count(l => l == "```" ||
+                                           (l.StartsWith("```") && l[3..].Trim().All(char.IsDigit)
+                                            && l.Length > 3));
         return fenceCount % 2 == 1;
     }
 
@@ -787,8 +789,8 @@ public partial class MainWindow : Window
         string region = MessageInput.Text[lineStart..lineEnd];
         string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
-        // Already fenced → remove the fence lines
-        if (lines.Length >= 2 && lines[0] == "```" && lines[^1] == "```")
+        // Already fenced → remove the fence lines (opening may be ```<number>)
+        if (lines.Length >= 2 && lines[0].StartsWith("```") && lines[^1] == "```")
         {
             string inner = string.Join("\n", lines[1..^1]);
             MessageInput.Text = MessageInput.Text[..lineStart] + inner + MessageInput.Text[lineEnd..];
@@ -1257,7 +1259,7 @@ internal static class MarkdownRenderer
     private static readonly System.Windows.Media.SolidColorBrush CodeBlockBg =
         new(System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)); // BgDarkest
 
-    private static Block MakeCodeBlock(string content, Brush textBrush)
+    private static Block MakeCodeBlock(string content, Brush textBrush, int startLine = 1)
     {
         var mutedBrush = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(0x6D, 0x6F, 0x78)); // TextMuted
@@ -1265,7 +1267,7 @@ internal static class MarkdownRenderer
             System.Windows.Media.Color.FromRgb(0x3B, 0x3D, 0x43));
 
         string[] codeLines = content.Split('\n');
-        string lineNums = string.Join("\n", Enumerable.Range(1, codeLines.Length));
+        string lineNums = string.Join("\n", Enumerable.Range(startLine, codeLines.Length));
 
         var lineNumTb = new System.Windows.Controls.TextBlock
         {
@@ -1357,8 +1359,13 @@ internal static class MarkdownRenderer
                 continue;
             }
 
-            if (line == "```")
+            // Opening fence: ``` or ```<number> (e.g. ```42 starts at line 42)
+            string fenceSuffix = line == "```" ? ""
+                : (line.StartsWith("```") && line[3..].Trim() is { Length: > 0 } s
+                   && s.All(char.IsDigit)) ? s : null;
+            if (fenceSuffix != null)
             {
+                int startLine = fenceSuffix.Length > 0 ? int.Parse(fenceSuffix) : 1;
                 i++;
                 var sb = new System.Text.StringBuilder();
                 while (i < rawLines.Length && rawLines[i] != "```")
@@ -1368,7 +1375,7 @@ internal static class MarkdownRenderer
                     i++;
                 }
                 if (i < rawLines.Length) i++; // consume closing ```
-                doc.Blocks.Add(MakeCodeBlock(sb.ToString(), textBrush));
+                doc.Blocks.Add(MakeCodeBlock(sb.ToString(), textBrush, startLine));
                 continue;
             }
 
