@@ -495,7 +495,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>
-        !Settings.GroupMessages || prev is null || prev.Author != msg.Author;
+        !Settings.GroupMessages || prev is null || prev.Author != msg.Author
+        || (msg.Timestamp - prev.Timestamp).TotalMinutes > 5;
 
     private void RecomputeGrouping()
     {

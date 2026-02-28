@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -138,11 +139,26 @@ public partial class MainWindow : Window
                     { if (atBottom) chatScroll.ScrollToBottom(); };
             }
 
-            // New messages always scroll to bottom (also a fallback attach in case
-            // CollectionChanged fires before SelectedTextChannel does).
-            ((INotifyCollectionChanged)vm.Messages).CollectionChanged += (_, _) =>
+            // Rebuild the document when appearance settings that affect layout change.
+            vm.Settings.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName is nameof(AppSettings.MessageSpacing) or nameof(AppSettings.GroupMessages) or nameof(AppSettings.FontSize))
+                    RebuildMessageDoc(vm);
+            };
+
+            // Rebuild / append to the FlowDocument and scroll to bottom on every change.
+            ((INotifyCollectionChanged)vm.Messages).CollectionChanged += (_, args) =>
             {
                 AttachChatScroll();
+                if (args.Action == NotifyCollectionChangedAction.Add && args.NewItems is not null)
+                {
+                    foreach (MessageViewModel msg in args.NewItems)
+                        AppendMessageToDoc(msg);
+                }
+                else
+                {
+                    RebuildMessageDoc(vm);
+                }
                 chatScroll?.ScrollToBottom();
             };
 
@@ -334,6 +350,54 @@ public partial class MainWindow : Window
             MessageInput.Focus();
             MessageInput.CaretIndex = MessageInput.Text.Length;
             e.Handled = true;
+        }
+    }
+
+    // ── Message FlowDocument ──────────────────────────────────────────────────
+
+    private void RebuildMessageDoc(MainViewModel vm)
+    {
+        var doc = new FlowDocument { PagePadding = new Thickness(0) };
+        MessageList.Document = doc;
+        foreach (var msg in vm.Messages)
+            AppendMessageToDoc(msg);
+    }
+
+    private void AppendMessageToDoc(MessageViewModel msg)
+    {
+        var doc       = MessageList.Document;
+        var primary   = (Brush)FindResource("TextPrimaryBrush");
+        var secondary = (Brush)FindResource("TextSecondaryBrush");
+        var muted     = (Brush)FindResource("TextMutedBrush");
+        double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
+
+        if (msg.ShowHeader)
+        {
+            var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+            p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
+            p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
+            doc.Blocks.Add(p);
+        }
+
+        if (!string.IsNullOrEmpty(msg.Content))
+        {
+            double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
+            var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
+                    { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
+            doc.Blocks.Add(p);
+        }
+
+        if (msg.HasImage && msg.ImageUrl is not null)
+        {
+            try
+            {
+                var bmp = new BitmapImage(new Uri(msg.ImageUrl));
+                var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
+                                      Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+                var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
+                doc.Blocks.Add(p);
+            }
+            catch { /* skip unloadable images */ }
         }
     }
 }
