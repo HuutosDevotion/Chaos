@@ -319,6 +319,17 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            int pos = MessageInput.SelectionStart;
+            int len = MessageInput.SelectionLength;
+            MessageInput.Text = MessageInput.Text.Remove(pos, len).Insert(pos, "    ");
+            MessageInput.SelectionStart  = pos + 4;
+            MessageInput.SelectionLength = 0;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && Clipboard.ContainsImage())
         {
             e.Handled = true;
@@ -633,12 +644,30 @@ public partial class MainWindow : Window
 
     private void FormatOutdent_Click(object sender, RoutedEventArgs e)
     {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
         string region = MessageInput.Text[lineStart..lineEnd];
         string[] lines = region.Split('\n');
-        string newRegion = string.Join("\n", lines.Select(l =>
-            l.StartsWith("    ") ? l[4..] : l.TrimStart(' ')));
-        ApplyToLineRegion(lineStart, lineEnd, newRegion);
+        string[] newLines = lines.Select(l =>
+            l.StartsWith("    ") ? l[4..] : l.TrimStart(' ')).ToArray();
+        string newRegion = string.Join("\n", newLines);
+
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int spacesRemoved = lines[0].Length - newLines[0].Length;
+            MessageInput.SelectionStart  = Math.Max(lineStart, origStart - spacesRemoved);
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
     }
 
     private static readonly Regex NumberedListPrefix = new(@"^(\d+)\. ", RegexOptions.Compiled);
