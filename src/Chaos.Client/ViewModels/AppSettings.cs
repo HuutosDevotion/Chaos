@@ -56,6 +56,7 @@ public class AppSettings : INotifyPropertyChanged
     private string _outputDevice = "Default";
     private float _inputVolume = 1.0f;
     private float _outputVolume = 1.0f;
+    private float _micThreshold = 0.02f;
 
     public string InputDevice
     {
@@ -79,6 +80,12 @@ public class AppSettings : INotifyPropertyChanged
     {
         get => _outputVolume;
         set { if (Math.Abs(_outputVolume - value) < 0.001f) return; _outputVolume = value; OnPropertyChanged(); }
+    }
+
+    public float MicThreshold
+    {
+        get => _micThreshold;
+        set { if (Math.Abs(_micThreshold - value) < 0.001f) return; _micThreshold = value; OnPropertyChanged(); }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

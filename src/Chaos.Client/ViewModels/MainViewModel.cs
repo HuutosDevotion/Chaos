@@ -131,6 +131,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
+    private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
+    private readonly DispatcherTimer _remoteSpeakingTimer;
+    private static readonly TimeSpan RemoteSpeakingHoldTime = TimeSpan.FromMilliseconds(500);
 
     public AppSettings Settings { get; }
 
@@ -426,9 +429,28 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputDeviceName = Settings.OutputDevice;
         _voiceService.InputVolume = Settings.InputVolume;
         _voiceService.OutputVolume = Settings.OutputVolume;
+        _voiceService.MicThreshold = Settings.MicThreshold;
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
+
+        _remoteSpeakingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _remoteSpeakingTimer.Tick += (_, _) =>
+        {
+            if (!_voiceChannelId.HasValue || _remoteLastSpoke.Count == 0) return;
+            var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (ch is null) return;
+            var now = DateTime.UtcNow;
+            foreach (var (userId, lastSpoke) in _remoteLastSpoke)
+            {
+                if ((now - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    var member = ch.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == userId);
+                    if (member is not null) member.IsSpeaking = false;
+                }
+            }
+        };
+        _remoteSpeakingTimer.Start();
 
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
@@ -448,13 +470,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             SafeDispatchAsync(() =>
             {
                 MicLevel = level * 200;
-                // Update speaking indicator for self
+                // Update speaking indicator for self — matches when audio is actually being sent
                 if (_voiceChannelId.HasValue)
                 {
                     var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                     var me = ch?.VoiceMembers.FirstOrDefault(m => m.Username == Username);
                     if (me is not null)
-                        me.IsSpeaking = level > 0.02f;
+                        me.IsSpeaking = _voiceService.IsGateOpen;
                 }
             });
         };
@@ -465,8 +487,20 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 if (!_voiceChannelId.HasValue) return;
                 var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                 var member = ch?.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == remoteUserId);
-                if (member is not null)
-                    member.IsSpeaking = level > 0.02f;
+                if (member is null) return;
+
+                float openThreshold = Settings.MicThreshold;
+                float closeThreshold = openThreshold * 0.8f;
+                if (level > openThreshold || (member.IsSpeaking && level > closeThreshold))
+                {
+                    member.IsSpeaking = true;
+                    _remoteLastSpoke[remoteUserId] = DateTime.UtcNow;
+                }
+                else if (_remoteLastSpoke.TryGetValue(remoteUserId, out var lastSpoke)
+                         && (DateTime.UtcNow - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    member.IsSpeaking = false;
+                }
             });
         };
         _voiceService.Error += error =>
@@ -497,6 +531,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.InputVolume = Settings.InputVolume;
             if (e.PropertyName == nameof(AppSettings.OutputVolume))
                 _voiceService.OutputVolume = Settings.OutputVolume;
+            if (e.PropertyName == nameof(AppSettings.MicThreshold))
+                _voiceService.MicThreshold = Settings.MicThreshold;
         };
     }
 
@@ -990,6 +1026,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _typingCleanupTimer.Stop();
         _typingCleanupTimer.Dispose();
         _settingsSaveTimer.Stop();
+        _remoteSpeakingTimer.Stop();
         FlushSettings();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();

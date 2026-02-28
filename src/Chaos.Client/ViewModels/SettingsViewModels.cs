@@ -120,13 +120,16 @@ public class AppearanceSettingsViewModel : SettingsPageViewModel
 
 public class VoiceSettingsViewModel : SettingsPageViewModel
 {
-    private static readonly WaveFormat MicTestFormat = new(16000, 16, 1);
+    private static readonly WaveFormat MicTestFormat = new(48000, 16, 1);
 
     private WaveInEvent? _micTestWaveIn;
     private WaveOutEvent? _micTestWaveOut;
     private BufferedWaveProvider? _micTestProvider;
     private bool _isMicTesting;
     private double _micTestLevel;
+
+    private WaveInEvent? _thresholdMonitorWaveIn;
+    private double _thresholdLevel;
 
     public AppSettings Settings { get; }
     public ObservableCollection<string> InputDevices { get; } = new();
@@ -150,6 +153,12 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         private set { if (Math.Abs(_micTestLevel - value) < 0.001) return; _micTestLevel = value; OnPropertyChanged(); }
     }
 
+    public double ThresholdLevel
+    {
+        get => _thresholdLevel;
+        private set { if (Math.Abs(_thresholdLevel - value) < 0.001) return; _thresholdLevel = value; OnPropertyChanged(); }
+    }
+
     public string MicTestButtonText => IsMicTesting ? "Stop Test" : "Test Microphone";
 
     public ICommand TestMicCommand { get; }
@@ -164,6 +173,8 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         {
             if (e.PropertyName == nameof(AppSettings.OutputVolume) && _micTestWaveOut is not null)
                 _micTestWaveOut.Volume = Math.Clamp(Settings.OutputVolume, 0f, 1f);
+            if (e.PropertyName == nameof(AppSettings.InputDevice))
+                StartThresholdMonitor();
         };
 
         InputDevices.Add("Default");
@@ -181,6 +192,8 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
                 OutputDevices.Add(WaveOut.GetCapabilities(i).ProductName);
         }
         catch { /* no playback devices available */ }
+
+        StartThresholdMonitor();
     }
 
     private void ToggleMicTest()
@@ -237,6 +250,56 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
         _micTestProvider = null;
         IsMicTesting = false;
         MicTestLevel = 0;
+    }
+
+    private void StartThresholdMonitor()
+    {
+        StopThresholdMonitor();
+        try
+        {
+            _thresholdMonitorWaveIn = new WaveInEvent
+            {
+                WaveFormat = MicTestFormat,
+                BufferMilliseconds = 40,
+                DeviceNumber = ResolveInputDevice(Settings.InputDevice)
+            };
+            _thresholdMonitorWaveIn.DataAvailable += OnThresholdMonitorDataAvailable;
+            _thresholdMonitorWaveIn.StartRecording();
+        }
+        catch
+        {
+            StopThresholdMonitor();
+        }
+    }
+
+    public void StopThresholdMonitor()
+    {
+        if (_thresholdMonitorWaveIn is not null)
+        {
+            try { _thresholdMonitorWaveIn.StopRecording(); } catch { }
+            _thresholdMonitorWaveIn.Dispose();
+            _thresholdMonitorWaveIn = null;
+        }
+        ThresholdLevel = 0;
+    }
+
+    private void OnThresholdMonitorDataAvailable(object? sender, WaveInEventArgs e)
+    {
+        float maxSample = 0;
+        float inputGain = Settings.InputVolume;
+        for (int i = 0; i < e.BytesRecorded - 1; i += 2)
+        {
+            short raw = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
+            short sample = inputGain != 1.0f
+                ? (short)Math.Clamp(raw * inputGain, short.MinValue, short.MaxValue)
+                : raw;
+            float abs = Math.Abs(sample / 32768f);
+            if (abs > maxSample) maxSample = abs;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted) return;
+        dispatcher.BeginInvoke(() => ThresholdLevel = maxSample);
     }
 
     private void OnMicTestDataAvailable(object? sender, WaveInEventArgs e)
@@ -329,7 +392,7 @@ public class SettingsModalViewModel : INotifyPropertyChanged
             new("App Settings", new SettingsPageViewModel[] { appearance, voice })
         };
 
-        Close = new RelayCommand(_ => { voice.StopMicTest(); close(); });
+        Close = new RelayCommand(_ => { voice.StopMicTest(); voice.StopThresholdMonitor(); close(); });
         SelectedPage = appearance;
     }
 

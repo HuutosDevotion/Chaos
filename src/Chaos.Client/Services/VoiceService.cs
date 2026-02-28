@@ -24,6 +24,12 @@ public class VoiceService : IDisposable
     public string InputDeviceName { get; set; } = "Default";
     public string OutputDeviceName { get; set; } = "Default";
     public float InputVolume { get; set; } = 1.0f;
+    public float MicThreshold { get; set; } = 0.02f;
+
+    public bool IsGateOpen => _isGateOpen;
+    private bool _isGateOpen;
+    private DateTime _lastAboveThreshold = DateTime.MinValue;
+    private static readonly TimeSpan GateHoldTime = TimeSpan.FromSeconds(1);
 
     private float _outputVolume = 1.0f;
     public float OutputVolume
@@ -41,7 +47,11 @@ public class VoiceService : IDisposable
     }
 
     private static readonly byte[] RegistrationMagic = "RGST"u8.ToArray();
-    private static readonly WaveFormat VoiceFormat = new(16000, 16, 1);
+    private static readonly WaveFormat VoiceFormat = new(48000, 16, 1);
+
+    // Pre-buffer: holds last ~3 frames (120ms) to capture speech onset
+    private const int PreBufferFrames = 3;
+    private readonly Queue<byte[]> _preBuffer = new();
 
     public event Action<float>? MicLevelChanged; // 0.0 to 1.0
     public event Action<string>? Error;
@@ -167,17 +177,60 @@ public class VoiceService : IDisposable
         if (_isMuted || _udpClient is null || _serverEndpoint is null)
             return;
 
-        // Build packet: 4 bytes userId + 4 bytes channelId + audio data
-        var packet = new byte[8 + e.BytesRecorded];
+        // Copy current frame for pre-buffer
+        var frameCopy = new byte[e.BytesRecorded];
+        Buffer.BlockCopy(e.Buffer, 0, frameCopy, 0, e.BytesRecorded);
+
+        bool wasGateOpen = _isGateOpen;
+
+        // Voice gate with hysteresis: open threshold is MicThreshold,
+        // close threshold is 80% of that so slight volume dips don't cut speech
+        float closeThreshold = MicThreshold * 0.8f;
+        if (!_isGateOpen && maxSample >= MicThreshold)
+        {
+            _isGateOpen = true;
+            _lastAboveThreshold = DateTime.UtcNow;
+        }
+        else if (_isGateOpen && maxSample >= closeThreshold)
+        {
+            _lastAboveThreshold = DateTime.UtcNow;
+        }
+        else if (_isGateOpen && (DateTime.UtcNow - _lastAboveThreshold) > GateHoldTime)
+        {
+            _isGateOpen = false;
+        }
+
+        if (!_isGateOpen)
+        {
+            // Gate closed: buffer frames for speech onset capture
+            _preBuffer.Enqueue(frameCopy);
+            while (_preBuffer.Count > PreBufferFrames)
+                _preBuffer.Dequeue();
+            return;
+        }
+
+        // Gate just opened: flush pre-buffer to capture speech onset
+        if (!wasGateOpen)
+        {
+            while (_preBuffer.Count > 0)
+            {
+                var buffered = _preBuffer.Dequeue();
+                SendAudioFrame(buffered, buffered.Length);
+            }
+        }
+
+        // Send current frame
+        SendAudioFrame(e.Buffer, e.BytesRecorded);
+    }
+
+    private void SendAudioFrame(byte[] audioData, int length)
+    {
+        if (_udpClient is null || _serverEndpoint is null) return;
+        var packet = new byte[8 + length];
         BitConverter.GetBytes(_userId).CopyTo(packet, 0);
         BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
-        Buffer.BlockCopy(e.Buffer, 0, packet, 8, e.BytesRecorded);
-
-        try
-        {
-            _udpClient.Send(packet, packet.Length, _serverEndpoint);
-        }
-        catch { }
+        Buffer.BlockCopy(audioData, 0, packet, 8, length);
+        try { _udpClient.Send(packet, packet.Length, _serverEndpoint); } catch { }
     }
 
     private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
@@ -283,6 +336,7 @@ public class VoiceService : IDisposable
         _waveIn = null;
         _udpClient = null;
         _receiveCts = null;
+        _preBuffer.Clear();
     }
 
     public void Dispose()
