@@ -308,7 +308,11 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                return; // Shift+Enter inserts a newline naturally
+            {
+                if (TryHandleListEnter())
+                    e.Handled = true;
+                return; // handled by list logic, or let TextBox insert newline naturally
+            }
             if (vm2.SendMessageCommand.CanExecute(null))
                 vm2.SendMessageCommand.Execute(null);
             e.Handled = true;
@@ -637,13 +641,85 @@ public partial class MainWindow : Window
         ApplyToLineRegion(lineStart, lineEnd, newRegion);
     }
 
+    private static readonly Regex NumberedListPrefix = new(@"^(\d+)\. ", RegexOptions.Compiled);
+
+    private bool TryHandleListEnter()
+    {
+        string text = MessageInput.Text;
+        int    pos  = MessageInput.SelectionStart;
+
+        int lineStart = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+        int lineEnd   = text.IndexOf('\n', lineStart);
+        if (lineEnd < 0) lineEnd = text.Length;
+        string line = text[lineStart..lineEnd];
+
+        // ── Bullet list ──────────────────────────────────────────
+        if (line.StartsWith("- "))
+        {
+            bool empty = line.Length == 2;
+            if (empty)
+            {
+                MessageInput.Text = text.Remove(lineStart, 2);
+                MessageInput.SelectionStart = lineStart;
+            }
+            else
+            {
+                string insert = "\n- ";
+                MessageInput.Text = text.Insert(pos, insert);
+                MessageInput.SelectionStart = pos + insert.Length;
+            }
+            return true;
+        }
+
+        // ── Numbered list ─────────────────────────────────────────
+        var m = NumberedListPrefix.Match(line);
+        if (m.Success)
+        {
+            int    num    = int.Parse(m.Groups[1].Value);
+            bool   empty  = line.Length == m.Length;
+            string prefix = $"{num}. ";
+            if (empty)
+            {
+                MessageInput.Text = text.Remove(lineStart, prefix.Length);
+                MessageInput.SelectionStart = lineStart;
+            }
+            else
+            {
+                string insert = $"\n{num + 1}. ";
+                MessageInput.Text = text.Insert(pos, insert);
+                MessageInput.SelectionStart = pos + insert.Length;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
     private void PrefixSelectedLines(Func<int, string> prefixFor)
     {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
         string region = MessageInput.Text[lineStart..lineEnd];
         string[] lines = region.Split('\n');
         string newRegion = string.Join("\n", lines.Select((l, i) => prefixFor(i) + l));
-        ApplyToLineRegion(lineStart, lineEnd, newRegion);
+
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            // No selection: nudge cursor forward by the length of the added prefix
+            MessageInput.SelectionStart  = origStart + prefixFor(0).Length;
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            // Had selection: keep entire modified region selected (existing behaviour)
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
     }
 
     private void GetSelectedLineRegion(out int lineStart, out int lineEnd)
