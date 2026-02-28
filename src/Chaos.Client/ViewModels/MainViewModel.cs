@@ -200,9 +200,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public object? ActiveModal
     {
         get => _activeModal;
-        private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); }
+        private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); OnPropertyChanged(nameof(IsImagePreviewOpen)); }
     }
 
+    public bool IsImagePreviewOpen => _activeModal is ImagePreviewModalViewModel;
     public bool IsAnyModalOpen => _activeModal is not null;
 
     public void CloseModal() => ActiveModal = null;
@@ -811,6 +812,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OpenSettingsModal() =>
         ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
+
+    public void OpenImagePreviewModal(string imageUrl) =>
+        ActiveModal = new ImagePreviewModalViewModel(imageUrl);
 
     private void OnChannelCreated(ChannelDto dto)
     {

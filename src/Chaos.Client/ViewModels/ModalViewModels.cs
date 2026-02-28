@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Chaos.Shared;
 
+
 namespace Chaos.Client.ViewModels;
 
 public class CreateChannelModalViewModel : INotifyPropertyChanged
@@ -92,4 +93,10 @@ public class DeleteChannelModalViewModel
         Confirm = new RelayCommand(async _ => await _confirm());
         Cancel = new RelayCommand(_ => _cancel());
     }
+}
+
+public class ImagePreviewModalViewModel
+{
+    public string ImageUrl { get; }
+    public ImagePreviewModalViewModel(string imageUrl) => ImageUrl = imageUrl;
 }

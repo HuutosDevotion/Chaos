@@ -32,19 +32,34 @@ public static class TooltipHelper
     {
         if (sender is not FrameworkElement element || element.ToolTip is not ToolTip tooltip) return;
 
-        // If the element's Tag holds a string, use it as the tooltip text.
-        // Tag is bound on the Button (correct DataContext) so this always resolves,
-        // avoiding the DataContext inheritance problem inside the popup.
         if (element.Tag is string tag && tag.Length > 0)
             tooltip.Content = tag;
 
-        // Measure so the height reflects the actual content.
         tooltip.ApplyTemplate();
         tooltip.Measure(new Size(200, double.PositiveInfinity));
 
-        // Placement="Center" handles horizontal centering automatically.
-        // Set VerticalOffset so the tail tip sits flush against the element's top edge.
-        if (tooltip.DesiredSize.Height > 0)
-            tooltip.VerticalOffset = -(element.ActualHeight / 2 + tooltip.DesiredSize.Height / 2);
+        if (tooltip.DesiredSize.Height <= 0) return;
+
+        double halfTarget = element.ActualHeight / 2;
+        double halfTip    = tooltip.DesiredSize.Height / 2;
+
+        var    elementTopScreen   = element.PointToScreen(new Point(0, 0)).Y;
+        double tooltipTopOnScreen = elementTopScreen - halfTip; // top of tooltip with Placement=Center + VerticalOffset
+
+        var    window   = Window.GetWindow(element);
+        double boundary = window != null
+            ? window.PointToScreen(new Point(0, 0)).Y
+            : SystemParameters.WorkArea.Top;
+
+        bool flip = tooltipTopOnScreen < boundary;
+
+        if (flip)
+            tooltip.Template = (ControlTemplate)Application.Current.Resources["TooltipTemplateFlipped"];
+        else
+            tooltip.ClearValue(ToolTip.TemplateProperty);
+
+        tooltip.VerticalOffset = flip
+            ? halfTarget + halfTip      // bubble below element, tail points up
+            : -(halfTarget + halfTip);  // bubble above element, tail points down
     }
 }

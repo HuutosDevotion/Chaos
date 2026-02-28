@@ -122,6 +122,20 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
+            SetupImagePreview(vm);
+
+            // Intercept clicks on images in the RichTextBox before the RichTextBox
+            // captures the mouse for text selection.
+            MessageList.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                var hit = VisualTreeHelper.HitTest(MessageList, e.GetPosition(MessageList));
+                if (hit?.VisualHit is Image img && img.Tag is string url)
+                {
+                    vm.OpenImagePreviewModal(url);
+                    e.Handled = true;
+                }
+            };
+
             // Null until the ListBox is first rendered (it lives inside a Collapsed grid
             // at startup, so its control template isn't applied until IsConnected = true).
             ScrollViewer? chatScroll = null;
@@ -354,6 +368,167 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Image Preview ─────────────────────────────────────────────────────────
+
+    private bool _isImageZoomed;
+    private bool _isPanning;
+    private bool _isDragging;
+    private Point _panStart;
+    private double _panScrollX, _panScrollY;
+
+    private void SetupImagePreview(MainViewModel vm)
+    {
+        vm.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(MainViewModel.ActiveModal)) return;
+            if (vm.ActiveModal is ImagePreviewModalViewModel preview)
+            {
+                ImagePreviewImg.Source = new BitmapImage(new Uri(preview.ImageUrl));
+                _isImageZoomed = false;
+                _isPanning = false;
+                SetImageZoom(false);
+            }
+            else
+            {
+                _isPanning = false;
+                _isDragging = false;
+                ImagePreviewPanel.ReleaseMouseCapture();
+            }
+        };
+    }
+
+    private void SetImageZoom(bool zoomed)
+    {
+        _isImageZoomed = zoomed;
+        if (zoomed)
+        {
+            ImagePreviewImg.MaxWidth = double.PositiveInfinity;
+            ImagePreviewImg.MaxHeight = double.PositiveInfinity;
+            ImageActionButtons.Visibility = Visibility.Collapsed;
+            double viewW = ImagePreviewScroll.ActualWidth;
+            double viewH = ImagePreviewScroll.ActualHeight;
+            double scale = 1.5;
+            if (ImagePreviewImg.Source is BitmapSource bmp && bmp.PixelWidth > 0 && bmp.PixelHeight > 0)
+            {
+                scale = Math.Max(viewW / bmp.PixelWidth, viewH / bmp.PixelHeight);
+                scale = Math.Max(scale, 1.5);
+            }
+            ImagePreviewImg.Stretch = Stretch.None;
+            ImagePreviewImg.LayoutTransform = new ScaleTransform(scale, scale);
+            ImagePreviewPanel.Cursor = Cursors.ScrollAll;
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                ImagePreviewScroll.ScrollToHorizontalOffset(
+                    (ImagePreviewScroll.ExtentWidth - ImagePreviewScroll.ViewportWidth) / 2);
+                ImagePreviewScroll.ScrollToVerticalOffset(
+                    (ImagePreviewScroll.ExtentHeight - ImagePreviewScroll.ViewportHeight) / 2);
+            });
+        }
+        else
+        {
+            ImagePreviewImg.MaxWidth = 700;
+            ImagePreviewImg.MaxHeight = 700;
+            ImagePreviewImg.Stretch = Stretch.Uniform;
+            ImagePreviewImg.LayoutTransform = Transform.Identity;
+            ImagePreviewPanel.Cursor = Cursors.Hand;
+            ImageActionButtons.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ImagePreview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        var pos = e.GetPosition(ImagePreviewPanel);
+        var hit = VisualTreeHelper.HitTest(ImagePreviewPanel, pos);
+        if (!IsDescendantOrSelf(hit?.VisualHit, ImagePreviewImg))
+        {
+            // Clicked empty space — close the modal
+            if (DataContext is MainViewModel vm)
+                vm.CloseModal();
+            return;
+        }
+        _isPanning = true;
+        _isDragging = false;
+        _panStart = pos;
+        _panScrollX = ImagePreviewScroll.HorizontalOffset;
+        _panScrollY = ImagePreviewScroll.VerticalOffset;
+        ImagePreviewPanel.CaptureMouse();
+    }
+
+    private static bool IsDescendantOrSelf(DependencyObject? element, DependencyObject target)
+    {
+        var current = element;
+        while (current is not null)
+        {
+            if (current == target) return true;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return false;
+    }
+
+    private void ImagePreview_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isPanning) return;
+        var pos = e.GetPosition(ImagePreviewPanel);
+        double dx = pos.X - _panStart.X;
+        double dy = pos.Y - _panStart.Y;
+        if (!_isDragging && (Math.Abs(dx) > 4 || Math.Abs(dy) > 4))
+            _isDragging = true;
+        if (_isDragging && _isImageZoomed)
+        {
+            ImagePreviewScroll.ScrollToHorizontalOffset(_panScrollX - dx);
+            ImagePreviewScroll.ScrollToVerticalOffset(_panScrollY - dy);
+        }
+    }
+
+    private void ImagePreview_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        ImagePreviewPanel.ReleaseMouseCapture();
+        bool wasPanning = _isPanning;
+        _isPanning = false;
+        if (wasPanning && !_isDragging)
+            SetImageZoom(!_isImageZoomed);
+        _isDragging = false;
+    }
+
+    private void ImagePreviewClose_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (DataContext is MainViewModel vm)
+            vm.CloseModal();
+    }
+
+    private void ImagePreviewSave_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (ImagePreviewImg.Source is not BitmapSource bmp) return;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save Image",
+            Filter = "PNG Image|*.png|JPEG Image|*.jpg;*.jpeg|All Files|*.*",
+            DefaultExt = ".png",
+            FileName = "image"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        BitmapEncoder encoder = dlg.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                                dlg.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+            ? new JpegBitmapEncoder()
+            : new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bmp));
+        using var fs = File.Create(dlg.FileName);
+        encoder.Save(fs);
+    }
+
+    private void ImagePreviewCopy_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (ImagePreviewImg.Source is BitmapSource bmp)
+            Clipboard.SetImage(bmp);
+    }
+
     // ── Message FlowDocument ──────────────────────────────────────────────────
 
     private void RebuildMessageDoc(MainViewModel vm)
@@ -411,7 +586,8 @@ public partial class MainWindow : Window
                         bmp.Freeze();
 
                         var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
-                                              Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+                                      Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left,
+                                      Cursor = Cursors.Hand, Tag = msg.ImageUrl };
                         var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
                         doc.Blocks.InsertAfter(placeholder, p);
                         doc.Blocks.Remove(placeholder);
