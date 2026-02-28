@@ -1201,25 +1201,25 @@
                                         <!-- ── Inline formatting (inserts markdown syntax) ── -->
                                         <Button x:Name="BoldButton"
                                                 Style="{StaticResource ToolbarButton}"
-                                                Click="FormatBold_Click" Tag="Bold — wraps selection in **">
+                                                Click="FormatBold_Click" Tag="Bold">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="B" FontWeight="Bold" FontSize="13" />
                                         </Button>
                                         <Button x:Name="ItalicButton"
                                                 Style="{StaticResource ToolbarButton}"
-                                                Click="FormatItalic_Click" Tag="Italic — wraps selection in *">
+                                                Click="FormatItalic_Click" Tag="Italic">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="I" FontStyle="Italic" FontSize="13" />
                                         </Button>
                                         <Button x:Name="UnderlineButton"
                                                 Style="{StaticResource ToolbarButton}"
-                                                Click="FormatUnderline_Click" Tag="Underline — wraps selection in __">
+                                                Click="FormatUnderline_Click" Tag="Underline">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="U" FontSize="13" TextDecorations="Underline" />
                                         </Button>
                                         <Button x:Name="StrikethroughButton"
                                                 Style="{StaticResource ToolbarButton}"
-                                                Click="FormatStrikethrough_Click" Tag="Strikethrough — wraps selection in ~~">
+                                                Click="FormatStrikethrough_Click" Tag="Strikethrough">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <TextBlock Text="S" FontSize="13" TextDecorations="Strikethrough" />
                                         </Button>
@@ -1228,7 +1228,7 @@
 
                                         <!-- ── Lists ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatBullets_Click" Tag="Bullet List — prefixes lines with -">
+                                                Click="FormatBullets_Click" Tag="Bullet List">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
@@ -1248,7 +1248,7 @@
                                             </Viewbox>
                                         </Button>
                                         <Button Style="{StaticResource ToolbarButton}"
-                                                Click="FormatNumbering_Click" Tag="Numbered List — prefixes lines with 1. 2. …">
+                                                Click="FormatNumbering_Click" Tag="Numbered List">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <Viewbox Width="14" Height="14">
                                                 <Canvas Width="14" Height="14">
@@ -1390,7 +1390,7 @@
                                         <!-- ── Preview toggle ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
                                                 x:Name="PreviewToggleButton"
-                                                Click="TogglePreview_Click" Tag="Preview rendered message">
+                                                Click="TogglePreview_Click" Tag="Preview">
                                             <Button.ToolTip><ToolTip /></Button.ToolTip>
                                             <!-- Eye icon -->
                                             <Viewbox Width="14" Height="14">
