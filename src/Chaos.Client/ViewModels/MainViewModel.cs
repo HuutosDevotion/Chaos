@@ -207,6 +207,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool IsAnyModalOpen => _activeModal is not null;
 
     public void CloseModal() => ActiveModal = null;
+    public void OpenModal(object modal) => ActiveModal = modal;
 
     public string ConnectionStatus
     {

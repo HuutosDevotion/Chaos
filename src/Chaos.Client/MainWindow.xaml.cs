@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -665,21 +666,28 @@ public partial class MainWindow : Window
 
     private void InsertHyperlink_Click(object sender, RoutedEventArgs e)
     {
+        if (DataContext is not MainViewModel vm) return;
+
         string display = MessageInput.SelectedText;
-        string? url = Microsoft.VisualBasic.Interaction.InputBox(
-            "Enter URL:", "Insert Hyperlink",
-            display.StartsWith("http") ? display : "https://");
-        if (string.IsNullOrWhiteSpace(url)) { MessageInput.Focus(); return; }
-
-        string md = string.IsNullOrEmpty(display) || display.StartsWith("http")
-            ? url
-            : $"[{display}]({url})";
-
         int start = MessageInput.SelectionStart;
         int len   = MessageInput.SelectionLength;
-        MessageInput.Text = MessageInput.Text.Remove(start, len).Insert(start, md);
-        MessageInput.CaretIndex = start + md.Length;
-        MessageInput.Focus();
+
+        vm.OpenModal(new HyperlinkModalViewModel(
+            initialUrl:     display.StartsWith("http") ? display : "https://",
+            initialDisplay: display.StartsWith("http") ? string.Empty : display,
+            confirm: (url, displayText) =>
+            {
+                string md = string.IsNullOrEmpty(displayText) ? url : $"[{displayText}]({url})";
+                MessageInput.Text = MessageInput.Text.Remove(start, len).Insert(start, md);
+                MessageInput.CaretIndex = start + md.Length;
+                vm.CloseModal();
+                MessageInput.Focus();
+            },
+            cancel: () =>
+            {
+                vm.CloseModal();
+                MessageInput.Focus();
+            }));
     }
 
     private async void PickImage_Click(object sender, RoutedEventArgs e)
@@ -964,7 +972,14 @@ internal static class MarkdownRenderer
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return new Hyperlink(new Run(label)) { Foreground = brush };
 
-        var link = new Hyperlink(new Run(label)) { NavigateUri = uri, Foreground = brush };
+        var tt = new ToolTip
+        {
+            Content = uri.AbsoluteUri,
+            Placement = PlacementMode.Mouse,
+            Template = (ControlTemplate)Application.Current.FindResource("TooltipTemplateNoTail")
+        };
+        var link = new Hyperlink(new Run(label)) { NavigateUri = uri, Foreground = brush, ToolTip = tt };
+        ToolTipService.SetInitialShowDelay(link, 500);
         link.RequestNavigate += (_, e) =>
             Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         return link;

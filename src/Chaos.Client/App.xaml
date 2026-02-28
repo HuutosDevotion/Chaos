@@ -349,6 +349,20 @@
             <Setter Property="FontSize" Value="14" />
         </Style>
 
+        <!-- Tailless tooltip template: plain bubble with no arrow. -->
+        <ControlTemplate x:Key="TooltipTemplateNoTail" TargetType="ToolTip">
+            <Border Background="{StaticResource BgDarkestBrush}"
+                    BorderBrush="#3A3C42"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="8,5"
+                    TextElement.Foreground="{StaticResource TextPrimaryBrush}"
+                    TextElement.FontSize="11"
+                    TextElement.FontWeight="SemiBold">
+                <TextBlock Text="{TemplateBinding Content}" TextWrapping="Wrap" />
+            </Border>
+        </ControlTemplate>
+
         <!-- Flipped tooltip template: tail △ on top (row 0), bubble on bottom (row 1).
              Bubble declared first so Tail (declared last) has higher z-order and its fill
              covers the bubble's top border at the junction. -->

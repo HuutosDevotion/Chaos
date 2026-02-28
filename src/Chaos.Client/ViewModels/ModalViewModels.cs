@@ -100,3 +100,43 @@ public class ImagePreviewModalViewModel
     public string ImageUrl { get; }
     public ImagePreviewModalViewModel(string imageUrl) => ImageUrl = imageUrl;
 }
+
+public class HyperlinkModalViewModel : INotifyPropertyChanged
+{
+    private string _url;
+    private string _displayText;
+    private readonly Action<string, string> _confirm;
+    private readonly Action _cancel;
+
+    public string Url
+    {
+        get => _url;
+        set { _url = value; OnPropertyChanged(); }
+    }
+
+    public string DisplayText
+    {
+        get => _displayText;
+        set { _displayText = value; OnPropertyChanged(); }
+    }
+
+    public ICommand Confirm { get; }
+    public ICommand Cancel { get; }
+
+    public HyperlinkModalViewModel(string initialUrl, string initialDisplay,
+                                   Action<string, string> confirm, Action cancel)
+    {
+        _url = initialUrl;
+        _displayText = initialDisplay;
+        _confirm = confirm;
+        _cancel = cancel;
+        Confirm = new RelayCommand(
+            _ => _confirm(Url.Trim(), DisplayText.Trim()),
+            _ => !string.IsNullOrWhiteSpace(Url));
+        Cancel = new RelayCommand(_ => _cancel());
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
