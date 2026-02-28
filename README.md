@@ -85,3 +85,4 @@ git push --force-with-lease
 - **Be specific.** Vague instructions lead to broad changes, which means harder merges and a higher chance of breaking things.
 - **Resume sessions.** When you exit Claude, it prints a command hash — use it to resume right where you left off.
 - **Keep features small.** Smaller PRs are easier to review and merge cleanly. For large infrastructure changes, use **Opus 4.6** and coordinate with the team before starting.
+- **Add more as you see fit.** test add for ci/cd

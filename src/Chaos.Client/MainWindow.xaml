@@ -637,7 +637,7 @@
                             behaviors:TooltipHelper.CenterOnElement="True"
                             ToolTipService.InitialShowDelay="0">
                         <Button.ToolTip>
-                                <ToolTip Content="Close PENISPENISPENIS PENIS PENISPENISPENISPENIS PENIS PENISPENISPENISPENIS PENIS PENISPENISPENISPENIS PENIS PENISPENISPENISPENIS PENIS PENIS" />
+                            <ToolTip Content="Close" />
                         </Button.ToolTip>
                     </Button>
                 </StackPanel>
