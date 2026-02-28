@@ -63,8 +63,13 @@ app.UseStaticFiles();
 app.MapHub<ChatHub>("/chathub");
 app.MapGet("/", () => "Chaos Server is running");
 
-app.MapPost("/api/upload", async (IFormFile file, IWebHostEnvironment env) =>
+app.MapPost("/api/upload", async (HttpContext ctx, IWebHostEnvironment env) =>
 {
+    var form = await ctx.Request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0)
+        return Results.BadRequest("No file provided");
+
     var allowed = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
     var ext = Path.GetExtension(file.FileName).ToLower();
     if (!allowed.Contains(ext)) return Results.BadRequest("Not an image");
