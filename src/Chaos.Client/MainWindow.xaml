@@ -1180,23 +1180,10 @@
                         <Border Background="{StaticResource BgInputBrush}"
                                 CornerRadius="8">
                             <StackPanel>
-                                <!-- Formatting toolbar — visible only while the input area has keyboard focus.
-                                     Buttons are Focusable=False so clicks don't steal focus from the TextBox. -->
+                                <!-- Formatting toolbar -->
                                 <Border x:Name="FormattingToolbar"
                                         Padding="6,4"
                                         BorderBrush="#30FFFFFF" BorderThickness="0,0,0,1">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Style.Triggers>
-                                                <DataTrigger Value="True"
-                                                    Binding="{Binding IsKeyboardFocusWithin,
-                                                              RelativeSource={RelativeSource AncestorType=StackPanel}}">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
                                     <WrapPanel Orientation="Horizontal">
 
                                         <!-- ── Inline formatting (inserts markdown syntax) ── -->
