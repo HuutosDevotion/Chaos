@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Text.RegularExpressions;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -12,6 +13,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
+using Chaos.Client.Behaviors;
 using Chaos.Client.ViewModels;
 using Chaos.Shared;
 
@@ -122,6 +124,8 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        MessageInput.SelectionChanged += (_, _) => UpdateFormatButtonStates();
+
         if (DataContext is MainViewModel vm)
         {
             SetupImagePreview(vm);
@@ -543,6 +547,64 @@ public partial class MainWindow : Window
     private void FormatUnderline_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("__");
     private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("~~");
 
+    // Regex patterns for 2-char delimiter spans (bold, underline, strikethrough).
+    // (?!\s) / (?<!\s) mirror CommonMark: ** must touch non-whitespace on both sides.
+    // This prevents "** text **" from being swallowed as bold, leaving lone * chars
+    // available for the italic scan.
+    private static readonly Regex BoldSpan      = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*", RegexOptions.Compiled);
+    private static readonly Regex UnderlineSpan = new(@"__(.*?)__",     RegexOptions.Compiled);
+    private static readonly Regex StrikeSpan    = new(@"~~(.*?)~~",     RegexOptions.Compiled);
+
+    private void UpdateFormatButtonStates()
+    {
+        string text = MessageInput.Text;
+        int pos = MessageInput.SelectionStart;
+        TooltipHelper.SetIsActive(BoldButton,          IsCursorInSpan(text, pos, BoldSpan, 2));
+        TooltipHelper.SetIsActive(ItalicButton,        IsCursorInItalicSpan(text, pos));
+        TooltipHelper.SetIsActive(UnderlineButton,     IsCursorInSpan(text, pos, UnderlineSpan, 2));
+        TooltipHelper.SetIsActive(StrikethroughButton, IsCursorInSpan(text, pos, StrikeSpan, 2));
+    }
+
+    // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
+    // markerLen is the length of the opening/closing delimiter (** = 2, __ = 2, ~~ = 2).
+    private static bool IsCursorInSpan(string text, int pos, Regex pattern, int markerLen)
+    {
+        foreach (Match m in pattern.Matches(text))
+            if (pos >= m.Index + markerLen && pos <= m.Index + m.Length - markerLen)
+                return true;
+        return false;
+    }
+
+    // Italic uses a manual scan instead of regex because the * vs ** ambiguity breaks
+    // lookahead/lookbehind — in particular, adjacent ** (empty italic or bold boundary)
+    // causes the regex to fail. This approach masks all bold-span positions first, then
+    // scans for lone * pairs in the remaining text.
+    private static bool IsCursorInItalicSpan(string text, int pos)
+    {
+        if (text.Length == 0) return false;
+
+        // Mark every character position that belongs to a bold span
+        var inBold = new bool[text.Length];
+        foreach (Match m in BoldSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++)
+                inBold[i] = true;
+
+        // Scan for lone * pairs (opening and closing) outside bold spans
+        int openAt = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '*' || inBold[i]) continue;
+            if (openAt < 0)
+                openAt = i;                      // found opening *
+            else
+            {
+                if (pos >= openAt + 1 && pos <= i) return true;
+                openAt = -1;                     // found closing *, reset
+            }
+        }
+        return false;
+    }
+
     private void InsertMarkdownAround(string marker)
     {
         int start = MessageInput.SelectionStart;
@@ -649,6 +711,7 @@ public partial class MainWindow : Window
             MessagePreview.Visibility = Visibility.Visible;
             FormattingToolbar.Visibility = Visibility.Visible; // keep toolbar visible while previewing
             PreviewToggleButton.Tag = "Back to edit";
+            TooltipHelper.SetIsActive(PreviewToggleButton, true);
         }
         else
         {
@@ -657,6 +720,7 @@ public partial class MainWindow : Window
             FormattingToolbar.ClearValue(UIElement.VisibilityProperty); // restore style-driven visibility
             MessageInput.Focus();
             PreviewToggleButton.Tag = "Preview rendered message";
+            TooltipHelper.SetIsActive(PreviewToggleButton, false);
         }
     }
 

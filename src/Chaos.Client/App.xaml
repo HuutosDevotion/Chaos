@@ -86,6 +86,11 @@
                     <Setter Property="Background" Value="#35373C" />
                     <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                 </Trigger>
+                <DataTrigger Value="True"
+                    Binding="{Binding Path=(behaviors:TooltipHelper.IsActive), RelativeSource={RelativeSource Self}}">
+                    <Setter Property="Background" Value="#404249" />
+                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                </DataTrigger>
             </Style.Triggers>
         </Style>
 
