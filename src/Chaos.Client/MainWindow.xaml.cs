@@ -645,14 +645,16 @@ public partial class MainWindow : Window
             var accent    = (Brush)FindResource("AccentBlueBrush");
             MessagePreview.Document = MarkdownRenderer.Render(
                 MessageInput.Text, secondary, accent);
-            MessageInput.Visibility  = Visibility.Collapsed;
+            MessageInput.Visibility   = Visibility.Collapsed;
             MessagePreview.Visibility = Visibility.Visible;
+            FormattingToolbar.Visibility = Visibility.Visible; // keep toolbar visible while previewing
             PreviewToggleButton.Tag = "Back to edit";
         }
         else
         {
             MessagePreview.Visibility = Visibility.Collapsed;
-            MessageInput.Visibility  = Visibility.Visible;
+            MessageInput.Visibility   = Visibility.Visible;
+            FormattingToolbar.ClearValue(UIElement.VisibilityProperty); // restore style-driven visibility
             MessageInput.Focus();
             PreviewToggleButton.Tag = "Preview rendered message";
         }
