@@ -1214,6 +1214,34 @@
 
                                         <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
 
+                                        <!-- ── Code / Quote ── -->
+                                        <Button x:Name="CodeButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatCode_Click" Tag="Code">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M4,2 L1,7 L4,12 M10,2 L13,7 L10,12"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="QuoteButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatQuote_Click" Tag="Quote">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M2,2 L2,12 M6,4 L11,7 L6,10"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+
+                                        <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
+
                                         <!-- ── Lists ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
                                                 Click="FormatBullets_Click" Tag="Bullet List">

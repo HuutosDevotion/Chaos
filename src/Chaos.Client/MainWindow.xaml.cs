@@ -572,6 +572,8 @@ public partial class MainWindow : Window
     private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled);
     private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled);
     private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled);
+    private static readonly Regex CodeSpan            = new(@"`(.+?)`",     RegexOptions.Compiled);
+    private static readonly Regex TripleInlineCodeSpan = new(@"```(.+?)```", RegexOptions.Compiled);
 
     private void UpdateFormatButtonStates()
     {
@@ -593,6 +595,11 @@ public partial class MainWindow : Window
         TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
         TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
         TooltipHelper.SetIsActive(AlignJustifyButton, activeAlign == "justify");
+        bool inFencedCode = IsLineInFencedBlock(text, lineStartPos);
+        TooltipHelper.SetIsActive(CodeButton,  inFencedCode
+            || IsCursorInSpan(text, pos, CodeSpan, 1)
+            || IsCursorInSpan(text, pos, TripleInlineCodeSpan, 3));
+        TooltipHelper.SetIsActive(QuoteButton, currentLine.StartsWith("> "));
     }
 
     // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
@@ -633,6 +640,17 @@ public partial class MainWindow : Window
             }
         }
         return false;
+    }
+
+    // Returns true when lineStartPos falls inside a ``` fenced block.
+    // Counts ``` lines before the current line; odd = inside a block.
+    private static bool IsLineInFencedBlock(string text, int lineStartPos)
+    {
+        string prefix = text[..lineStartPos];
+        int fenceCount = prefix.Replace("\r\n", "\n").Replace("\r", "\n")
+                               .Split('\n')
+                               .Count(l => l == "```");
+        return fenceCount % 2 == 1;
     }
 
     private void InsertMarkdownAround(string marker)
@@ -680,6 +698,13 @@ public partial class MainWindow : Window
         {
             var m = FindEnclosingSpan(text, pos, StrikeSpan, 2);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "`")
+        {
+            var m = FindEnclosingSpan(text, pos, TripleInlineCodeSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 3, m.Value.s + m.Value.l - 3, 3); return; }
+            m = FindEnclosingSpan(text, pos, CodeSpan, 1);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 1, m.Value.s + m.Value.l - 1, 1); return; }
         }
 
         InsertMarkdownAround(marker);
@@ -740,6 +765,78 @@ public partial class MainWindow : Window
     private void FormatAlignCenter_Click(object sender, RoutedEventArgs e)  => ApplyAlignmentToLines("center");
     private void FormatAlignRight_Click(object sender, RoutedEventArgs e)   => ApplyAlignmentToLines("right");
     private void FormatAlignJustify_Click(object sender, RoutedEventArgs e) => ApplyAlignmentToLines("justify");
+
+    private void FormatCode_Click(object sender, RoutedEventArgs e)  => ToggleCode();
+    private void FormatQuote_Click(object sender, RoutedEventArgs e) => ToggleQuote();
+
+    private void ToggleCode()
+    {
+        // Multi-line selection → fenced code block
+        if (MessageInput.SelectionLength > 0 && MessageInput.SelectedText.Contains('\n'))
+        {
+            ToggleFencedCode();
+            return;
+        }
+        // Single-line or cursor → inline backtick
+        ToggleInlineFormat("`");
+    }
+
+    private void ToggleFencedCode()
+    {
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        // Already fenced → remove the fence lines
+        if (lines.Length >= 2 && lines[0] == "```" && lines[^1] == "```")
+        {
+            string inner = string.Join("\n", lines[1..^1]);
+            MessageInput.Text = MessageInput.Text[..lineStart] + inner + MessageInput.Text[lineEnd..];
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = inner.Length;
+            MessageInput.Focus();
+            return;
+        }
+
+        string fenced = "```\n" + region + "\n```";
+        MessageInput.Text = MessageInput.Text[..lineStart] + fenced + MessageInput.Text[lineEnd..];
+        MessageInput.SelectionStart  = lineStart;
+        MessageInput.SelectionLength = fenced.Length;
+        MessageInput.Focus();
+    }
+
+    private void ToggleQuote()
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        bool allQuoted = lines.All(l => string.IsNullOrEmpty(l) || l.StartsWith("> "));
+        string[] newLines = lines.Select(line =>
+        {
+            if (string.IsNullOrEmpty(line)) return line;
+            return allQuoted ? line[2..] : $"> {line}";
+        }).ToArray();
+
+        string newRegion = string.Join("\n", newLines);
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int delta = allQuoted ? -2 : 2;
+            MessageInput.SelectionStart  = Math.Max(lineStart, origStart + delta);
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
+    }
 
     private void FormatBullets_Click(object sender, RoutedEventArgs e) =>
         PrefixSelectedLines(i => "- ");
@@ -1139,9 +1236,11 @@ internal static class MarkdownRenderer
 
     // Inline pattern: order matters — composite/longer tokens first.
     // Groups: 1-2 ***bold+italic***, 3-4 **bold**, 5-6 *italic*,
-    //         7-8 __underline__, 9-10 ~~strike~~, 11-13 [text](url), 14 bare URL
+    //         7-8 __underline__, 9-10 ~~strike~~,
+    //         11-12 ```code``` (triple-backtick inline), 13-14 `code` (single-backtick inline),
+    //         15-17 [text](url), 18 bare URL
     private static readonly System.Text.RegularExpressions.Regex InlinePattern =
-        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
@@ -1150,12 +1249,42 @@ internal static class MarkdownRenderer
     private static readonly System.Text.RegularExpressions.Regex NumberedLine =
         new(@"^\d+\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static readonly System.Text.RegularExpressions.Regex WholeLine_SingleCode =
+        new(@"^`([^`]+)`$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex WholeLine_TripleCode =
+        new(@"^```(.+)```$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static Paragraph MakeCodeBlock(string content, Brush textBrush) =>
+        new()
+        {
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground = textBrush,
+            Margin     = new Thickness(4, 2, 0, 2),
+            Padding    = new Thickness(6, 2, 6, 2),
+            Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF)),
+            Inlines    = { new Run(content) { Foreground = textBrush } },
+        };
+
     public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
     {
         var doc = new FlowDocument();
         if (string.IsNullOrEmpty(text)) return doc;
 
         string[] rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        // Single-line message that is entirely an inline code span → render as code block
+        if (rawLines.Length == 1)
+        {
+            var wm = WholeLine_TripleCode.Match(rawLines[0]);
+            if (!wm.Success) wm = WholeLine_SingleCode.Match(rawLines[0]);
+            if (wm.Success)
+            {
+                doc.Blocks.Add(MakeCodeBlock(wm.Groups[1].Value, textBrush));
+                return doc;
+            }
+        }
+
         int i = 0;
         while (i < rawLines.Length)
         {
@@ -1175,6 +1304,33 @@ internal static class MarkdownRenderer
                 var alignPara = new Paragraph { Foreground = textBrush, TextAlignment = alignment };
                 ParseInlines(content, alignPara.Inlines, textBrush, linkBrush);
                 doc.Blocks.Add(alignPara);
+                i++;
+                continue;
+            }
+
+            if (line == "```")
+            {
+                i++;
+                var sb = new System.Text.StringBuilder();
+                while (i < rawLines.Length && rawLines[i] != "```")
+                {
+                    if (sb.Length > 0) sb.Append('\n');
+                    sb.Append(rawLines[i]);
+                    i++;
+                }
+                if (i < rawLines.Length) i++; // consume closing ```
+                doc.Blocks.Add(MakeCodeBlock(sb.ToString(), textBrush));
+                continue;
+            }
+
+            if (line.StartsWith("> "))
+            {
+                var quotePara = new Paragraph { Foreground = textBrush, Margin = new Thickness(4, 0, 0, 0) };
+                var barBrush  = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x46, 0x56, 0x6E));
+                quotePara.Inlines.Add(new Run("▌ ") { Foreground = barBrush });
+                ParseInlines(line[2..], quotePara.Inlines, textBrush, linkBrush);
+                doc.Blocks.Add(quotePara);
                 i++;
                 continue;
             }
@@ -1239,8 +1395,12 @@ internal static class MarkdownRenderer
                 ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline);
             else if (m.Groups[9].Success)  // ~~strike~~
                 ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike);
-            else if (m.Groups[11].Success) // [text](url)
-                inlines.Add(MakeLink(m.Groups[12].Value, m.Groups[13].Value, linkBrush));
+            else if (m.Groups[11].Success) // ```code``` (triple-backtick inline)
+                inlines.Add(MakeCodeRun(m.Groups[12].Value, textBrush));
+            else if (m.Groups[13].Success) // `code` (single-backtick inline)
+                inlines.Add(MakeCodeRun(m.Groups[14].Value, textBrush));
+            else if (m.Groups[15].Success) // [text](url)
+                inlines.Add(MakeLink(m.Groups[16].Value, m.Groups[17].Value, linkBrush));
             else                           // bare URL
                 inlines.Add(MakeLink(m.Value, m.Value, linkBrush));
 
@@ -1264,6 +1424,17 @@ internal static class MarkdownRenderer
         if (style.HasFlag(TextStyle.Strike))    foreach (var d in TextDecorations.Strikethrough)  deco.Add(d);
         if (deco.Count > 0) run.TextDecorations = deco;
         return run;
+    }
+
+    private static Run MakeCodeRun(string text, Brush brush)
+    {
+        return new Run(text)
+        {
+            Foreground = brush,
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+        };
     }
 
     private static Hyperlink MakeLink(string label, string url, Brush brush)
