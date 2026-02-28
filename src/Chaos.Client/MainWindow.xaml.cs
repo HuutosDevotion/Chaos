@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -389,15 +390,41 @@ public partial class MainWindow : Window
 
         if (msg.HasImage && msg.ImageUrl is not null)
         {
-            try
+            var imageUrl = msg.ImageUrl;
+            var placeholder = new Paragraph(new Run("Loading image...") { Foreground = muted, FontStyle = FontStyles.Italic })
+                              { Margin = new Thickness(16, 4, 16, 0) };
+            doc.Blocks.Add(placeholder);
+
+            _ = Task.Run(async () =>
             {
-                var bmp = new BitmapImage(new Uri(msg.ImageUrl));
-                var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
-                                      Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
-                var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
-                doc.Blocks.Add(p);
-            }
-            catch { /* skip unloadable images */ }
+                try
+                {
+                    using var http = new HttpClient();
+                    var bytes = await http.GetByteArrayAsync(imageUrl);
+                    Dispatcher.Invoke(() =>
+                    {
+                        var bmp = new BitmapImage();
+                        bmp.BeginInit();
+                        bmp.StreamSource = new MemoryStream(bytes);
+                        bmp.CacheOption = BitmapCacheOption.OnLoad;
+                        bmp.EndInit();
+                        bmp.Freeze();
+
+                        var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
+                                              Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left };
+                        var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
+                        doc.Blocks.InsertAfter(placeholder, p);
+                        doc.Blocks.Remove(placeholder);
+                    });
+                }
+                catch
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        ((Run)placeholder.Inlines.FirstInline).Text = "Failed to load image";
+                    });
+                }
+            });
         }
     }
 }

@@ -115,14 +115,36 @@ public class ChatService : IAsyncDisposable
 
     public async Task<string?> UploadImageAsync(byte[] imageData, string filename)
     {
-        using var http = new HttpClient();
-        using var content = new MultipartFormDataContent();
-        content.Add(new ByteArrayContent(imageData), "file", filename);
-        var response = await http.PostAsync($"{_baseUrl}/api/upload", content);
-        if (!response.IsSuccessStatusCode) return null;
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var relative = doc.RootElement.GetProperty("url").GetString();
-        return relative;
+        try
+        {
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromSeconds(30);
+            using var content = new MultipartFormDataContent();
+            var ext = System.IO.Path.GetExtension(filename)?.ToLower() ?? ".png";
+            if (string.IsNullOrEmpty(ext)) ext = ".png";
+            var safeFilename = $"upload{ext}";
+            var fileContent = new ByteArrayContent(imageData);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                ext switch
+                {
+                    ".jpg" or ".jpeg" => "image/jpeg",
+                    ".gif" => "image/gif",
+                    ".bmp" => "image/bmp",
+                    ".webp" => "image/webp",
+                    _ => "image/png"
+                });
+            content.Add(fileContent, "file", safeFilename);
+            var response = await http.PostAsync($"{_baseUrl}/api/upload", content);
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var relative = doc.RootElement.GetProperty("url").GetString();
+            return relative;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Upload] FAILED: {ex}");
+            return null;
+        }
     }
 
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)

@@ -14,7 +14,7 @@ Environment=ASPNETCORE_ENVIRONMENT=Production
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/opt/chaos
+ReadWritePaths=/opt/chaos /tmp
 
 [Install]
 WantedBy=multi-user.target
