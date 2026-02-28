@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using Chaos.Server.Commands;
 using Chaos.Server.Data;
 using Chaos.Server.Models;
@@ -163,6 +164,32 @@ public class ChatHub : Hub
         };
 
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);
+
+        // Parse @mentions and broadcast indicator to all clients
+        var connectedUsernames = _users.Values
+            .Where(u => !string.IsNullOrEmpty(u.Username))
+            .Select(u => u.Username)
+            .ToList();
+
+        var mentionedUsers = new List<string>();
+        foreach (var username in connectedUsernames)
+        {
+            if (Regex.IsMatch(content, $@"@{Regex.Escape(username)}(?!\w)", RegexOptions.IgnoreCase))
+                mentionedUsers.Add(username);
+        }
+
+        var channel = await _db.Channels.FindAsync(channelId);
+        var indicator = new NewMessageIndicatorDto
+        {
+            ChannelId = channelId,
+            ChannelName = channel?.Name ?? string.Empty,
+            Author = user.Username,
+            ContentPreview = content.Length > 100 ? content[..100] + "..." : content,
+            Timestamp = message.Timestamp,
+            MentionedUsers = mentionedUsers
+        };
+
+        await Clients.All.SendAsync("NewMessageIndicator", indicator);
     }
 
     public List<string> GetConnectedUsers()

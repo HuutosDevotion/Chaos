@@ -23,6 +23,7 @@ public class ChatService : IAsyncDisposable
     public event Action<int>? ChannelDeleted;
     public event Action<ChannelDto>? ChannelRenamed;
     public event Action<int, string>? UserTyping; // channelId, username
+    public event Action<NewMessageIndicatorDto>? NewMessageIndicator;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -60,6 +61,7 @@ public class ChatService : IAsyncDisposable
         _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
         _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
         _connection.On<int, string>("UserTyping", (channelId, username) => UserTyping?.Invoke(channelId, username));
+        _connection.On<NewMessageIndicatorDto>("NewMessageIndicator", dto => NewMessageIndicator?.Invoke(dto));
 
         _connection.Closed += _ =>
         {

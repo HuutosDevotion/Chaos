@@ -985,11 +985,30 @@ public partial class MainWindow : Window
         var primary   = (Brush)FindResource("TextPrimaryBrush");
         var secondary = (Brush)FindResource("TextSecondaryBrush");
         var muted     = (Brush)FindResource("TextMutedBrush");
-        double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
+        var vm        = DataContext as MainViewModel;
+        double fontSize = vm?.Settings.FontSize ?? 14;
+
+        var connectedUsers = vm?.ConnectedUsers;
+        var currentUser = vm?.Username ?? string.Empty;
+        bool mentionsCurrentUser = !string.IsNullOrEmpty(msg.Content)
+            && !string.IsNullOrEmpty(currentUser)
+            && Regex.IsMatch(msg.Content, $@"@{Regex.Escape(currentUser)}(?!\w)", RegexOptions.IgnoreCase);
+
+        var mentionHighlightBg = new SolidColorBrush(Color.FromArgb(25, 88, 101, 242));
+        mentionHighlightBg.Freeze();
+        var mentionHighlightBorder = new SolidColorBrush(Color.FromArgb(80, 88, 101, 242));
+        mentionHighlightBorder.Freeze();
 
         if (msg.ShowHeader)
         {
-            var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+            var p = new Paragraph { Margin = new Thickness(0, msg.Padding.Top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
+            if (mentionsCurrentUser)
+            {
+                p.Background = mentionHighlightBg;
+                p.BorderBrush = mentionHighlightBorder;
+                p.BorderThickness = new Thickness(2, 0, 0, 0);
+                p.Padding = new Thickness(14, 0, 16, 0);
+            }
             p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
@@ -998,26 +1017,36 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            if (IsRichContent(msg.Content))
+            var accentBlue = (Brush)FindResource("AccentBlueBrush");
+            var mentionTextBg = new SolidColorBrush(Color.FromArgb(50, 88, 101, 242));
+            mentionTextBg.Freeze();
+
+            var p = new Paragraph { Margin = new Thickness(0, top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
+            if (mentionsCurrentUser)
             {
-                // Legacy XAML-serialised messages from the previous rich-text build
-                AppendRichContent(doc, msg.Content, secondary, top);
+                p.Background = mentionHighlightBg;
+                p.BorderBrush = mentionHighlightBorder;
+                p.BorderThickness = new Thickness(2, 0, 0, 0);
+                p.Padding = new Thickness(14, 0, 16, 0);
             }
-            else
+            foreach (var segment in MentionParser.Parse(msg.Content, connectedUsers))
             {
-                // Markdown (or plain) text — render inline formatting, lists, links
-                var rendered = MarkdownRenderer.Render(msg.Content, secondary,
-                                   (Brush)FindResource("AccentBlueBrush"));
-                double blockTop = top;
-                foreach (var block in rendered.Blocks.ToList())
+                if (segment.IsMention)
                 {
-                    rendered.Blocks.Remove(block);
-                    block.Margin = new Thickness(16, blockTop, 16, 0);
-                    if (block is Paragraph p) p.LineHeight = double.NaN;
-                    doc.Blocks.Add(block);
-                    blockTop = 1;
+                    p.Inlines.Add(new Run(segment.Text)
+                    {
+                        Foreground = accentBlue,
+                        FontWeight = FontWeights.SemiBold,
+                        Background = mentionTextBg
+                    });
+                }
+                else
+                {
+                    p.Inlines.Add(new Run(segment.Text) { Foreground = secondary });
                 }
             }
+
+            doc.Blocks.Add(p);
         }
 
         if (msg.HasImage && msg.ImageUrl is not null)
