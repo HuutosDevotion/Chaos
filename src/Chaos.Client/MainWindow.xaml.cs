@@ -1,7 +1,9 @@
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -177,6 +179,15 @@ public partial class MainWindow : Window
                 chatScroll?.ScrollToBottom();
             };
 
+            // Keep vm.MessageText in sync with the RichTextBox plain text so that
+            // CanExecute and slash-command suggestions continue to work.
+            MessageInput.TextChanged += (_, _) =>
+            {
+                var range = new TextRange(MessageInput.Document.ContentStart,
+                                          MessageInput.Document.ContentEnd);
+                vm.MessageText = range.Text;
+            };
+
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
@@ -280,10 +291,7 @@ public partial class MainWindow : Window
             {
                 int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
                 if (idx < vm.SlashSuggestions.Count)
-                {
-                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
-                    MessageInput.CaretIndex = MessageInput.Text.Length;
-                }
+                    ApplySuggestion(vm, vm.SlashSuggestions[idx]);
                 e.Handled = true;
                 return;
             }
@@ -295,8 +303,7 @@ public partial class MainWindow : Window
             }
             if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
             {
-                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
-                MessageInput.CaretIndex = MessageInput.Text.Length;
+                ApplySuggestion(vm, vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
                 e.Handled = true;
                 return;
             }
@@ -305,9 +312,21 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
-                return; // Shift+Enter inserts a newline naturally
+                return; // Shift+Enter inserts a paragraph break (RichTextBox default)
             if (vm2.SendMessageCommand.CanExecute(null))
+            {
+                // Serialize rich content before clearing the input
+                var fullRange = new TextRange(MessageInput.Document.ContentStart,
+                                              MessageInput.Document.ContentEnd);
+                if (!string.IsNullOrWhiteSpace(fullRange.Text))
+                {
+                    using var ms = new MemoryStream();
+                    fullRange.Save(ms, DataFormats.Xaml);
+                    vm2.PendingRichContent = Encoding.UTF8.GetString(ms.ToArray());
+                }
                 vm2.SendMessageCommand.Execute(null);
+                MessageInput.Document = new FlowDocument(); // clear input optimistically
+            }
             e.Handled = true;
             return;
         }
@@ -363,11 +382,21 @@ public partial class MainWindow : Window
             el.DataContext is SlashCommandDto cmd &&
             DataContext is MainViewModel vm)
         {
-            vm.SelectSuggestion(cmd);
-            MessageInput.Focus();
-            MessageInput.CaretIndex = MessageInput.Text.Length;
+            ApplySuggestion(vm, cmd);
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Accepts a slash-command suggestion: updates the VM and repopulates the RichTextBox.
+    /// </summary>
+    private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
+    {
+        vm.SelectSuggestion(cmd);
+        // Reflect the selected text in the RichTextBox (vm.MessageText was just set by SelectSuggestion)
+        MessageInput.Document = new FlowDocument(new Paragraph(new Run(vm.MessageText)));
+        MessageInput.CaretPosition = MessageInput.Document.ContentEnd;
+        MessageInput.Focus();
     }
 
     // ── Image Preview ─────────────────────────────────────────────────────────
@@ -531,6 +560,63 @@ public partial class MainWindow : Window
             Clipboard.SetImage(bmp);
     }
 
+    // ── Formatting toolbar handlers ────────────────────────────────────────────
+
+    private void Strikethrough_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = MessageInput.Selection;
+        if (sel.IsEmpty) return;
+        var existing = sel.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
+        bool hasStrike = existing?.Any(d => d.Location == TextDecorationLocation.Strikethrough) == true;
+        sel.ApplyPropertyValue(Inline.TextDecorationsProperty,
+            hasStrike ? null : TextDecorations.Strikethrough);
+        MessageInput.Focus();
+    }
+
+    private void InsertHyperlink_Click(object sender, RoutedEventArgs e)
+    {
+        string displayText = MessageInput.Selection.Text;
+        string? url = Microsoft.VisualBasic.Interaction.InputBox(
+            "Enter URL:", "Insert Hyperlink", displayText.StartsWith("http") ? displayText : "https://");
+        if (string.IsNullOrWhiteSpace(url)) { MessageInput.Focus(); return; }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            MessageBox.Show("Please enter a valid URL.", "Invalid URL", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageInput.Focus();
+            return;
+        }
+
+        var link = new Hyperlink(new Run(string.IsNullOrEmpty(displayText) ? url : displayText))
+        {
+            NavigateUri = uri,
+            Foreground = (Brush)FindResource("AccentBlueBrush")
+        };
+        link.RequestNavigate += (_, ev) =>
+            Process.Start(new ProcessStartInfo(ev.Uri.AbsoluteUri) { UseShellExecute = true });
+
+        // Replace selected content with the hyperlink
+        MessageInput.Selection.Text = string.Empty;
+        var insert = MessageInput.CaretPosition;
+        var para = insert.Paragraph ?? new Paragraph();
+        para.Inlines.Add(link);
+        MessageInput.Focus();
+    }
+
+    private async void PickImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Image",
+            Filter = "Images|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp"
+        };
+        if (dlg.ShowDialog() != true) return;
+        var data = await File.ReadAllBytesAsync(dlg.FileName);
+        if (DataContext is MainViewModel vm)
+            vm.SetPendingImage(data, Path.GetFileName(dlg.FileName), BytesToBitmapSource(data));
+        MessageInput.Focus();
+    }
+
     // ── Message FlowDocument ──────────────────────────────────────────────────
 
     private void RebuildMessageDoc(MainViewModel vm)
@@ -560,9 +646,14 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
-                    { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
-            doc.Blocks.Add(p);
+            if (IsRichContent(msg.Content))
+                AppendRichContent(doc, msg.Content, secondary, top);
+            else
+            {
+                var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
+                        { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
+                doc.Blocks.Add(p);
+            }
         }
 
         if (msg.HasImage && msg.ImageUrl is not null)
@@ -603,6 +694,49 @@ public partial class MainWindow : Window
                     });
                 }
             });
+        }
+    }
+
+    private static bool IsRichContent(string content) =>
+        content.TrimStart().StartsWith("<Section");
+
+    /// <summary>
+    /// Parses a XAML Section (produced by TextRange.Save) and appends its blocks to <paramref name="doc"/>,
+    /// applying display margin and foreground. Falls back to plain-text rendering on parse errors.
+    /// </summary>
+    private static void AppendRichContent(FlowDocument doc, string xaml, Brush foreground, double topMargin)
+    {
+        try
+        {
+            var tempDoc = new FlowDocument();
+            var range = new TextRange(tempDoc.ContentStart, tempDoc.ContentEnd);
+            using var ms = new MemoryStream(Encoding.UTF8.GetBytes(xaml));
+            range.Load(ms, DataFormats.Xaml);
+
+            double top = topMargin;
+            foreach (var block in tempDoc.Blocks.ToList())
+            {
+                tempDoc.Blocks.Remove(block);
+                block.Foreground = foreground;
+                if (block is Paragraph p)
+                {
+                    p.Margin = new Thickness(16, top, 16, 0);
+                    p.LineHeight = double.NaN;
+                }
+                else
+                {
+                    block.Margin = new Thickness(16, top, 16, 0);
+                }
+                top = 1;
+                doc.Blocks.Add(block);
+            }
+        }
+        catch
+        {
+            // Corrupted or legacy content — show as plain text
+            var p = new Paragraph(new Run(xaml) { Foreground = foreground })
+                    { Margin = new Thickness(16, topMargin, 16, 0), LineHeight = double.NaN };
+            doc.Blocks.Add(p);
         }
     }
 }

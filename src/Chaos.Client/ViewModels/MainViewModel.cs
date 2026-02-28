@@ -143,6 +143,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _serverAddress = "localhost:5000";
     private string _username = string.Empty;
     private string _messageText = string.Empty;
+    private string? _pendingRichContent;
     private string _connectionStatus = "Disconnected";
     private bool _isConnected;
     private bool _isConnecting;
@@ -183,6 +184,16 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _messageText;
         set { _messageText = value; OnPropertyChanged(); UpdateSlashSuggestions(value); }
+    }
+
+    /// <summary>
+    /// XAML-serialised FlowDocument Section set by the code-behind just before executing
+    /// SendMessageCommand. Null when the message has no rich formatting.
+    /// </summary>
+    public string? PendingRichContent
+    {
+        get => _pendingRichContent;
+        set { _pendingRichContent = value; OnPropertyChanged(); }
     }
 
     public bool ShowSlashSuggestions
@@ -666,7 +677,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task SendMessageAsync()
     {
         if (_selectedTextChannel is null) return;
-        if (string.IsNullOrWhiteSpace(MessageText) && !HasPendingImage) return;
+        if (string.IsNullOrWhiteSpace(MessageText) && !HasPendingImage && PendingRichContent is null) return;
 
         if (_pendingImageData is not null)
         {
@@ -676,10 +687,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             ClearPendingImage();
         }
 
-        if (!string.IsNullOrWhiteSpace(MessageText))
+        // Prefer the rich XAML content when available; fall back to plain text.
+        var content = PendingRichContent ?? MessageText;
+        if (!string.IsNullOrWhiteSpace(content))
         {
-            await _chatService.SendMessage(_selectedTextChannel.Id, MessageText, null);
+            await _chatService.SendMessage(_selectedTextChannel.Id, content, null);
             MessageText = string.Empty;
+            PendingRichContent = null;
         }
     }
 
