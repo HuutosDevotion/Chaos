@@ -1143,6 +1143,10 @@
                                      Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
                                      BorderThickness="0"
                                      VerticalAlignment="Center"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     MaxHeight="120"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      x:Name="MessageInput"
                                      PreviewKeyDown="MessageInput_PreviewKeyDown" />
                         </Border>

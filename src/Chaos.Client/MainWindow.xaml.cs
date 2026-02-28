@@ -304,6 +304,8 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
         {
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                return; // Shift+Enter inserts a newline naturally
             if (vm2.SendMessageCommand.CanExecute(null))
                 vm2.SendMessageCommand.Execute(null);
             e.Handled = true;
