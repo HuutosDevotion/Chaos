@@ -749,39 +749,73 @@
                                                 </Setter>
                                             </Style>
                                         </Button.Style>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Icon}"
-                                                       FontSize="16" Margin="0,0,6,0"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                        <DockPanel>
+                                            <!-- Unread badge (right-aligned) -->
+                                            <Border DockPanel.Dock="Right" CornerRadius="8"
+                                                    MinWidth="18" Height="18"
+                                                    Padding="5,1" Margin="4,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{StaticResource AccentBlueBrush}" />
+                                                        <Setter Property="Visibility" Value="Collapsed" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                            <DataTrigger Binding="{Binding HasUnread}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding HasMention}" Value="True">
+                                                                <Setter Property="Background" Value="{StaticResource AccentRedBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="14"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </StackPanel>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding UnreadCount}"
+                                                           Foreground="White" FontSize="11"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Icon}"
+                                                           FontSize="16" Margin="0,0,6,0"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="14"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                            <Setter Property="FontWeight" Value="Normal" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HasUnread}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                    <Setter Property="FontWeight" Value="Bold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
                                     </Button>
 
                                     <!-- Voice members shown under voice channels -->
@@ -910,6 +944,7 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -947,7 +982,34 @@
                             </Button.ToolTip>
                         </Button>
 
-                        <Button Grid.Column="3" Content="⚙"
+                        <!-- Inbox Button with mention badge -->
+                        <Button x:Name="InboxAnchor" Grid.Column="3"
+                                Style="{StaticResource DarkButton}"
+                                Command="{Binding ToggleInboxCommand}"
+                                FontSize="13" Padding="6,4"
+                                Margin="4,0,0,0" VerticalAlignment="Center"
+                                behaviors:TooltipHelper.CenterOnElement="True"
+                                ToolTipService.InitialShowDelay="0">
+                            <Grid>
+                                <TextBlock Text="&#x2709;" FontSize="14" />
+                                <Border CornerRadius="6" Background="{StaticResource AccentRedBrush}"
+                                        MinWidth="14" Height="14"
+                                        Padding="3,0" Margin="10,-8,-6,0"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Visibility="{Binding HasMentions, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding TotalMentionCount}"
+                                               Foreground="White" FontSize="9"
+                                               FontWeight="Bold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                            <Button.ToolTip>
+                                <ToolTip Content="Inbox" />
+                            </Button.ToolTip>
+                        </Button>
+
+                        <Button Grid.Column="4" Content="⚙"
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding OpenSettingsCommand}"
                                 FontSize="13" Padding="6,4"
@@ -960,6 +1022,105 @@
                         </Button>
                     </Grid>
                 </Border>
+
+                <!-- Inbox Popup Panel -->
+                <Popup IsOpen="{Binding IsInboxOpen}" StaysOpen="False"
+                       Placement="Top" PlacementTarget="{Binding ElementName=InboxAnchor}"
+                       AllowsTransparency="True" PopupAnimation="Fade"
+                       HorizontalOffset="-10" VerticalOffset="-4">
+                    <Border Background="{StaticResource BgDarkBrush}"
+                            BorderBrush="#40FFFFFF" BorderThickness="1"
+                            CornerRadius="8" Width="320" MaxHeight="400">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
+                                    Padding="12,10">
+                                <TextBlock Text="INBOX" FontSize="12" FontWeight="Bold"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          MaxHeight="340">
+                                <ItemsControl ItemsSource="{Binding Mentions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Cursor="Hand"
+                                                    Command="{Binding DataContext.GoToMentionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Background" Value="Transparent" />
+                                                        <Setter Property="BorderThickness" Value="0" />
+                                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                                            Padding="12,8" BorderBrush="#222326"
+                                                                            BorderThickness="0,0,0,1">
+                                                                        <ContentPresenter />
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </Button.Style>
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <TextBlock DockPanel.Dock="Right"
+                                                                   Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
+                                                                   Foreground="{StaticResource TextMutedBrush}"
+                                                                   FontSize="10" VerticalAlignment="Center" />
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Author}"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                                       FontSize="12" FontWeight="SemiBold" />
+                                                            <TextBlock Foreground="{StaticResource TextMutedBrush}"
+                                                                       FontSize="11" Margin="6,0,0,0"
+                                                                       VerticalAlignment="Center">
+                                                                <Run Text="in #" /><Run Text="{Binding ChannelName, Mode=OneWay}" />
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Content}"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                               FontSize="12" TextTrimming="CharacterEllipsis"
+                                                               MaxHeight="36" Margin="0,4,0,0" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <!-- Empty state -->
+                            <TextBlock Grid.Row="1" Text="No mentions yet"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="13" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" Margin="0,20">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Mentions.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                </Popup>
             </Grid>
 
             <!-- Resize handle between left sidebar and chat -->

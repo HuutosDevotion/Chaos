@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -545,11 +546,30 @@ public partial class MainWindow : Window
         var primary   = (Brush)FindResource("TextPrimaryBrush");
         var secondary = (Brush)FindResource("TextSecondaryBrush");
         var muted     = (Brush)FindResource("TextMutedBrush");
-        double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
+        var vm        = DataContext as MainViewModel;
+        double fontSize = vm?.Settings.FontSize ?? 14;
+
+        var connectedUsers = vm?.ConnectedUsers;
+        var currentUser = vm?.Username ?? string.Empty;
+        bool mentionsCurrentUser = !string.IsNullOrEmpty(msg.Content)
+            && !string.IsNullOrEmpty(currentUser)
+            && Regex.IsMatch(msg.Content, $@"@{Regex.Escape(currentUser)}(?!\w)", RegexOptions.IgnoreCase);
+
+        var mentionHighlightBg = new SolidColorBrush(Color.FromArgb(25, 88, 101, 242));
+        mentionHighlightBg.Freeze();
+        var mentionHighlightBorder = new SolidColorBrush(Color.FromArgb(80, 88, 101, 242));
+        mentionHighlightBorder.Freeze();
 
         if (msg.ShowHeader)
         {
-            var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+            var p = new Paragraph { Margin = new Thickness(0, msg.Padding.Top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
+            if (mentionsCurrentUser)
+            {
+                p.Background = mentionHighlightBg;
+                p.BorderBrush = mentionHighlightBorder;
+                p.BorderThickness = new Thickness(2, 0, 0, 0);
+                p.Padding = new Thickness(14, 0, 16, 0);
+            }
             p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
@@ -558,8 +578,35 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
-                    { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
+            var accentBlue = (Brush)FindResource("AccentBlueBrush");
+            var mentionTextBg = new SolidColorBrush(Color.FromArgb(50, 88, 101, 242));
+            mentionTextBg.Freeze();
+
+            var p = new Paragraph { Margin = new Thickness(0, top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
+            if (mentionsCurrentUser)
+            {
+                p.Background = mentionHighlightBg;
+                p.BorderBrush = mentionHighlightBorder;
+                p.BorderThickness = new Thickness(2, 0, 0, 0);
+                p.Padding = new Thickness(14, 0, 16, 0);
+            }
+            foreach (var segment in MentionParser.Parse(msg.Content, connectedUsers))
+            {
+                if (segment.IsMention)
+                {
+                    p.Inlines.Add(new Run(segment.Text)
+                    {
+                        Foreground = accentBlue,
+                        FontWeight = FontWeights.SemiBold,
+                        Background = mentionTextBg
+                    });
+                }
+                else
+                {
+                    p.Inlines.Add(new Run(segment.Text) { Foreground = secondary });
+                }
+            }
+
             doc.Blocks.Add(p);
         }
 
