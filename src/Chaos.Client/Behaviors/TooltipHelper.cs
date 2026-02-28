@@ -44,8 +44,14 @@ public static class TooltipHelper
         double halfTip    = tooltip.DesiredSize.Height / 2;
 
         var    elementTopScreen   = element.PointToScreen(new Point(0, 0)).Y;
-        double tooltipTopOnScreen = elementTopScreen - tooltip.DesiredSize.Height;
-        bool   flip               = tooltipTopOnScreen < SystemParameters.WorkArea.Top;
+        double tooltipTopOnScreen = elementTopScreen - halfTip; // top of tooltip with Placement=Center + VerticalOffset
+
+        var    window   = Window.GetWindow(element);
+        double boundary = window != null
+            ? window.PointToScreen(new Point(0, 0)).Y
+            : SystemParameters.WorkArea.Top;
+
+        bool flip = tooltipTopOnScreen < boundary;
 
         if (flip)
             tooltip.Template = (ControlTemplate)Application.Current.Resources["TooltipTemplateFlipped"];
