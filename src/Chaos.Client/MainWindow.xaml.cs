@@ -579,6 +579,17 @@ public partial class MainWindow : Window
         TooltipHelper.SetIsActive(ItalicButton,        IsCursorInItalicSpan(text, pos));
         TooltipHelper.SetIsActive(UnderlineButton,     IsCursorInSpan(text, pos, UnderlineSpan, 2));
         TooltipHelper.SetIsActive(StrikethroughButton, IsCursorInSpan(text, pos, StrikeSpan, 2));
+
+        int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+        int lineEndPos   = text.IndexOf('\n', lineStartPos);
+        if (lineEndPos < 0) lineEndPos = text.Length;
+        string currentLine = text[lineStartPos..lineEndPos];
+        var alignMatch = AlignmentLine.Match(currentLine);
+        string? activeAlign = alignMatch.Success ? alignMatch.Groups[1].Value : null;
+        TooltipHelper.SetIsActive(AlignLeftButton,    activeAlign == "left");
+        TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
+        TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
+        TooltipHelper.SetIsActive(AlignJustifyButton, activeAlign == "justify");
     }
 
     // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
@@ -632,6 +643,11 @@ public partial class MainWindow : Window
         MessageInput.SelectionLength = sel.Length;
         MessageInput.Focus();
     }
+
+    private void FormatAlignLeft_Click(object sender, RoutedEventArgs e)    => ApplyAlignmentToLines("left");
+    private void FormatAlignCenter_Click(object sender, RoutedEventArgs e)  => ApplyAlignmentToLines("center");
+    private void FormatAlignRight_Click(object sender, RoutedEventArgs e)   => ApplyAlignmentToLines("right");
+    private void FormatAlignJustify_Click(object sender, RoutedEventArgs e) => ApplyAlignmentToLines("justify");
 
     private void FormatBullets_Click(object sender, RoutedEventArgs e) =>
         PrefixSelectedLines(i => "- ");
@@ -722,6 +738,49 @@ public partial class MainWindow : Window
         }
 
         return false;
+    }
+
+    private static readonly Regex AlignmentLine =
+        new(@"^:(left|center|right|justify) (.*):$", RegexOptions.Compiled);
+
+    private void ApplyAlignmentToLines(string align)
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        // Normalize \r\n so a trailing \r doesn't get embedded inside the wrapper
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        string[] newLines = lines.Select(line =>
+        {
+            if (string.IsNullOrEmpty(line)) return line;  // leave blank lines untouched
+            var m = AlignmentLine.Match(line);
+            if (m.Success)
+            {
+                string existing = m.Groups[1].Value;
+                string content  = m.Groups[2].Value;
+                return existing == align ? content : $":{align} {content}:";
+            }
+            return $":{align} {line}:";
+        }).ToArray();
+
+        string newRegion = string.Join("\n", newLines);
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int delta = newLines[0].Length - lines[0].Length;
+            MessageInput.SelectionStart  = origStart + delta;
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
     }
 
     private void PrefixSelectedLines(Func<int, string> prefixFor)
@@ -988,6 +1047,9 @@ internal static class MarkdownRenderer
         new(@"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
+        new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static readonly System.Text.RegularExpressions.Regex NumberedLine =
         new(@"^\d+\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -1001,6 +1063,24 @@ internal static class MarkdownRenderer
         while (i < rawLines.Length)
         {
             string line = rawLines[i];
+
+            var am = AlignmentDirective.Match(line);
+            if (am.Success)
+            {
+                var alignment = am.Groups[1].Value switch
+                {
+                    "center"  => TextAlignment.Center,
+                    "right"   => TextAlignment.Right,
+                    "justify" => TextAlignment.Justify,
+                    _         => TextAlignment.Left,
+                };
+                string content = am.Groups[2].Value;
+                var alignPara = new Paragraph { Foreground = textBrush, TextAlignment = alignment };
+                ParseInlines(content, alignPara.Inlines, textBrush, linkBrush);
+                doc.Blocks.Add(alignPara);
+                i++;
+                continue;
+            }
 
             if (line.StartsWith("- ") || line.StartsWith("* "))
             {
@@ -1043,6 +1123,7 @@ internal static class MarkdownRenderer
     private static void ParseInlines(string text, InlineCollection inlines,
                                      Brush textBrush, Brush linkBrush)
     {
+        text = text.Replace("\\:", ":").Replace("\\\\", "\\");
         int lastEnd = 0;
         foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
         {

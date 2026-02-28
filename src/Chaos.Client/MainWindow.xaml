@@ -1296,6 +1296,58 @@
 
                                         <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
 
+                                        <!-- ── Alignment ── -->
+                                        <Button x:Name="AlignLeftButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatAlignLeft_Click" Tag="Align Left">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M1,2 L13,2 M1,5.5 L9,5.5 M1,9 L13,9 M1,12.5 L9,12.5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="AlignCenterButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatAlignCenter_Click" Tag="Align Center">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M1,2 L13,2 M3,5.5 L11,5.5 M1,9 L13,9 M3,12.5 L11,12.5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="AlignRightButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatAlignRight_Click" Tag="Align Right">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M1,2 L13,2 M5,5.5 L13,5.5 M1,9 L13,9 M5,12.5 L13,12.5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="AlignJustifyButton"
+                                                Style="{StaticResource ToolbarButton}"
+                                                Click="FormatAlignJustify_Click" Tag="Justify">
+                                            <Button.ToolTip><ToolTip /></Button.ToolTip>
+                                            <Viewbox Width="14" Height="14">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Data="M1,2 L13,2 M1,5.5 L13,5.5 M1,9 L13,9 M1,12.5 L13,12.5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+
+                                        <Rectangle Width="1" Fill="#40FFFFFF" Margin="4,4" />
+
                                         <!-- ── Hyperlink ── -->
                                         <Button Style="{StaticResource ToolbarButton}"
                                                 Click="InsertHyperlink_Click" Tag="Insert Hyperlink">
