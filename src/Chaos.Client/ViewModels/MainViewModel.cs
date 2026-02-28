@@ -459,7 +459,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 var member = ch?.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == remoteUserId);
                 if (member is null) return;
 
-                if (level > Settings.MicThreshold)
+                float openThreshold = Settings.MicThreshold;
+                float closeThreshold = openThreshold * 0.8f;
+                if (level > openThreshold || (member.IsSpeaking && level > closeThreshold))
                 {
                     member.IsSpeaking = true;
                     _remoteLastSpoke[remoteUserId] = DateTime.UtcNow;

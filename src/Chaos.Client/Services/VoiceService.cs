@@ -183,10 +183,16 @@ public class VoiceService : IDisposable
 
         bool wasGateOpen = _isGateOpen;
 
-        // Voice gate: only send when level exceeds threshold, hold open for GateHoldTime
-        if (maxSample >= MicThreshold)
+        // Voice gate with hysteresis: open threshold is MicThreshold,
+        // close threshold is 80% of that so slight volume dips don't cut speech
+        float closeThreshold = MicThreshold * 0.8f;
+        if (!_isGateOpen && maxSample >= MicThreshold)
         {
             _isGateOpen = true;
+            _lastAboveThreshold = DateTime.UtcNow;
+        }
+        else if (_isGateOpen && maxSample >= closeThreshold)
+        {
             _lastAboveThreshold = DateTime.UtcNow;
         }
         else if (_isGateOpen && (DateTime.UtcNow - _lastAboveThreshold) > GateHoldTime)
