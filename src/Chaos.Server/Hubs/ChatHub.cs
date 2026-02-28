@@ -121,6 +121,12 @@ public class ChatHub : Hub
         }
     }
 
+    public async Task StartTyping(int channelId)
+    {
+        if (_users.TryGetValue(Context.ConnectionId, out var user))
+            await Clients.OthersInGroup($"text_{channelId}").SendAsync("UserTyping", channelId, user.Username);
+    }
+
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)
     {
         if (!_users.TryGetValue(Context.ConnectionId, out var user))

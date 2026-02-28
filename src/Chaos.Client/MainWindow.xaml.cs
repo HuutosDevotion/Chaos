@@ -393,6 +393,7 @@ public partial class MainWindow : Window
         MessageInput.Focus();
     }
 
+
     // ── Image Preview ─────────────────────────────────────────────────────────
 
     private bool _isImageZoomed;

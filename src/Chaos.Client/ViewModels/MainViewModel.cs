@@ -131,6 +131,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
+    private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
+    private readonly DispatcherTimer _remoteSpeakingTimer;
+    private static readonly TimeSpan RemoteSpeakingHoldTime = TimeSpan.FromMilliseconds(500);
 
     public AppSettings Settings { get; }
 
@@ -159,6 +162,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
+    private readonly Dictionary<string, DateTime> _typingUsers = new();
+    private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
+    private DateTime _lastTypingSent = DateTime.MinValue;
+    private string _typingText = string.Empty;
 
     private object? _activeModal;
 
@@ -179,10 +186,32 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set { _username = value; OnPropertyChanged(); _settingsSaveTimer?.Stop(); _settingsSaveTimer?.Start(); }
     }
 
+    public string TypingText
+    {
+        get => _typingText;
+        private set { _typingText = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasTypingUsers)); }
+    }
+
+    public bool HasTypingUsers => !string.IsNullOrEmpty(_typingText);
+
     public string MessageText
     {
         get => _messageText;
-        set { _messageText = value; OnPropertyChanged(); UpdateSlashSuggestions(value); }
+        set
+        {
+            _messageText = value;
+            OnPropertyChanged();
+            UpdateSlashSuggestions(value);
+            if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
+            {
+                var now = DateTime.UtcNow;
+                if ((now - _lastTypingSent).TotalSeconds >= 2)
+                {
+                    _lastTypingSent = now;
+                    _ = _chatService.StartTypingAsync(_selectedTextChannel.Id);
+                }
+            }
+        }
     }
 
     public bool ShowSlashSuggestions
@@ -401,9 +430,28 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputDeviceName = Settings.OutputDevice;
         _voiceService.InputVolume = Settings.InputVolume;
         _voiceService.OutputVolume = Settings.OutputVolume;
+        _voiceService.MicThreshold = Settings.MicThreshold;
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
+
+        _remoteSpeakingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _remoteSpeakingTimer.Tick += (_, _) =>
+        {
+            if (!_voiceChannelId.HasValue || _remoteLastSpoke.Count == 0) return;
+            var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
+            if (ch is null) return;
+            var now = DateTime.UtcNow;
+            foreach (var (userId, lastSpoke) in _remoteLastSpoke)
+            {
+                if ((now - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    var member = ch.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == userId);
+                    if (member is not null) member.IsSpeaking = false;
+                }
+            }
+        };
+        _remoteSpeakingTimer.Start();
 
         _chatService.MessageReceived += OnMessageReceived;
         _chatService.UserJoinedVoice += OnUserJoinedVoice;
@@ -415,18 +463,21 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelCreated += OnChannelCreated;
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
+        _chatService.UserTyping += OnUserTyping;
+        _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
+        _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
         {
             SafeDispatchAsync(() =>
             {
                 MicLevel = level * 200;
-                // Update speaking indicator for self
+                // Update speaking indicator for self — matches when audio is actually being sent
                 if (_voiceChannelId.HasValue)
                 {
                     var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                     var me = ch?.VoiceMembers.FirstOrDefault(m => m.Username == Username);
                     if (me is not null)
-                        me.IsSpeaking = level > 0.02f;
+                        me.IsSpeaking = _voiceService.IsGateOpen;
                 }
             });
         };
@@ -437,8 +488,20 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 if (!_voiceChannelId.HasValue) return;
                 var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                 var member = ch?.VoiceMembers.FirstOrDefault(m => m.VoiceUserId == remoteUserId);
-                if (member is not null)
-                    member.IsSpeaking = level > 0.02f;
+                if (member is null) return;
+
+                float openThreshold = Settings.MicThreshold;
+                float closeThreshold = openThreshold * 0.8f;
+                if (level > openThreshold || (member.IsSpeaking && level > closeThreshold))
+                {
+                    member.IsSpeaking = true;
+                    _remoteLastSpoke[remoteUserId] = DateTime.UtcNow;
+                }
+                else if (_remoteLastSpoke.TryGetValue(remoteUserId, out var lastSpoke)
+                         && (DateTime.UtcNow - lastSpoke) > RemoteSpeakingHoldTime)
+                {
+                    member.IsSpeaking = false;
+                }
             });
         };
         _voiceService.Error += error =>
@@ -469,6 +532,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.InputVolume = Settings.InputVolume;
             if (e.PropertyName == nameof(AppSettings.OutputVolume))
                 _voiceService.OutputVolume = Settings.OutputVolume;
+            if (e.PropertyName == nameof(AppSettings.MicThreshold))
+                _voiceService.MicThreshold = Settings.MicThreshold;
         };
     }
 
@@ -609,6 +674,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 Messages.Add(vm);
                 prev = vm;
             }
+            _typingUsers.Clear();
+            TypingText = string.Empty;
         });
     }
 
@@ -695,6 +762,41 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             });
     }
 
+    private void OnUserTyping(int channelId, string username)
+    {
+        if (channelId != _selectedTextChannel?.Id) return;
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            _typingUsers[username] = DateTime.UtcNow;
+            UpdateTypingText();
+        });
+    }
+
+    private void CleanupTypingUsers()
+    {
+        var cutoff = DateTime.UtcNow.AddSeconds(-3);
+        var expired = _typingUsers.Where(kv => kv.Value < cutoff).Select(kv => kv.Key).ToList();
+        if (expired.Count == 0) return;
+        Application.Current.Dispatcher.BeginInvoke(() =>
+        {
+            foreach (var key in expired)
+                _typingUsers.Remove(key);
+            UpdateTypingText();
+        });
+    }
+
+    private void UpdateTypingText()
+    {
+        var users = _typingUsers.Keys.ToList();
+        TypingText = users.Count switch
+        {
+            0 => string.Empty,
+            1 => $"{users[0]} is typing...",
+            2 => $"{users[0]} and {users[1]} are typing...",
+            _ => "Several people are typing..."
+        };
+    }
+
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)
     {
         SafeDispatch(() =>
@@ -765,6 +867,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 if (member is not null)
                     ch.VoiceMembers.Remove(member);
             }
+            if (_typingUsers.Remove(username))
+                UpdateTypingText();
         });
     }
 
@@ -920,7 +1024,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _typingCleanupTimer.Stop();
+        _typingCleanupTimer.Dispose();
         _settingsSaveTimer.Stop();
+        _remoteSpeakingTimer.Stop();
         FlushSettings();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();

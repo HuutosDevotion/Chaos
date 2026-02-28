@@ -109,8 +109,8 @@ public class VoiceRelayTests
         await user2.SendAsync(MakeRegistrationPacket(userId2, channelId), VoiceServer);
         await Task.Delay(50);
 
-        // 40 ms @ 16 kHz 16-bit mono = 16000 * 0.04 * 2 = 1280 bytes
-        var audio = new byte[1280];
+        // 40 ms @ 48 kHz 16-bit mono = 48000 * 0.04 * 2 = 3840 bytes
+        var audio = new byte[3840];
         for (var i = 0; i < audio.Length; i++)
             audio[i] = (byte)(i % 256);
 
