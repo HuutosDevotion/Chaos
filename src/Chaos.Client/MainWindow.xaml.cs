@@ -558,25 +558,28 @@ public partial class MainWindow : Window
     // Buttons insert markdown syntax into the TextBox rather than applying WPF
     // text properties, keeping the input fast and the content plain text.
 
-    private void FormatBold_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("**");
-    private void FormatItalic_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("*");
-    private void FormatUnderline_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("__");
-    private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => InsertMarkdownAround("~~");
+    private void FormatBold_Click(object sender, RoutedEventArgs e)          => ToggleInlineFormat("**");
+    private void FormatItalic_Click(object sender, RoutedEventArgs e)        => ToggleInlineFormat("*");
+    private void FormatUnderline_Click(object sender, RoutedEventArgs e)     => ToggleInlineFormat("__");
+    private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => ToggleInlineFormat("~~");
 
     // Regex patterns for 2-char delimiter spans (bold, underline, strikethrough).
     // (?!\s) / (?<!\s) mirror CommonMark: ** must touch non-whitespace on both sides.
     // This prevents "** text **" from being swallowed as bold, leaving lone * chars
     // available for the italic scan.
-    private static readonly Regex BoldSpan      = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*", RegexOptions.Compiled);
-    private static readonly Regex UnderlineSpan = new(@"__(.*?)__",     RegexOptions.Compiled);
-    private static readonly Regex StrikeSpan    = new(@"~~(.*?)~~",     RegexOptions.Compiled);
+    // Bold is always the outer wrapper, so *** = ** wrapping *...*
+    private static readonly Regex BoldItalicSpan = new(@"\*\*\*(?!\s)(.*?)(?<!\s)\*\*\*", RegexOptions.Compiled);
+    private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled);
+    private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled);
+    private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled);
 
     private void UpdateFormatButtonStates()
     {
         string text = MessageInput.Text;
         int pos = MessageInput.SelectionStart;
-        TooltipHelper.SetIsActive(BoldButton,          IsCursorInSpan(text, pos, BoldSpan, 2));
-        TooltipHelper.SetIsActive(ItalicButton,        IsCursorInItalicSpan(text, pos));
+        bool inBoldItalic = IsCursorInSpan(text, pos, BoldItalicSpan, 3);
+        TooltipHelper.SetIsActive(BoldButton,          inBoldItalic || IsCursorInSpan(text, pos, BoldSpan, 2));
+        TooltipHelper.SetIsActive(ItalicButton,        inBoldItalic || IsCursorInItalicSpan(text, pos));
         TooltipHelper.SetIsActive(UnderlineButton,     IsCursorInSpan(text, pos, UnderlineSpan, 2));
         TooltipHelper.SetIsActive(StrikethroughButton, IsCursorInSpan(text, pos, StrikeSpan, 2));
 
@@ -641,6 +644,95 @@ public partial class MainWindow : Window
                                              .Insert(start, marker + sel + marker);
         MessageInput.SelectionStart  = start + marker.Length;
         MessageInput.SelectionLength = sel.Length;
+        MessageInput.Focus();
+    }
+
+    // With a selection, always add the wrapper. With a point cursor, toggle off if already inside the span.
+    private void ToggleInlineFormat(string marker)
+    {
+        if (MessageInput.SelectionLength > 0) { InsertMarkdownAround(marker); return; }
+
+        string text = MessageInput.Text;
+        int pos = MessageInput.SelectionStart;
+
+        if (marker == "**")
+        {
+            // Bold is outer — check bold+italic first
+            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+            m = FindEnclosingSpan(text, pos, BoldSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "*")
+        {
+            // Italic is inner — strip the inner * from bold+italic
+            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s + 2, 1, m.Value.s + m.Value.l - 3, 1); return; }
+            var it = FindItalicSpanContaining(text, pos);
+            if (it.HasValue) { RemoveSpanMarkers(it.Value.open, 1, it.Value.close, 1); return; }
+        }
+        else if (marker == "__")
+        {
+            var m = FindEnclosingSpan(text, pos, UnderlineSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "~~")
+        {
+            var m = FindEnclosingSpan(text, pos, StrikeSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+
+        InsertMarkdownAround(marker);
+    }
+
+    private static (int s, int l)? FindEnclosingSpan(string text, int pos, Regex pattern, int markerLen)
+    {
+        foreach (Match m in pattern.Matches(text))
+            if (pos >= m.Index + markerLen && pos <= m.Index + m.Length - markerLen)
+                return (m.Index, m.Length);
+        return null;
+    }
+
+    // Like FindEnclosingSpan but returns the character positions of the opening and closing * for italic.
+    private static (int open, int close)? FindItalicSpanContaining(string text, int pos)
+    {
+        var inMasked = new bool[text.Length];
+        // Mask bold+italic and bold spans so their * chars don't look like lone italic markers
+        foreach (Match m in BoldItalicSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
+        foreach (Match m in BoldSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
+
+        int openAt = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '*' || inMasked[i]) continue;
+            if (openAt < 0) openAt = i;
+            else
+            {
+                if (pos >= openAt + 1 && pos <= i) return (openAt, i);
+                openAt = -1;
+            }
+        }
+        return null;
+    }
+
+    private void RemoveSpanMarkers(int openAt, int openLen, int closeAt, int closeLen)
+    {
+        int origPos = MessageInput.SelectionStart;
+        string text = MessageInput.Text;
+        // Remove close first (higher index) so openAt stays valid
+        text = text.Remove(closeAt, closeLen);
+        text = text.Remove(openAt, openLen);
+        // Adjust cursor
+        int pos = origPos;
+        if (pos >= closeAt + closeLen) pos -= closeLen;
+        else if (pos > closeAt)        pos  = closeAt;
+        if (pos >= openAt + openLen)   pos -= openLen;
+        else if (pos > openAt)         pos  = openAt;
+        MessageInput.Text = text;
+        MessageInput.SelectionStart  = pos;
+        MessageInput.SelectionLength = 0;
         MessageInput.Focus();
     }
 
@@ -1042,9 +1134,14 @@ public partial class MainWindow : Window
 //   Plain text passes through unchanged.
 internal static class MarkdownRenderer
 {
-    // Inline pattern: order matters — longer tokens first.
+    [Flags]
+    private enum TextStyle { None = 0, Bold = 1, Italic = 2, Underline = 4, Strike = 8 }
+
+    // Inline pattern: order matters — composite/longer tokens first.
+    // Groups: 1-2 ***bold+italic***, 3-4 **bold**, 5-6 *italic*,
+    //         7-8 __underline__, 9-10 ~~strike~~, 11-13 [text](url), 14 bare URL
     private static readonly System.Text.RegularExpressions.Regex InlinePattern =
-        new(@"(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
@@ -1120,26 +1217,30 @@ internal static class MarkdownRenderer
         return doc;
     }
 
+    // Recurse into each span's content so nested formats (e.g. **__text__**) compose correctly.
     private static void ParseInlines(string text, InlineCollection inlines,
-                                     Brush textBrush, Brush linkBrush)
+                                     Brush textBrush, Brush linkBrush,
+                                     TextStyle style = TextStyle.None)
     {
         text = text.Replace("\\:", ":").Replace("\\\\", "\\");
         int lastEnd = 0;
         foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
         {
             if (m.Index > lastEnd)
-                inlines.Add(new Run(text[lastEnd..m.Index]) { Foreground = textBrush });
+                inlines.Add(MakeRun(text[lastEnd..m.Index], textBrush, style));
 
-            if (m.Groups[1].Success)       // **bold**
-                inlines.Add(new Run(m.Groups[2].Value) { FontWeight = FontWeights.Bold, Foreground = textBrush });
-            else if (m.Groups[3].Success)  // *italic*
-                inlines.Add(new Run(m.Groups[4].Value) { FontStyle = FontStyles.Italic, Foreground = textBrush });
-            else if (m.Groups[5].Success)  // __underline__
-                inlines.Add(new Run(m.Groups[6].Value) { TextDecorations = TextDecorations.Underline, Foreground = textBrush });
-            else if (m.Groups[7].Success)  // ~~strike~~
-                inlines.Add(new Run(m.Groups[8].Value) { TextDecorations = TextDecorations.Strikethrough, Foreground = textBrush });
-            else if (m.Groups[9].Success)  // [text](url)
-                inlines.Add(MakeLink(m.Groups[10].Value, m.Groups[11].Value, linkBrush));
+            if (m.Groups[1].Success)       // ***bold+italic***
+                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic);
+            else if (m.Groups[3].Success)  // **bold**
+                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold);
+            else if (m.Groups[5].Success)  // *italic*
+                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic);
+            else if (m.Groups[7].Success)  // __underline__
+                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline);
+            else if (m.Groups[9].Success)  // ~~strike~~
+                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike);
+            else if (m.Groups[11].Success) // [text](url)
+                inlines.Add(MakeLink(m.Groups[12].Value, m.Groups[13].Value, linkBrush));
             else                           // bare URL
                 inlines.Add(MakeLink(m.Value, m.Value, linkBrush));
 
@@ -1147,10 +1248,22 @@ internal static class MarkdownRenderer
         }
 
         if (lastEnd < text.Length)
-            inlines.Add(new Run(text[lastEnd..]) { Foreground = textBrush });
+            inlines.Add(MakeRun(text[lastEnd..], textBrush, style));
 
         if (!inlines.Any())
-            inlines.Add(new Run(string.Empty) { Foreground = textBrush });
+            inlines.Add(MakeRun(string.Empty, textBrush, style));
+    }
+
+    private static Run MakeRun(string text, Brush brush, TextStyle style)
+    {
+        var run = new Run(text) { Foreground = brush };
+        if (style.HasFlag(TextStyle.Bold))   run.FontWeight = FontWeights.Bold;
+        if (style.HasFlag(TextStyle.Italic)) run.FontStyle  = FontStyles.Italic;
+        var deco = new TextDecorationCollection();
+        if (style.HasFlag(TextStyle.Underline)) foreach (var d in TextDecorations.Underline)      deco.Add(d);
+        if (style.HasFlag(TextStyle.Strike))    foreach (var d in TextDecorations.Strikethrough)  deco.Add(d);
+        if (deco.Count > 0) run.TextDecorations = deco;
+        return run;
     }
 
     private static Hyperlink MakeLink(string label, string url, Brush brush)
