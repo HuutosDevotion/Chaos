@@ -131,6 +131,13 @@ public class ChatService : IAsyncDisposable
             await _connection.InvokeAsync("SendMessage", channelId, content, imageUrl);
     }
 
+    public async Task<List<string>> GetConnectedUsers()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<string>>("GetConnectedUsers");
+        return new();
+    }
+
     public async Task<Dictionary<int, List<VoiceMemberDto>>> GetAllVoiceMembers()
     {
         if (_connection is not null)

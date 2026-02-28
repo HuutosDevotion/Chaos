@@ -165,6 +165,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
+    public ObservableCollection<string> ConnectedUsers { get; } = new();
 
     public string ServerAddress
     {
@@ -355,6 +356,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public bool HasTextChannel => _selectedTextChannel is not null;
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
+    public string ConnectedUsersHeader => $"MEMBERS — {ConnectedUsers.Count}";
 
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
     public ICommand CreateChannelCommand => new RelayCommand(_ => OpenCreateChannelModal(), _ => IsConnected);
@@ -523,6 +525,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
             var channels = await _chatService.GetChannels();
             var voiceMembers = await _chatService.GetAllVoiceMembers();
+            var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
 
             SafeDispatch(() =>
@@ -542,6 +545,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     }
                     Channels.Add(vm);
                 }
+
+                ConnectedUsers.Clear();
+                foreach (var u in connectedUsers)
+                    ConnectedUsers.Add(u);
+                OnPropertyChanged(nameof(ConnectedUsersHeader));
             });
 
             IsConnected = true;
@@ -725,12 +733,29 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
     }
 
-    private void OnUserConnected(string username) { }
+    private void OnUserConnected(string username)
+    {
+        SafeDispatch(() =>
+        {
+            if (!ConnectedUsers.Contains(username))
+            {
+                // Insert in sorted order
+                int i = 0;
+                while (i < ConnectedUsers.Count && string.Compare(ConnectedUsers[i], username, StringComparison.OrdinalIgnoreCase) < 0)
+                    i++;
+                ConnectedUsers.Insert(i, username);
+                OnPropertyChanged(nameof(ConnectedUsersHeader));
+            }
+        });
+    }
 
     private void OnUserDisconnected(string username)
     {
         SafeDispatch(() =>
         {
+            ConnectedUsers.Remove(username);
+            OnPropertyChanged(nameof(ConnectedUsersHeader));
+
             foreach (var ch in Channels)
             {
                 var member = ch.VoiceMembers.FirstOrDefault(m => m.Username == username);
@@ -843,6 +868,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             IsConnected = false;
             ConnectionStatus = "Disconnected";
+            ConnectedUsers.Clear();
+            OnPropertyChanged(nameof(ConnectedUsersHeader));
             _voiceService.Stop();
             if (_voiceChannelId.HasValue)
             {
