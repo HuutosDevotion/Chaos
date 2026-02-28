@@ -1,0 +1,20 @@
+[Unit]
+Description=Chaos Server
+After=network.target
+
+[Service]
+Type=exec
+WorkingDirectory=/opt/chaos
+ExecStart=/opt/chaos/Chaos.Server
+Restart=always
+RestartSec=5
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5000
+Environment=ASPNETCORE_ENVIRONMENT=Production
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/chaos
+
+[Install]
+WantedBy=multi-user.target

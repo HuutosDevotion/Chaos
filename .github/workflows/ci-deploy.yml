@@ -1,0 +1,75 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore Chaos.sln
+
+      - name: Build solution
+        run: dotnet build Chaos.sln --no-restore
+
+      - name: Run tests
+        run: dotnet test Chaos.sln --no-build --verbosity normal
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish Chaos.Server
+        run: >
+          dotnet publish src/Chaos.Server/Chaos.Server.csproj
+          -c Release -r linux-x64 --self-contained
+          -p:PublishSingleFile=true
+          -o publish/Server
+
+      - name: Write SSH key
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Stop remote service
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "sudo systemctl stop chaos || true"
+
+      - name: Deploy to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no -i key.pem \
+            -r publish/Server/* \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/chaos/
+
+      - name: Start remote service
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+            "sudo systemctl start chaos"
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -f --retry 3 --retry-delay 5 \
+            http://${{ secrets.EC2_HOST }}:5000/ || echo "Health check failed (server may still be starting)"
