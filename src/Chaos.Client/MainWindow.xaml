@@ -358,6 +358,63 @@
                                Foreground="{StaticResource TextPrimaryBrush}"
                                Margin="0,0,0,24" />
 
+                    <!-- Input Mode -->
+                    <TextBlock Text="INPUT MODE" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <RadioButton Content="Voice Activity" Foreground="{StaticResource TextPrimaryBrush}"
+                                     IsChecked="{Binding IsVoiceActivity, Mode=TwoWay}"
+                                     Margin="0,0,16,0" FontSize="13" VerticalContentAlignment="Center" Cursor="Hand" />
+                        <RadioButton Content="Push to Talk" Foreground="{StaticResource TextPrimaryBrush}"
+                                     IsChecked="{Binding IsPushToTalk, Mode=TwoWay}"
+                                     FontSize="13" VerticalContentAlignment="Center" Cursor="Hand" />
+                    </StackPanel>
+
+                    <!-- Input Sensitivity (Voice Activity mode) -->
+                    <StackPanel Visibility="{Binding IsVoiceActivity, Converter={StaticResource BoolToVis}}"
+                                Margin="0,0,0,8">
+                        <TextBlock Text="INPUT SENSITIVITY" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                        <Slider Minimum="0" Maximum="1"
+                                Value="{Binding Settings.VadSensitivity, Mode=TwoWay}"
+                                SmallChange="0.05" LargeChange="0.1" />
+                    </StackPanel>
+
+                    <!-- PTT Key (Push to Talk mode) -->
+                    <StackPanel Visibility="{Binding IsPushToTalk, Converter={StaticResource BoolToVis}}"
+                                Margin="0,0,0,8">
+                        <TextBlock Text="PTT KEY" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="{Binding Settings.PttKey}"
+                                   Foreground="{StaticResource TextPrimaryBrush}" FontSize="13"
+                                   Margin="0,0,0,8" />
+                        <TextBlock Text="PTT RELEASE DELAY" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                        <DockPanel Margin="0,0,0,8">
+                            <TextBlock DockPanel.Dock="Right"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="12" Width="50" TextAlignment="Right"
+                                       VerticalAlignment="Center">
+                                <Run Text="{Binding Settings.PttReleaseDelay, Mode=OneWay}" /><Run Text="ms" />
+                            </TextBlock>
+                            <Slider Minimum="0" Maximum="2000"
+                                    Value="{Binding Settings.PttReleaseDelay, Mode=TwoWay}"
+                                    SmallChange="50" LargeChange="200" />
+                        </DockPanel>
+                    </StackPanel>
+
+                    <!-- Noise Suppression -->
+                    <DockPanel Margin="0,8,0,16">
+                        <ToggleButton DockPanel.Dock="Right"
+                                      Style="{StaticResource DarkToggleSwitch}"
+                                      IsChecked="{Binding Settings.NoiseSuppression, Mode=TwoWay}" />
+                        <TextBlock Text="Noise Suppression" FontSize="13"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,16" />
+
                     <TextBlock Text="MICROPHONE" FontSize="11" FontWeight="Bold"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
                     <ComboBox ItemsSource="{Binding InputDevices}"
@@ -435,6 +492,18 @@
                                 Value="{Binding Settings.OutputVolume, Mode=TwoWay}"
                                 SmallChange="0.05" LargeChange="0.1" />
                     </DockPanel>
+
+                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
+
+                    <!-- Advanced: Opus Bitrate -->
+                    <TextBlock Text="ADVANCED" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
+                    <TextBlock Text="Opus Bitrate" FontSize="13"
+                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4" />
+                    <ComboBox ItemsSource="{Binding BitrateOptions}"
+                              SelectedItem="{Binding Settings.OpusBitrate, Mode=TwoWay}"
+                              Style="{StaticResource DarkComboBox}"
+                              Margin="0,0,0,16" />
                 </StackPanel>
             </ScrollViewer>
         </DataTemplate>
@@ -895,24 +964,38 @@
                                     Command="{Binding DisconnectVoiceCommand}"
                                     FontSize="11" Padding="6,2" FontWeight="Bold"
                                     VerticalAlignment="Center" />
-                            <StackPanel>
-                                <TextBlock Text="{Binding VoiceChannelName}"
-                                           Foreground="{StaticResource AccentGreenBrush}"
-                                           FontSize="12" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding VoiceStatus}"
-                                           Foreground="{StaticResource AccentRedBrush}"
-                                           FontSize="10" TextWrapping="Wrap">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding VoiceStatus}" Value="">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- Signal quality bars -->
+                                <StackPanel Orientation="Horizontal" Height="14" Margin="0,0,6,0"
+                                            ToolTip="{Binding PingTooltip}">
+                                    <Border Width="3" Height="4" CornerRadius="1,1,0,0"
+                                            Background="{Binding Bar1}" Margin="0,0,1,0" VerticalAlignment="Bottom"/>
+                                    <Border Width="3" Height="7" CornerRadius="1,1,0,0"
+                                            Background="{Binding Bar2}" Margin="0,0,1,0" VerticalAlignment="Bottom"/>
+                                    <Border Width="3" Height="10" CornerRadius="1,1,0,0"
+                                            Background="{Binding Bar3}" Margin="0,0,1,0" VerticalAlignment="Bottom"/>
+                                    <Border Width="3" Height="14" CornerRadius="1,1,0,0"
+                                            Background="{Binding Bar4}" VerticalAlignment="Bottom"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding VoiceChannelName}"
+                                               Foreground="{StaticResource AccentGreenBrush}"
+                                               FontSize="12" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding VoiceStatus}"
+                                               Foreground="{StaticResource AccentRedBrush}"
+                                               FontSize="10" TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding VoiceStatus}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
                             </StackPanel>
                         </DockPanel>
                         <ProgressBar Height="3" Margin="0,6,0,0"
@@ -920,6 +1003,39 @@
                                      Value="{Binding MicLevel, Mode=OneWay}"
                                      Background="#3A3C42" Foreground="{StaticResource AccentGreenBrush}"
                                      BorderThickness="0" />
+
+                        <!-- PTT Indicator (shown when push-to-talk mode) -->
+                        <Border CornerRadius="3" Padding="6,3" Margin="0,6,0,0"
+                                Visibility="{Binding IsPttMode, Converter={StaticResource BoolToVis}}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="#2D2F34" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPttActive}" Value="True">
+                                            <Setter Property="Background" Value="#1A3A2A" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="PTT:" FontSize="10"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,4,0" />
+                                <TextBlock Text="{Binding PttKeyDisplay}" FontSize="10" FontWeight="SemiBold"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPttActive}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 

@@ -34,6 +34,14 @@ public class VoiceMemberDto
 {
     public string Username { get; set; } = string.Empty;
     public int VoiceUserId { get; set; }
+    public bool IsMuted { get; set; }
+    public bool IsDeafened { get; set; }
+}
+
+public enum VoiceMode
+{
+    VoiceActivity,
+    PushToTalk
 }
 
 public class VoicePacket

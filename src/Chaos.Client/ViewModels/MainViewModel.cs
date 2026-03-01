@@ -3,8 +3,10 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Chaos.Client.Audio;
 using Chaos.Client.Services;
 using Chaos.Shared;
 
@@ -93,6 +95,21 @@ public class VoiceMemberInfo : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Volume)));
         }
     }
+
+    private bool _isMuted;
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set { if (_isMuted == value) return; _isMuted = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsMuted))); }
+    }
+
+    private bool _isDeafened;
+    public bool IsDeafened
+    {
+        get => _isDeafened;
+        set { if (_isDeafened == value) return; _isDeafened = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDeafened))); }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
@@ -129,6 +146,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
+    private readonly NoiseGate _noiseGate = new();
+    private readonly PushToTalkService _pttService = new();
+    private readonly ConnectionQualityService _connectionQuality;
     private readonly IKeyValueStore _settingsStore;
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
@@ -166,6 +186,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
     private string _typingText = string.Empty;
+
+    // Connection quality
+    private int _pingMs;
+    private int _qualityBars = 4;
+    private bool _isPttActive;
 
     private object? _activeModal;
 
@@ -267,6 +292,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged();
             OnPropertyChanged(nameof(MuteButtonText));
             OnPropertyChanged(nameof(MuteTooltipText));
+            _ = _chatService.UpdateMuteState(_isMuted, _isDeafened);
         }
     }
 
@@ -280,6 +306,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OnPropertyChanged();
             OnPropertyChanged(nameof(DeafenButtonText));
             OnPropertyChanged(nameof(DeafenTooltipText));
+            _ = _chatService.UpdateMuteState(_isMuted, _isDeafened);
         }
     }
 
@@ -356,6 +383,44 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string DeafenButtonText => IsDeafened ? "\U0001F508" : "\U0001F50A";
     public string DeafenTooltipText => IsDeafened ? "Undeafen" : "Deafen";
 
+    // Connection quality
+    public int PingMs
+    {
+        get => _pingMs;
+        set { _pingMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(PingTooltip)); }
+    }
+    public int QualityBars
+    {
+        get => _qualityBars;
+        set
+        {
+            _qualityBars = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Bar1));
+            OnPropertyChanged(nameof(Bar2));
+            OnPropertyChanged(nameof(Bar3));
+            OnPropertyChanged(nameof(Bar4));
+        }
+    }
+
+    private static readonly SolidColorBrush ActiveBarBrush = new(Color.FromRgb(0x23, 0xA5, 0x59));
+    private static readonly SolidColorBrush InactiveBarBrush = new(Color.FromRgb(0x4E, 0x50, 0x58));
+
+    public Brush Bar1 => QualityBars >= 1 ? ActiveBarBrush : InactiveBarBrush;
+    public Brush Bar2 => QualityBars >= 2 ? ActiveBarBrush : InactiveBarBrush;
+    public Brush Bar3 => QualityBars >= 3 ? ActiveBarBrush : InactiveBarBrush;
+    public Brush Bar4 => QualityBars >= 4 ? ActiveBarBrush : InactiveBarBrush;
+    public string PingTooltip => $"Ping: {_pingMs}ms | Loss: {_connectionQuality.PacketLossPercent:F1}%";
+
+    // PTT state
+    public bool IsPttActive
+    {
+        get => _isPttActive;
+        set { _isPttActive = value; OnPropertyChanged(); }
+    }
+    public bool IsPttMode => Settings.VoiceMode == VoiceMode.PushToTalk;
+    public string PttKeyDisplay => Settings.PttKey;
+
     public bool IsInVoice => _voiceChannelId.HasValue;
     public string VoiceChannelName
     {
@@ -404,17 +469,24 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public MainViewModel(IKeyValueStore store)
     {
         _settingsStore = store;
+        _connectionQuality = new ConnectionQualityService(_chatService);
 
         Settings = new AppSettings
         {
-            FontSize        = _settingsStore.Get("FontSize",        14.0),
-            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
-            UiScale         = _settingsStore.Get("UiScale",         1.0),
-            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
-            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
-            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
-            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
-            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+            FontSize           = _settingsStore.Get("FontSize",           14.0),
+            MessageSpacing     = _settingsStore.Get("MessageSpacing",     4.0),
+            UiScale            = _settingsStore.Get("UiScale",            1.0),
+            GroupMessages      = _settingsStore.Get("GroupMessages",      false),
+            InputDevice        = _settingsStore.Get("InputDevice",        "Default"),
+            OutputDevice       = _settingsStore.Get("OutputDevice",       "Default"),
+            InputVolume        = _settingsStore.Get("InputVolume",        1.0f),
+            OutputVolume       = _settingsStore.Get("OutputVolume",       1.0f),
+            VoiceMode          = _settingsStore.Get("VoiceMode",          VoiceMode.VoiceActivity),
+            PttKey             = _settingsStore.Get("PttKey",             "OemTilde"),
+            PttReleaseDelay    = _settingsStore.Get("PttReleaseDelay",    200),
+            VadSensitivity     = _settingsStore.Get("VadSensitivity",     0.5f),
+            NoiseSuppression   = _settingsStore.Get("NoiseSuppression",   true),
+            OpusBitrate        = _settingsStore.Get("OpusBitrate",        48000),
         };
 
         _username = _settingsStore.Get("Username", string.Empty);
@@ -429,7 +501,34 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _voiceService.OutputDeviceName = Settings.OutputDevice;
         _voiceService.InputVolume = Settings.InputVolume;
         _voiceService.OutputVolume = Settings.OutputVolume;
-        _voiceService.MicThreshold = Settings.MicThreshold;
+
+        // Configure noise gate
+        _noiseGate.Sensitivity = Settings.VadSensitivity;
+        if (Settings.NoiseSuppression)
+            _voiceService.SetTransmitGate((pcm, count) => _noiseGate.Process(pcm, count));
+
+        // Configure PTT
+        if (Enum.TryParse<Key>(Settings.PttKey, out var pttKey))
+            _pttService.PttKey = pttKey;
+
+        ConfigureVoiceMode();
+
+        _pttService.KeyStateChanged += isDown =>
+        {
+            SafeDispatchAsync(() => IsPttActive = isDown);
+        };
+
+        // Connection quality
+        _voiceService.PacketReceived += (userId, seqNum) =>
+            _connectionQuality.OnVoicePacketReceived(userId, seqNum);
+        _connectionQuality.Updated += () =>
+        {
+            SafeDispatchAsync(() =>
+            {
+                PingMs = _connectionQuality.PingMs;
+                QualityBars = _connectionQuality.QualityBars;
+            });
+        };
 
         _settingsSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _settingsSaveTimer.Tick += (_, _) => { _settingsSaveTimer.Stop(); FlushSettings(); };
@@ -463,6 +562,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
         _chatService.UserTyping += OnUserTyping;
+        _chatService.UserMuteStateChanged += OnUserMuteStateChanged;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
@@ -476,7 +576,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     var ch = Channels.FirstOrDefault(c => c.Id == _voiceChannelId.Value);
                     var me = ch?.VoiceMembers.FirstOrDefault(m => m.Username == Username);
                     if (me is not null)
-                        me.IsSpeaking = _voiceService.IsGateOpen;
+                        me.IsSpeaking = _noiseGate.IsOpen;
                 }
             });
         };
@@ -531,8 +631,21 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.InputVolume = Settings.InputVolume;
             if (e.PropertyName == nameof(AppSettings.OutputVolume))
                 _voiceService.OutputVolume = Settings.OutputVolume;
-            if (e.PropertyName == nameof(AppSettings.MicThreshold))
-                _voiceService.MicThreshold = Settings.MicThreshold;
+            if (e.PropertyName == nameof(AppSettings.VoiceMode))
+            {
+                ConfigureVoiceMode();
+                OnPropertyChanged(nameof(IsPttMode));
+            }
+            if (e.PropertyName == nameof(AppSettings.PttKey))
+            {
+                if (Enum.TryParse<Key>(Settings.PttKey, out var key))
+                    _pttService.PttKey = key;
+                OnPropertyChanged(nameof(PttKeyDisplay));
+            }
+            if (e.PropertyName == nameof(AppSettings.VadSensitivity))
+                _noiseGate.Sensitivity = Settings.VadSensitivity;
+            if (e.PropertyName == nameof(AppSettings.NoiseSuppression))
+                ConfigureVoiceMode();
         };
     }
 
@@ -558,6 +671,25 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (host.Contains(':')) host = host.Split(':')[0];
         if (string.IsNullOrEmpty(host)) host = "localhost";
         _voiceService.Start(host, 9000, _userId, _voiceChannelId.Value);
+    }
+
+    private void ConfigureVoiceMode()
+    {
+        if (Settings.VoiceMode == VoiceMode.PushToTalk)
+        {
+            _voiceService.SetTransmitGate(null);
+            _voiceService.SetPttCheck(() => _pttService.IsActive);
+            _pttService.Install();
+        }
+        else
+        {
+            _voiceService.SetPttCheck(null);
+            _pttService.Uninstall();
+            if (Settings.NoiseSuppression)
+                _voiceService.SetTransmitGate((pcm, count) => _noiseGate.Process(pcm, count));
+            else
+                _voiceService.SetTransmitGate(null);
+        }
     }
 
     private bool ShouldShowHeader(MessageViewModel msg, MessageViewModel? prev) =>
@@ -705,6 +837,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             host = "localhost";
 
         _voiceService.Start(host, 9000, _userId, channelId);
+        _connectionQuality.Start();
         _voiceChannelId = channelId;
 
         var ch = Channels.FirstOrDefault(c => c.Id == channelId);
@@ -722,6 +855,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (ch is not null) ch.IsActiveVoice = false;
         }
         _voiceService.Stop();
+        _connectionQuality.Stop();
         await _chatService.LeaveVoiceChannel();
         _voiceChannelId = null;
         MicLevel = 0;
@@ -759,6 +893,20 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
                 Messages.Add(vm);
             });
+    }
+
+    private void OnUserMuteStateChanged(string username, int channelId, bool isMuted, bool isDeafened)
+    {
+        SafeDispatch(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+            var member = ch?.VoiceMembers.FirstOrDefault(m => m.Username == username);
+            if (member is not null)
+            {
+                member.IsMuted = isMuted;
+                member.IsDeafened = isDeafened;
+            }
+        });
     }
 
     private void OnUserTyping(int channelId, string username)
@@ -1013,6 +1161,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        _settingsStore.Set("VoiceMode",      Settings.VoiceMode);
+        _settingsStore.Set("PttKey",         Settings.PttKey);
+        _settingsStore.Set("PttReleaseDelay", Settings.PttReleaseDelay);
+        _settingsStore.Set("VadSensitivity", Settings.VadSensitivity);
+        _settingsStore.Set("NoiseSuppression", Settings.NoiseSuppression);
+        _settingsStore.Set("OpusBitrate",    Settings.OpusBitrate);
         _settingsStore.Set("Username",       Username);
         _settingsStore.Set("WindowLeft",      _windowLeft);
         _settingsStore.Set("WindowTop",       _windowTop);
@@ -1028,6 +1182,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsSaveTimer.Stop();
         _remoteSpeakingTimer.Stop();
         FlushSettings();
+        _connectionQuality.Dispose();
+        _pttService.Dispose();
         _voiceService.Dispose();
         await _chatService.DisposeAsync();
     }

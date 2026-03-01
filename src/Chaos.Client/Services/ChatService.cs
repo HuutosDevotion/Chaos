@@ -23,6 +23,8 @@ public class ChatService : IAsyncDisposable
     public event Action<int>? ChannelDeleted;
     public event Action<ChannelDto>? ChannelRenamed;
     public event Action<int, string>? UserTyping; // channelId, username
+    public event Action<string, int, bool, bool>? UserMuteStateChanged; // username, channelId, isMuted, isDeafened
+    public event Action? PongReceived;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -60,6 +62,9 @@ public class ChatService : IAsyncDisposable
         _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
         _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
         _connection.On<int, string>("UserTyping", (channelId, username) => UserTyping?.Invoke(channelId, username));
+        _connection.On<string, int, bool, bool>("UserMuteStateChanged", (user, channelId, muted, deafened) =>
+            UserMuteStateChanged?.Invoke(user, channelId, muted, deafened));
+        _connection.On("Pong", () => PongReceived?.Invoke());
 
         _connection.Closed += _ =>
         {
@@ -192,6 +197,18 @@ public class ChatService : IAsyncDisposable
     {
         if (_connection is not null)
             await _connection.InvokeAsync("RenameChannel", channelId, newName);
+    }
+
+    public async Task SendPing()
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("Ping");
+    }
+
+    public async Task UpdateMuteState(bool isMuted, bool isDeafened)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("UpdateMuteState", isMuted, isDeafened);
     }
 
     public async ValueTask DisposeAsync()
