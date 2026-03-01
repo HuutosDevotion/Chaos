@@ -122,6 +122,37 @@ public class ChannelViewModel : INotifyPropertyChanged
         get => _name;
         set { if (_name == value) return; _name = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name))); }
     }
+
+    private int _unreadCount;
+    public int UnreadCount
+    {
+        get => _unreadCount;
+        set
+        {
+            if (_unreadCount == value) return;
+            _unreadCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+        }
+    }
+
+    private int _mentionCount;
+    public int MentionCount
+    {
+        get => _mentionCount;
+        set
+        {
+            if (_mentionCount == value) return;
+            _mentionCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MentionCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasMention)));
+        }
+    }
+
+    public bool HasMention => MentionCount > 0;
+
+    public bool HasUnread => UnreadCount > 0;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
@@ -168,11 +199,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _typingText = string.Empty;
 
     private object? _activeModal;
+    private List<string> _allKnownUsers = new();
+    private bool _showMentionSuggestions;
+    private int _selectedMentionIndex = -1;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
+    public ObservableCollection<string> MentionSuggestions { get; } = new();
 
     public string ServerAddress
     {
@@ -202,6 +237,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _messageText = value;
             OnPropertyChanged();
             UpdateSlashSuggestions(value);
+            UpdateMentionSuggestions(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -319,6 +355,93 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
 
+    public bool ShowMentionSuggestions
+    {
+        get => _showMentionSuggestions;
+        set { _showMentionSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedMentionIndex
+    {
+        get => _selectedMentionIndex;
+        set { _selectedMentionIndex = value; OnPropertyChanged(); }
+    }
+
+    private void UpdateMentionSuggestions(string text)
+    {
+        MentionSuggestions.Clear();
+        SelectedMentionIndex = -1;
+
+        if (string.IsNullOrEmpty(text))
+        {
+            ShowMentionSuggestions = false;
+            return;
+        }
+
+        // Find the last '@' that is not preceded by a word character
+        int atIndex = -1;
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            if (text[i] == '@')
+            {
+                if (i == 0 || !char.IsLetterOrDigit(text[i - 1]))
+                    atIndex = i;
+                break;
+            }
+            if (text[i] == ' ' && atIndex == -1)
+            {
+                // Keep looking for @ before this space
+            }
+        }
+
+        if (atIndex < 0)
+        {
+            ShowMentionSuggestions = false;
+            return;
+        }
+
+        var partial = text[(atIndex + 1)..];
+        if (partial.Contains(' '))
+        {
+            ShowMentionSuggestions = false;
+            return;
+        }
+
+        foreach (var user in _allKnownUsers)
+        {
+            if (user.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
+                MentionSuggestions.Add(user);
+        }
+
+        ShowMentionSuggestions = MentionSuggestions.Count > 0;
+    }
+
+    public void SelectMentionSuggestion(string username)
+    {
+        var text = MessageText;
+        // Find the last '@'
+        int atIndex = text.LastIndexOf('@');
+        if (atIndex >= 0)
+            MessageText = text[..atIndex] + $"@{username} ";
+        ShowMentionSuggestions = false;
+        SelectedMentionIndex = -1;
+    }
+
+    public void NavigateMentionSuggestions(int direction)
+    {
+        if (MentionSuggestions.Count == 0) return;
+        int next = SelectedMentionIndex + direction;
+        if (next < 0) next = MentionSuggestions.Count - 1;
+        else if (next >= MentionSuggestions.Count) next = 0;
+        SelectedMentionIndex = next;
+    }
+
+    public void DismissMentionSuggestions()
+    {
+        ShowMentionSuggestions = false;
+        SelectedMentionIndex = -1;
+    }
+
     private void UpdateSlashSuggestions(string text)
     {
         SlashSuggestions.Clear();
@@ -375,7 +498,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (_selectedTextChannel?.Id == value?.Id) return;
             if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = false;
             _selectedTextChannel = value;
-            if (_selectedTextChannel is not null) _selectedTextChannel.IsSelected = true;
+            if (_selectedTextChannel is not null)
+            {
+                _selectedTextChannel.IsSelected = true;
+                _selectedTextChannel.UnreadCount = 0;
+                _selectedTextChannel.MentionCount = 0;
+            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasTextChannel));
             OnPropertyChanged(nameof(SelectedChannelName));
@@ -463,6 +591,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
         _chatService.UserTyping += OnUserTyping;
+        _chatService.NewMessageIndicator += OnNewMessageIndicator;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
@@ -594,6 +723,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            _allKnownUsers = await _chatService.GetAllKnownUsersAsync();
 
             SafeDispatch(() =>
             {
@@ -794,6 +924,25 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             2 => $"{users[0]} and {users[1]} are typing...",
             _ => "Several people are typing..."
         };
+    }
+
+    private void OnNewMessageIndicator(NewMessageIndicatorDto indicator)
+    {
+        if (indicator.Author == Username) return;
+
+        SafeDispatchAsync(() =>
+        {
+            if (indicator.ChannelId != _selectedTextChannel?.Id)
+            {
+                var channel = Channels.FirstOrDefault(c => c.Id == indicator.ChannelId);
+                if (channel is not null)
+                {
+                    channel.UnreadCount++;
+                    if (indicator.MentionedUsers.Any(u => string.Equals(u, Username, StringComparison.OrdinalIgnoreCase)))
+                        channel.MentionCount++;
+                }
+            }
+        });
     }
 
     private void OnUserJoinedVoice(string username, int channelId, int voiceUserId)

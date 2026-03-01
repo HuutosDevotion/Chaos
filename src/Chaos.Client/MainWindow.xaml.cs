@@ -199,6 +199,13 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
+                if (args.PropertyName == nameof(MainViewModel.SelectedMentionIndex))
+                {
+                    int idx = vm.SelectedMentionIndex;
+                    if (idx >= 0 && idx < vm.MentionSuggestions.Count)
+                        MentionSuggestionList.ScrollIntoView(vm.MentionSuggestions[idx]);
+                }
+
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
                     {
@@ -262,26 +269,26 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
+        if (DataContext is MainViewModel vm && vm.ShowMentionSuggestions)
         {
             if (e.Key == Key.Down)
             {
-                vm.NavigateSuggestions(1);
+                vm.NavigateMentionSuggestions(1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Up)
             {
-                vm.NavigateSuggestions(-1);
+                vm.NavigateMentionSuggestions(-1);
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Tab)
+            if (e.Key == Key.Tab || (e.Key == Key.Enter && vm.SelectedMentionIndex >= 0))
             {
-                int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
-                if (idx < vm.SlashSuggestions.Count)
+                int idx = vm.SelectedMentionIndex >= 0 ? vm.SelectedMentionIndex : 0;
+                if (idx < vm.MentionSuggestions.Count)
                 {
-                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
+                    vm.SelectMentionSuggestion(vm.MentionSuggestions[idx]);
                     MessageInput.CaretIndex = MessageInput.Text.Length;
                 }
                 e.Handled = true;
@@ -289,13 +296,46 @@ public partial class MainWindow : Window
             }
             if (e.Key == Key.Escape)
             {
-                vm.DismissSuggestions();
+                vm.DismissMentionSuggestions();
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
+        }
+
+        if (DataContext is MainViewModel vm1 && vm1.ShowSlashSuggestions)
+        {
+            if (e.Key == Key.Down)
             {
-                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                vm1.NavigateSuggestions(1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Up)
+            {
+                vm1.NavigateSuggestions(-1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Tab)
+            {
+                int idx = vm1.SelectedSuggestionIndex >= 0 ? vm1.SelectedSuggestionIndex : 0;
+                if (idx < vm1.SlashSuggestions.Count)
+                {
+                    vm1.SelectSuggestion(vm1.SlashSuggestions[idx]);
+                    MessageInput.CaretIndex = MessageInput.Text.Length;
+                }
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Escape)
+            {
+                vm1.DismissSuggestions();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter && vm1.SelectedSuggestionIndex >= 0)
+            {
+                vm1.SelectSuggestion(vm1.SlashSuggestions[vm1.SelectedSuggestionIndex]);
                 MessageInput.CaretIndex = MessageInput.Text.Length;
                 e.Handled = true;
                 return;
@@ -362,6 +402,19 @@ public partial class MainWindow : Window
             DataContext is MainViewModel vm)
         {
             vm.SelectSuggestion(cmd);
+            MessageInput.Focus();
+            MessageInput.CaretIndex = MessageInput.Text.Length;
+            e.Handled = true;
+        }
+    }
+
+    private void MentionSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is string username &&
+            DataContext is MainViewModel vm)
+        {
+            vm.SelectMentionSuggestion(username);
             MessageInput.Focus();
             MessageInput.CaretIndex = MessageInput.Text.Length;
             e.Handled = true;
@@ -545,11 +598,12 @@ public partial class MainWindow : Window
         var primary   = (Brush)FindResource("TextPrimaryBrush");
         var secondary = (Brush)FindResource("TextSecondaryBrush");
         var muted     = (Brush)FindResource("TextMutedBrush");
-        double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
+        var vm        = DataContext as MainViewModel;
+        double fontSize = vm?.Settings.FontSize ?? 14;
 
         if (msg.ShowHeader)
         {
-            var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+            var p = new Paragraph { Margin = new Thickness(0, msg.Padding.Top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
             p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
@@ -558,8 +612,8 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
-                    { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
+            var p = new Paragraph { Margin = new Thickness(0, top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
+            p.Inlines.Add(new Run(msg.Content) { Foreground = secondary });
             doc.Blocks.Add(p);
         }
 

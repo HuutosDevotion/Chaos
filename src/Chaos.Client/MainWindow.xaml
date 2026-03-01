@@ -771,39 +771,88 @@
                                                 </Setter>
                                             </Style>
                                         </Button.Style>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Icon}"
-                                                       FontSize="16" Margin="0,0,6,0"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                        <DockPanel>
+                                            <!-- Red mention count badge (right-aligned, visible only for mentions) -->
+                                            <Border DockPanel.Dock="Right" CornerRadius="8"
+                                                    MinWidth="18" Height="18"
+                                                    Padding="5,1" Margin="4,0,0,0"
+                                                    Background="{StaticResource AccentRedBrush}"
+                                                    VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                            <DataTrigger Binding="{Binding HasMention}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="14"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </StackPanel>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding MentionCount}"
+                                                           Foreground="White" FontSize="11"
+                                                           FontWeight="Bold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                            </Border>
+
+                                            <StackPanel Orientation="Horizontal">
+                                                <!-- White unread dot (left of channel name, visible when unread but no mention) -->
+                                                <Ellipse Width="8" Height="8" Fill="White"
+                                                         VerticalAlignment="Center" Margin="0,0,4,0">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding HasUnread}" Value="True" />
+                                                                        <Condition Binding="{Binding HasMention}" Value="False" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
+                                                <TextBlock Text="{Binding Icon}"
+                                                           FontSize="16" Margin="0,0,6,0"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="14"
+                                                           VerticalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                            <Setter Property="FontWeight" Value="Normal" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsActiveVoice}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding HasUnread}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                                    <Setter Property="FontWeight" Value="Bold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
                                     </Button>
 
                                     <!-- Voice members shown under voice channels -->
@@ -982,6 +1031,7 @@
                         </Button>
                     </Grid>
                 </Border>
+
             </Grid>
 
             <!-- Resize handle between left sidebar and chat -->
@@ -1152,6 +1202,57 @@
                                                        FontSize="11" Margin="12,0,0,0"
                                                        VerticalAlignment="Center" />
                                         </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+
+                        <!-- @ Mention Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowMentionSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="MentionSuggestionList"
+                                     ItemsSource="{Binding MentionSuggestions}"
+                                     SelectedIndex="{Binding SelectedMentionIndex, Mode=TwoWay}"
+                                     Focusable="False"
+                                     MaxHeight="200"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="MentionSuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontSize="14" VerticalAlignment="Center">
+                                            <Run Text="@" Foreground="{StaticResource AccentBlueBrush}" FontWeight="SemiBold" /><Run Text="{Binding Mode=OneWay}" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        </TextBlock>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>

@@ -43,6 +43,16 @@ public class VoicePacket
     public byte[] AudioData { get; set; } = Array.Empty<byte>();
 }
 
+public class NewMessageIndicatorDto
+{
+    public int ChannelId { get; set; }
+    public string ChannelName { get; set; } = string.Empty;
+    public string Author { get; set; } = string.Empty;
+    public string ContentPreview { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    public List<string> MentionedUsers { get; set; } = new();
+}
+
 public class SlashCommandDto
 {
     public string Name { get; set; } = string.Empty;
