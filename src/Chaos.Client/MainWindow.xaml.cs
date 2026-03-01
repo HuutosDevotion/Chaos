@@ -942,29 +942,41 @@ public partial class MainWindow : Window
         int origLength = MessageInput.SelectionLength;
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd];
-        // Normalize \r\n so a trailing \r doesn't get embedded inside the wrapper
-        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        string region = MessageInput.Text[lineStart..lineEnd].Replace("\r\n", "\n").Replace("\r", "\n");
 
-        string[] newLines = lines.Select(line =>
+        string newRegion;
+        string prefix = $":{align} ";
+
+        var single = AlignmentLine.Match(region);
+        if (single.Success && single.Length == region.Length)
         {
-            if (string.IsNullOrEmpty(line)) return line;  // leave blank lines untouched
-            var m = AlignmentLine.Match(line);
-            if (m.Success)
+            // Single-line block: toggle off same alignment, swap to new
+            string existing = single.Groups[1].Value;
+            string content  = single.Groups[2].Value;
+            newRegion = existing == align ? content : $"{prefix}{content}:";
+        }
+        else if (region.StartsWith(prefix) && region.EndsWith(":"))
+        {
+            // Multiline block with the same alignment — remove wrapper
+            newRegion = region[prefix.Length..^1];
+        }
+        else
+        {
+            // Strip any existing per-line alignment wrappers, then wrap the whole region
+            string[] lines = region.Split('\n');
+            string content = string.Join("\n", lines.Select(line =>
             {
-                string existing = m.Groups[1].Value;
-                string content  = m.Groups[2].Value;
-                return existing == align ? content : $":{align} {content}:";
-            }
-            return $":{align} {line}:";
-        }).ToArray();
+                var m = AlignmentLine.Match(line);
+                return m.Success ? m.Groups[2].Value : line;
+            }));
+            newRegion = $"{prefix}{content}:";
+        }
 
-        string newRegion = string.Join("\n", newLines);
         MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
 
         if (origLength == 0)
         {
-            int delta = newLines[0].Length - lines[0].Length;
+            int delta = newRegion.Length - region.Length;
             MessageInput.SelectionStart  = origStart + delta;
             MessageInput.SelectionLength = 0;
         }
@@ -1254,6 +1266,11 @@ internal static class MarkdownRenderer
     private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
         new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    // Matches alignment blocks that span multiple lines (Multiline so ^ anchors per-line).
+    private static readonly System.Text.RegularExpressions.Regex MultilineAlignment =
+        new(@"^:(left|center|right|justify) ([\s\S]+?):$",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
+
     private static readonly System.Text.RegularExpressions.Regex NumberedLine =
         new(@"^(\d+)\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -1328,10 +1345,12 @@ internal static class MarkdownRenderer
         var doc = new FlowDocument();
         if (string.IsNullOrEmpty(text)) return doc;
 
-        // Replace \n inside inline spans with \x01 so multiline spans stay on one "line".
-        // \x01 is re-expanded to LineBreak inlines inside ParseInlines.
+        // Replace \n inside inline spans and alignment blocks with \x01 so they stay on one
+        // "line" after splitting. \x01 is re-expanded to LineBreak inlines in ParseInlines.
         string normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
         string collapsed  = MultilineInlineSpan.Replace(normalized, m =>
+            m.Value.Contains('\n') ? m.Value.Replace('\n', '\x01') : m.Value);
+        collapsed = MultilineAlignment.Replace(collapsed, m =>
             m.Value.Contains('\n') ? m.Value.Replace('\n', '\x01') : m.Value);
         string[] rawLines = collapsed.Split('\n');
 

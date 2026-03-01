@@ -541,7 +541,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.HasShutdownStarted) return;
-        dispatcher.Invoke(action);
+        try { dispatcher.Invoke(action); }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
     }
 
     private static void SafeDispatchAsync(Action action)
