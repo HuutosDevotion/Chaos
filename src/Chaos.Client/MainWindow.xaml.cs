@@ -577,11 +577,6 @@ public partial class MainWindow : Window
         TooltipHelper.SetIsActive(StrikethroughButton, FormatDetection.IsCursorInSpan(text, pos, FormatDetection.StrikeSpan, 2));
 
         int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
-        string? activeAlign = FormatDetection.GetActiveAlignment(text, pos);
-        TooltipHelper.SetIsActive(AlignLeftButton,    activeAlign == "left");
-        TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
-        TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
-        TooltipHelper.SetIsActive(AlignJustifyButton, activeAlign == "justify");
         bool inFencedCode = FormatDetection.IsLineInFencedBlock(text, lineStartPos);
         TooltipHelper.SetIsActive(CodeButton,  inFencedCode
             || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.CodeSpan, 1)
@@ -697,11 +692,6 @@ public partial class MainWindow : Window
         MessageInput.SelectionLength = 0;
         MessageInput.Focus();
     }
-
-    private void FormatAlignLeft_Click(object sender, RoutedEventArgs e)    => ApplyAlignmentToLines("left");
-    private void FormatAlignCenter_Click(object sender, RoutedEventArgs e)  => ApplyAlignmentToLines("center");
-    private void FormatAlignRight_Click(object sender, RoutedEventArgs e)   => ApplyAlignmentToLines("right");
-    private void FormatAlignJustify_Click(object sender, RoutedEventArgs e) => ApplyAlignmentToLines("justify");
 
     private void FormatCode_Click(object sender, RoutedEventArgs e)  => ToggleCode();
     private void FormatQuote_Click(object sender, RoutedEventArgs e) => ToggleQuote();
@@ -866,85 +856,6 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void ApplyAlignmentToLines(string align)
-    {
-        int origStart  = MessageInput.SelectionStart;
-        int origLength = MessageInput.SelectionLength;
-        string prefix  = $":{align} ";
-
-        // No selection: check if cursor is inside a multiline alignment block and act on the whole block.
-        if (origLength == 0)
-        {
-            string fullText = MessageInput.Text;
-            Match? enclosing = null;
-            foreach (Match m in FormatDetection.AlignmentBlock.Matches(fullText))
-                if (origStart > m.Index && origStart < m.Index + m.Length) { enclosing = m; break; }
-
-            if (enclosing != null)
-            {
-                string existingAlign = enclosing.Groups[1].Value;
-                string content       = enclosing.Groups[2].Value;
-                string newBlock      = existingAlign == align ? content : $"{prefix}{content}:";
-                int bStart = enclosing.Index;
-                int bEnd   = enclosing.Index + enclosing.Length;
-                MessageInput.Text = fullText[..bStart] + newBlock + fullText[bEnd..];
-                int delta = newBlock.Length - (bEnd - bStart);
-                MessageInput.SelectionStart  = Math.Clamp(origStart + delta, bStart, bStart + newBlock.Length);
-                MessageInput.SelectionLength = 0;
-                MessageInput.Focus();
-                return;
-            }
-        }
-
-        GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd].Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd('\n');
-        string newRegion;
-
-        var single = FormatDetection.AlignmentLine.Match(region);
-        if (single.Success && single.Length == region.Length)
-        {
-            // Single-line block: toggle off same alignment, swap to new
-            string existing = single.Groups[1].Value;
-            string content  = single.Groups[2].Value;
-            newRegion = existing == align ? content : $"{prefix}{content}:";
-        }
-        else
-        {
-            var block = FormatDetection.AlignmentBlock.Match(region);
-            if (block.Success && block.Index == 0 && block.Length == region.Length)
-            {
-                // Multiline block: toggle off or swap alignment
-                string existing = block.Groups[1].Value;
-                string content  = block.Groups[2].Value;
-                newRegion = existing == align ? content : $"{prefix}{content}:";
-            }
-            else
-            {
-                // Strip any per-line wrappers, then wrap the whole region as one block
-                string content = string.Join("\n", region.Split('\n').Select(line =>
-                {
-                    var m = FormatDetection.AlignmentLine.Match(line);
-                    return m.Success ? m.Groups[2].Value : line;
-                }));
-                newRegion = $"{prefix}{content}:";
-            }
-        }
-
-        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
-
-        if (origLength == 0)
-        {
-            int delta = newRegion.Length - region.Length;
-            MessageInput.SelectionStart  = origStart + delta;
-            MessageInput.SelectionLength = 0;
-        }
-        else
-        {
-            MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = newRegion.Length;
-        }
-        MessageInput.Focus();
-    }
 
     private void PrefixSelectedLines(Func<int, string> prefixFor)
     {
@@ -1217,17 +1128,11 @@ internal static class MarkdownRenderer
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     // Same pattern but with Singleline so . matches \n — used to detect spans that cross lines.
+    // Backtick patterns are intentionally omitted: inline code does not span lines, and
+    // including ``` here would cause fenced code blocks to be incorrectly collapsed.
     private static readonly System.Text.RegularExpressions.Regex MultilineInlineSpan =
-        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)",
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)",
             System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Singleline);
-
-    private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
-        new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    // Matches alignment blocks that span multiple lines (Multiline so ^ anchors per-line).
-    private static readonly System.Text.RegularExpressions.Regex MultilineAlignment =
-        new(@"^:(left|center|right|justify) ([\s\S]+?):$",
-            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
 
     private static readonly System.Text.RegularExpressions.Regex NumberedLine =
         new(@"^(\d+)\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -1308,8 +1213,6 @@ internal static class MarkdownRenderer
         string normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
         string collapsed  = MultilineInlineSpan.Replace(normalized, m =>
             m.Value.Contains('\n') ? m.Value.Replace('\n', '\x01') : m.Value);
-        collapsed = MultilineAlignment.Replace(collapsed, m =>
-            m.Value.Contains('\n') ? m.Value.Replace('\n', '\x01') : m.Value);
         string[] rawLines = collapsed.Split('\n');
 
         static int IndentLevel(string raw)
@@ -1340,24 +1243,6 @@ internal static class MarkdownRenderer
         while (i < rawLines.Length)
         {
             string line = rawLines[i];
-
-            var am = AlignmentDirective.Match(line);
-            if (am.Success)
-            {
-                var alignment = am.Groups[1].Value switch
-                {
-                    "center"  => TextAlignment.Center,
-                    "right"   => TextAlignment.Right,
-                    "justify" => TextAlignment.Justify,
-                    _         => TextAlignment.Left,
-                };
-                string content = am.Groups[2].Value;
-                var alignPara = new Paragraph { Foreground = textBrush, TextAlignment = alignment };
-                ParseInlines(content, alignPara.Inlines, textBrush, linkBrush);
-                doc.Blocks.Add(alignPara);
-                i++;
-                continue;
-            }
 
             // Opening fence: ``` or ```<number> (e.g. ```42 starts at line 42)
             string? fenceSuffix = line == "```" ? ""
@@ -1573,7 +1458,7 @@ internal static class MarkdownRenderer
         {
             Content = uri.AbsoluteUri,
             Placement = PlacementMode.Mouse,
-            Template = (ControlTemplate)Application.Current.FindResource("TooltipTemplateNoTail")
+            Template = Application.Current?.FindResource("TooltipTemplateNoTail") as ControlTemplate,
         };
         var link = new Hyperlink(new Run(label)) { NavigateUri = uri, Foreground = brush, ToolTip = tt };
         ToolTipService.SetInitialShowDelay(link, 500);

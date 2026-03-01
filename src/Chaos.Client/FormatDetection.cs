@@ -20,12 +20,6 @@ internal static class FormatDetection
     internal static readonly Regex TripleInlineCodeSpan =
         new(@"```(.+?)```",                     RegexOptions.Compiled | RegexOptions.Singleline);
 
-    internal static readonly Regex AlignmentLine =
-        new(@"^:(left|center|right|justify) (.*):$", RegexOptions.Compiled);
-    // Multiline version: ^ anchors per-line so it can find blocks anywhere in the full text.
-    internal static readonly Regex AlignmentBlock =
-        new(@"^:(left|center|right|justify) ([\s\S]+?):$", RegexOptions.Compiled | RegexOptions.Multiline);
-
     // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
     // markerLen is the length of the opening/closing delimiter (** = 2, __ = 2, ~~ = 2).
     internal static bool IsCursorInSpan(string text, int pos, Regex pattern, int markerLen)
@@ -90,18 +84,4 @@ internal static class FormatDetection
         return fenceCount % 2 == 1;
     }
 
-    // Returns the active alignment keyword ("left"/"center"/"right"/"justify") at `pos`,
-    // or null if the cursor is not inside any alignment block.
-    internal static string? GetActiveAlignment(string text, int pos)
-    {
-        int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
-        int lineEndPos   = text.IndexOf('\n', lineStartPos);
-        if (lineEndPos < 0) lineEndPos = text.Length;
-        string currentLine = text[lineStartPos..lineEndPos];
-        var alignMatch = AlignmentLine.Match(currentLine.TrimEnd('\r'));
-        if (alignMatch.Success) return alignMatch.Groups[1].Value;
-        foreach (Match m in AlignmentBlock.Matches(text))
-            if (pos > m.Index && pos < m.Index + m.Length) return m.Groups[1].Value;
-        return null;
-    }
 }
