@@ -5,6 +5,19 @@ namespace Chaos.Client.Behaviors;
 
 public static class TooltipHelper
 {
+    public static readonly DependencyProperty IsActiveProperty =
+        DependencyProperty.RegisterAttached(
+            "IsActive",
+            typeof(bool),
+            typeof(TooltipHelper),
+            new PropertyMetadata(false));
+
+    public static bool GetIsActive(DependencyObject obj) =>
+        (bool)obj.GetValue(IsActiveProperty);
+
+    public static void SetIsActive(DependencyObject obj, bool value) =>
+        obj.SetValue(IsActiveProperty, value);
+
     public static readonly DependencyProperty CenterOnElementProperty =
         DependencyProperty.RegisterAttached(
             "CenterOnElement",

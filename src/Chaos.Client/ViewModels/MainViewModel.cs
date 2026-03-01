@@ -236,6 +236,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool IsAnyModalOpen => _activeModal is not null;
 
     public void CloseModal() => ActiveModal = null;
+    public void OpenModal(object modal) => ActiveModal = modal;
 
     public string ConnectionStatus
     {
@@ -540,7 +541,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.HasShutdownStarted) return;
-        dispatcher.Invoke(action);
+        try { dispatcher.Invoke(action); }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
     }
 
     private static void SafeDispatchAsync(Action action)
