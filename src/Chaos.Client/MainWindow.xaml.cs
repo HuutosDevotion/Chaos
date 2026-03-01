@@ -1,15 +1,20 @@
 using System.Collections.Specialized;
+using System.Text.RegularExpressions;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
+using Chaos.Client.Behaviors;
 using Chaos.Client.ViewModels;
 using Chaos.Shared;
 
@@ -120,6 +125,8 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        MessageInput.SelectionChanged += (_, _) => UpdateFormatButtonStates();
+
         if (DataContext is MainViewModel vm)
         {
             SetupImagePreview(vm);
@@ -280,10 +287,7 @@ public partial class MainWindow : Window
             {
                 int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
                 if (idx < vm.SlashSuggestions.Count)
-                {
-                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
-                    MessageInput.CaretIndex = MessageInput.Text.Length;
-                }
+                    ApplySuggestion(vm, vm.SlashSuggestions[idx]);
                 e.Handled = true;
                 return;
             }
@@ -295,8 +299,7 @@ public partial class MainWindow : Window
             }
             if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
             {
-                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
-                MessageInput.CaretIndex = MessageInput.Text.Length;
+                ApplySuggestion(vm, vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
                 e.Handled = true;
                 return;
             }
@@ -304,8 +307,25 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
         {
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+            {
+                if (TryHandleListEnter())
+                    e.Handled = true;
+                return; // handled by list logic, or let TextBox insert newline naturally
+            }
             if (vm2.SendMessageCommand.CanExecute(null))
                 vm2.SendMessageCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            int pos = MessageInput.SelectionStart;
+            int len = MessageInput.SelectionLength;
+            MessageInput.Text = MessageInput.Text.Remove(pos, len).Insert(pos, "    ");
+            MessageInput.SelectionStart  = pos + 4;
+            MessageInput.SelectionLength = 0;
             e.Handled = true;
             return;
         }
@@ -361,12 +381,18 @@ public partial class MainWindow : Window
             el.DataContext is SlashCommandDto cmd &&
             DataContext is MainViewModel vm)
         {
-            vm.SelectSuggestion(cmd);
-            MessageInput.Focus();
-            MessageInput.CaretIndex = MessageInput.Text.Length;
+            ApplySuggestion(vm, cmd);
             e.Handled = true;
         }
     }
+
+    private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
+    {
+        vm.SelectSuggestion(cmd);
+        MessageInput.CaretIndex = MessageInput.Text.Length;
+        MessageInput.Focus();
+    }
+
 
     // ── Image Preview ─────────────────────────────────────────────────────────
 
@@ -529,6 +555,539 @@ public partial class MainWindow : Window
             Clipboard.SetImage(bmp);
     }
 
+    // ── Formatting toolbar handlers ────────────────────────────────────────────
+    // Buttons insert markdown syntax into the TextBox rather than applying WPF
+    // text properties, keeping the input fast and the content plain text.
+
+    private void FormatBold_Click(object sender, RoutedEventArgs e)          => ToggleInlineFormat("**");
+    private void FormatItalic_Click(object sender, RoutedEventArgs e)        => ToggleInlineFormat("*");
+    private void FormatUnderline_Click(object sender, RoutedEventArgs e)     => ToggleInlineFormat("__");
+    private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => ToggleInlineFormat("~~");
+
+    // Regex patterns for 2-char delimiter spans (bold, underline, strikethrough).
+    // (?!\s) / (?<!\s) mirror CommonMark: ** must touch non-whitespace on both sides.
+    // This prevents "** text **" from being swallowed as bold, leaving lone * chars
+    // available for the italic scan.
+    // Bold is always the outer wrapper, so *** = ** wrapping *...*
+    private static readonly Regex BoldItalicSpan = new(@"\*\*\*(?!\s)(.*?)(?<!\s)\*\*\*", RegexOptions.Compiled);
+    private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled);
+    private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled);
+    private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled);
+    private static readonly Regex CodeSpan            = new(@"`(.+?)`",     RegexOptions.Compiled);
+    private static readonly Regex TripleInlineCodeSpan = new(@"```(.+?)```", RegexOptions.Compiled);
+
+    private void UpdateFormatButtonStates()
+    {
+        string text = MessageInput.Text;
+        int pos = MessageInput.SelectionStart;
+        bool inBoldItalic = IsCursorInSpan(text, pos, BoldItalicSpan, 3);
+        TooltipHelper.SetIsActive(BoldButton,          inBoldItalic || IsCursorInSpan(text, pos, BoldSpan, 2));
+        TooltipHelper.SetIsActive(ItalicButton,        inBoldItalic || IsCursorInItalicSpan(text, pos));
+        TooltipHelper.SetIsActive(UnderlineButton,     IsCursorInSpan(text, pos, UnderlineSpan, 2));
+        TooltipHelper.SetIsActive(StrikethroughButton, IsCursorInSpan(text, pos, StrikeSpan, 2));
+
+        int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+        int lineEndPos   = text.IndexOf('\n', lineStartPos);
+        if (lineEndPos < 0) lineEndPos = text.Length;
+        string currentLine = text[lineStartPos..lineEndPos];
+        var alignMatch = AlignmentLine.Match(currentLine);
+        string? activeAlign = alignMatch.Success ? alignMatch.Groups[1].Value : null;
+        TooltipHelper.SetIsActive(AlignLeftButton,    activeAlign == "left");
+        TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
+        TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
+        TooltipHelper.SetIsActive(AlignJustifyButton, activeAlign == "justify");
+        bool inFencedCode = IsLineInFencedBlock(text, lineStartPos);
+        TooltipHelper.SetIsActive(CodeButton,  inFencedCode
+            || IsCursorInSpan(text, pos, CodeSpan, 1)
+            || IsCursorInSpan(text, pos, TripleInlineCodeSpan, 3));
+        TooltipHelper.SetIsActive(QuoteButton, currentLine.StartsWith("> "));
+    }
+
+    // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
+    // markerLen is the length of the opening/closing delimiter (** = 2, __ = 2, ~~ = 2).
+    private static bool IsCursorInSpan(string text, int pos, Regex pattern, int markerLen)
+    {
+        foreach (Match m in pattern.Matches(text))
+            if (pos >= m.Index + markerLen && pos <= m.Index + m.Length - markerLen)
+                return true;
+        return false;
+    }
+
+    // Italic uses a manual scan instead of regex because the * vs ** ambiguity breaks
+    // lookahead/lookbehind — in particular, adjacent ** (empty italic or bold boundary)
+    // causes the regex to fail. This approach masks all bold-span positions first, then
+    // scans for lone * pairs in the remaining text.
+    private static bool IsCursorInItalicSpan(string text, int pos)
+    {
+        if (text.Length == 0) return false;
+
+        // Mark every character position that belongs to a bold span
+        var inBold = new bool[text.Length];
+        foreach (Match m in BoldSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++)
+                inBold[i] = true;
+
+        // Scan for lone * pairs (opening and closing) outside bold spans
+        int openAt = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '*' || inBold[i]) continue;
+            if (openAt < 0)
+                openAt = i;                      // found opening *
+            else
+            {
+                if (pos >= openAt + 1 && pos <= i) return true;
+                openAt = -1;                     // found closing *, reset
+            }
+        }
+        return false;
+    }
+
+    // Returns true when lineStartPos falls inside a ``` fenced block.
+    // Counts ``` lines before the current line; odd = inside a block.
+    private static bool IsLineInFencedBlock(string text, int lineStartPos)
+    {
+        string prefix = text[..lineStartPos];
+        int fenceCount = prefix.Replace("\r\n", "\n").Replace("\r", "\n")
+                               .Split('\n')
+                               .Count(l => l == "```" ||
+                                           (l.StartsWith("```") && l[3..].Trim().All(char.IsDigit)
+                                            && l.Length > 3));
+        return fenceCount % 2 == 1;
+    }
+
+    private void InsertMarkdownAround(string marker)
+    {
+        int start = MessageInput.SelectionStart;
+        int len   = MessageInput.SelectionLength;
+        string sel = MessageInput.SelectedText;
+        MessageInput.Text = MessageInput.Text.Remove(start, len)
+                                             .Insert(start, marker + sel + marker);
+        MessageInput.SelectionStart  = start + marker.Length;
+        MessageInput.SelectionLength = sel.Length;
+        MessageInput.Focus();
+    }
+
+    // With a selection, always add the wrapper. With a point cursor, toggle off if already inside the span.
+    private void ToggleInlineFormat(string marker)
+    {
+        if (MessageInput.SelectionLength > 0) { InsertMarkdownAround(marker); return; }
+
+        string text = MessageInput.Text;
+        int pos = MessageInput.SelectionStart;
+
+        if (marker == "**")
+        {
+            // Bold is outer — check bold+italic first
+            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+            m = FindEnclosingSpan(text, pos, BoldSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "*")
+        {
+            // Italic is inner — strip the inner * from bold+italic
+            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s + 2, 1, m.Value.s + m.Value.l - 3, 1); return; }
+            var it = FindItalicSpanContaining(text, pos);
+            if (it.HasValue) { RemoveSpanMarkers(it.Value.open, 1, it.Value.close, 1); return; }
+        }
+        else if (marker == "__")
+        {
+            var m = FindEnclosingSpan(text, pos, UnderlineSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "~~")
+        {
+            var m = FindEnclosingSpan(text, pos, StrikeSpan, 2);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
+        }
+        else if (marker == "`")
+        {
+            var m = FindEnclosingSpan(text, pos, TripleInlineCodeSpan, 3);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 3, m.Value.s + m.Value.l - 3, 3); return; }
+            m = FindEnclosingSpan(text, pos, CodeSpan, 1);
+            if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 1, m.Value.s + m.Value.l - 1, 1); return; }
+        }
+
+        InsertMarkdownAround(marker);
+    }
+
+    private static (int s, int l)? FindEnclosingSpan(string text, int pos, Regex pattern, int markerLen)
+    {
+        foreach (Match m in pattern.Matches(text))
+            if (pos >= m.Index + markerLen && pos <= m.Index + m.Length - markerLen)
+                return (m.Index, m.Length);
+        return null;
+    }
+
+    // Like FindEnclosingSpan but returns the character positions of the opening and closing * for italic.
+    private static (int open, int close)? FindItalicSpanContaining(string text, int pos)
+    {
+        var inMasked = new bool[text.Length];
+        // Mask bold+italic and bold spans so their * chars don't look like lone italic markers
+        foreach (Match m in BoldItalicSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
+        foreach (Match m in BoldSpan.Matches(text))
+            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
+
+        int openAt = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '*' || inMasked[i]) continue;
+            if (openAt < 0) openAt = i;
+            else
+            {
+                if (pos >= openAt + 1 && pos <= i) return (openAt, i);
+                openAt = -1;
+            }
+        }
+        return null;
+    }
+
+    private void RemoveSpanMarkers(int openAt, int openLen, int closeAt, int closeLen)
+    {
+        int origPos = MessageInput.SelectionStart;
+        string text = MessageInput.Text;
+        // Remove close first (higher index) so openAt stays valid
+        text = text.Remove(closeAt, closeLen);
+        text = text.Remove(openAt, openLen);
+        // Adjust cursor
+        int pos = origPos;
+        if (pos >= closeAt + closeLen) pos -= closeLen;
+        else if (pos > closeAt)        pos  = closeAt;
+        if (pos >= openAt + openLen)   pos -= openLen;
+        else if (pos > openAt)         pos  = openAt;
+        MessageInput.Text = text;
+        MessageInput.SelectionStart  = pos;
+        MessageInput.SelectionLength = 0;
+        MessageInput.Focus();
+    }
+
+    private void FormatAlignLeft_Click(object sender, RoutedEventArgs e)    => ApplyAlignmentToLines("left");
+    private void FormatAlignCenter_Click(object sender, RoutedEventArgs e)  => ApplyAlignmentToLines("center");
+    private void FormatAlignRight_Click(object sender, RoutedEventArgs e)   => ApplyAlignmentToLines("right");
+    private void FormatAlignJustify_Click(object sender, RoutedEventArgs e) => ApplyAlignmentToLines("justify");
+
+    private void FormatCode_Click(object sender, RoutedEventArgs e)  => ToggleCode();
+    private void FormatQuote_Click(object sender, RoutedEventArgs e) => ToggleQuote();
+
+    private void ToggleCode()
+    {
+        // Multi-line selection → fenced code block
+        if (MessageInput.SelectionLength > 0 && MessageInput.SelectedText.Contains('\n'))
+        {
+            ToggleFencedCode();
+            return;
+        }
+        // Single-line or cursor → inline backtick
+        ToggleInlineFormat("`");
+    }
+
+    private void ToggleFencedCode()
+    {
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        // Already fenced → remove the fence lines (opening may be ```<number>)
+        if (lines.Length >= 2 && lines[0].StartsWith("```") && lines[^1] == "```")
+        {
+            string inner = string.Join("\n", lines[1..^1]);
+            MessageInput.Text = MessageInput.Text[..lineStart] + inner + MessageInput.Text[lineEnd..];
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = inner.Length;
+            MessageInput.Focus();
+            return;
+        }
+
+        string fenced = "```\n" + region + "\n```";
+        MessageInput.Text = MessageInput.Text[..lineStart] + fenced + MessageInput.Text[lineEnd..];
+        MessageInput.SelectionStart  = lineStart;
+        MessageInput.SelectionLength = fenced.Length;
+        MessageInput.Focus();
+    }
+
+    private void ToggleQuote()
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        bool allQuoted = lines.All(l => string.IsNullOrEmpty(l) || l.StartsWith("> "));
+        string[] newLines = lines.Select(line =>
+        {
+            if (string.IsNullOrEmpty(line)) return line;
+            return allQuoted ? line[2..] : $"> {line}";
+        }).ToArray();
+
+        string newRegion = string.Join("\n", newLines);
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int delta = allQuoted ? -2 : 2;
+            MessageInput.SelectionStart  = Math.Max(lineStart, origStart + delta);
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
+    }
+
+    private void FormatBullets_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => "- ");
+
+    private void FormatNumbering_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => $"{i + 1}. ");
+
+    private void FormatIndent_Click(object sender, RoutedEventArgs e) =>
+        PrefixSelectedLines(i => "    ");
+
+    private void FormatOutdent_Click(object sender, RoutedEventArgs e)
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Split('\n');
+        string[] newLines = lines.Select(l =>
+            l.StartsWith("    ") ? l[4..] : l.TrimStart(' ')).ToArray();
+        string newRegion = string.Join("\n", newLines);
+
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int spacesRemoved = lines[0].Length - newLines[0].Length;
+            MessageInput.SelectionStart  = Math.Max(lineStart, origStart - spacesRemoved);
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
+    }
+
+    private static readonly Regex NumberedListPrefix = new(@"^(\d+)\. ", RegexOptions.Compiled);
+
+    private bool TryHandleListEnter()
+    {
+        string text = MessageInput.Text;
+        int    pos  = MessageInput.SelectionStart;
+
+        int lineStart = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+        int lineEnd   = text.IndexOf('\n', lineStart);
+        if (lineEnd < 0) lineEnd = text.Length;
+        string line = text[lineStart..lineEnd];
+
+        // ── Bullet list ──────────────────────────────────────────
+        if (line.StartsWith("- "))
+        {
+            bool empty = line.Length == 2;
+            if (empty)
+            {
+                MessageInput.Text = text.Remove(lineStart, 2);
+                MessageInput.SelectionStart = lineStart;
+            }
+            else
+            {
+                string insert = "\n- ";
+                MessageInput.Text = text.Insert(pos, insert);
+                MessageInput.SelectionStart = pos + insert.Length;
+            }
+            return true;
+        }
+
+        // ── Numbered list ─────────────────────────────────────────
+        var m = NumberedListPrefix.Match(line);
+        if (m.Success)
+        {
+            int    num    = int.Parse(m.Groups[1].Value);
+            bool   empty  = line.Length == m.Length;
+            string prefix = $"{num}. ";
+            if (empty)
+            {
+                MessageInput.Text = text.Remove(lineStart, prefix.Length);
+                MessageInput.SelectionStart = lineStart;
+            }
+            else
+            {
+                string insert = $"\n{num + 1}. ";
+                MessageInput.Text = text.Insert(pos, insert);
+                MessageInput.SelectionStart = pos + insert.Length;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private static readonly Regex AlignmentLine =
+        new(@"^:(left|center|right|justify) (.*):$", RegexOptions.Compiled);
+
+    private void ApplyAlignmentToLines(string align)
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        // Normalize \r\n so a trailing \r doesn't get embedded inside the wrapper
+        string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        string[] newLines = lines.Select(line =>
+        {
+            if (string.IsNullOrEmpty(line)) return line;  // leave blank lines untouched
+            var m = AlignmentLine.Match(line);
+            if (m.Success)
+            {
+                string existing = m.Groups[1].Value;
+                string content  = m.Groups[2].Value;
+                return existing == align ? content : $":{align} {content}:";
+            }
+            return $":{align} {line}:";
+        }).ToArray();
+
+        string newRegion = string.Join("\n", newLines);
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            int delta = newLines[0].Length - lines[0].Length;
+            MessageInput.SelectionStart  = origStart + delta;
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
+    }
+
+    private void PrefixSelectedLines(Func<int, string> prefixFor)
+    {
+        int origStart  = MessageInput.SelectionStart;
+        int origLength = MessageInput.SelectionLength;
+
+        GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        string region = MessageInput.Text[lineStart..lineEnd];
+        string[] lines = region.Split('\n');
+        string newRegion = string.Join("\n", lines.Select((l, i) => prefixFor(i) + l));
+
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+
+        if (origLength == 0)
+        {
+            // No selection: nudge cursor forward by the length of the added prefix
+            MessageInput.SelectionStart  = origStart + prefixFor(0).Length;
+            MessageInput.SelectionLength = 0;
+        }
+        else
+        {
+            // Had selection: keep entire modified region selected (existing behaviour)
+            MessageInput.SelectionStart  = lineStart;
+            MessageInput.SelectionLength = newRegion.Length;
+        }
+        MessageInput.Focus();
+    }
+
+    private void GetSelectedLineRegion(out int lineStart, out int lineEnd)
+    {
+        string text = MessageInput.Text;
+        int selStart = MessageInput.SelectionStart;
+        int selEnd   = selStart + MessageInput.SelectionLength;
+        lineStart = selStart == 0 ? 0 : text.LastIndexOf('\n', selStart - 1) + 1;
+        int nl = selEnd < text.Length ? text.IndexOf('\n', selEnd) : -1;
+        lineEnd = nl >= 0 ? nl : text.Length;
+    }
+
+    private void ApplyToLineRegion(int lineStart, int lineEnd, string newRegion)
+    {
+        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+        MessageInput.SelectionStart  = lineStart;
+        MessageInput.SelectionLength = newRegion.Length;
+        MessageInput.Focus();
+    }
+
+    private void InsertHyperlink_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+
+        string display = MessageInput.SelectedText;
+        int start = MessageInput.SelectionStart;
+        int len   = MessageInput.SelectionLength;
+
+        vm.OpenModal(new HyperlinkModalViewModel(
+            initialUrl:     display.StartsWith("http") ? display : "https://",
+            initialDisplay: display.StartsWith("http") ? string.Empty : display,
+            confirm: (url, displayText) =>
+            {
+                string md = string.IsNullOrEmpty(displayText) ? url : $"[{displayText}]({url})";
+                MessageInput.Text = MessageInput.Text.Remove(start, len).Insert(start, md);
+                MessageInput.CaretIndex = start + md.Length;
+                vm.CloseModal();
+                MessageInput.Focus();
+            },
+            cancel: () =>
+            {
+                vm.CloseModal();
+                MessageInput.Focus();
+            }));
+    }
+
+    private async void PickImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Image",
+            Filter = "Images|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp"
+        };
+        if (dlg.ShowDialog() != true) return;
+        var data = await File.ReadAllBytesAsync(dlg.FileName);
+        if (DataContext is MainViewModel vm)
+            vm.SetPendingImage(data, Path.GetFileName(dlg.FileName), BytesToBitmapSource(data));
+        MessageInput.Focus();
+    }
+
+    private bool _previewMode;
+
+    private void TogglePreview_Click(object sender, RoutedEventArgs e)
+    {
+        _previewMode = !_previewMode;
+        if (_previewMode)
+        {
+            var secondary = (Brush)FindResource("TextSecondaryBrush");
+            var accent    = (Brush)FindResource("AccentBlueBrush");
+            MessagePreview.Document = MarkdownRenderer.Render(
+                MessageInput.Text, secondary, accent);
+            MessageInput.Visibility   = Visibility.Collapsed;
+            MessagePreview.Visibility = Visibility.Visible;
+            FormattingToolbar.Visibility = Visibility.Visible; // keep toolbar visible while previewing
+            PreviewToggleButton.Tag = "Back to edit";
+            TooltipHelper.SetIsActive(PreviewToggleButton, true);
+        }
+        else
+        {
+            MessagePreview.Visibility = Visibility.Collapsed;
+            MessageInput.Visibility   = Visibility.Visible;
+            FormattingToolbar.ClearValue(UIElement.VisibilityProperty); // restore style-driven visibility
+            MessageInput.Focus();
+            PreviewToggleButton.Tag = "Preview rendered message";
+            TooltipHelper.SetIsActive(PreviewToggleButton, false);
+        }
+    }
+
     // ── Message FlowDocument ──────────────────────────────────────────────────
 
     private void RebuildMessageDoc(MainViewModel vm)
@@ -558,9 +1117,26 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            var p = new Paragraph(new Run(msg.Content) { Foreground = secondary })
-                    { Margin = new Thickness(16, top, 16, 0), LineHeight = double.NaN };
-            doc.Blocks.Add(p);
+            if (IsRichContent(msg.Content))
+            {
+                // Legacy XAML-serialised messages from the previous rich-text build
+                AppendRichContent(doc, msg.Content, secondary, top);
+            }
+            else
+            {
+                // Markdown (or plain) text — render inline formatting, lists, links
+                var rendered = MarkdownRenderer.Render(msg.Content, secondary,
+                                   (Brush)FindResource("AccentBlueBrush"));
+                double blockTop = top;
+                foreach (var block in rendered.Blocks.ToList())
+                {
+                    rendered.Blocks.Remove(block);
+                    block.Margin = new Thickness(16, blockTop, 16, 0);
+                    if (block is Paragraph p) p.LineHeight = double.NaN;
+                    doc.Blocks.Add(block);
+                    blockTop = 1;
+                }
+            }
         }
 
         if (msg.HasImage && msg.ImageUrl is not null)
@@ -602,5 +1178,378 @@ public partial class MainWindow : Window
                 }
             });
         }
+    }
+
+    private static bool IsRichContent(string content) =>
+        content.TrimStart().StartsWith("<Section");
+
+    /// <summary>
+    /// Parses a XAML Section (produced by TextRange.Save) and appends its blocks to <paramref name="doc"/>,
+    /// applying display margin and foreground. Falls back to plain-text rendering on parse errors.
+    /// </summary>
+    private static void AppendRichContent(FlowDocument doc, string xaml, Brush foreground, double topMargin)
+    {
+        try
+        {
+            var tempDoc = new FlowDocument();
+            var range = new TextRange(tempDoc.ContentStart, tempDoc.ContentEnd);
+            using var ms = new MemoryStream(Encoding.UTF8.GetBytes(xaml));
+            range.Load(ms, DataFormats.Xaml);
+
+            double top = topMargin;
+            foreach (var block in tempDoc.Blocks.ToList())
+            {
+                tempDoc.Blocks.Remove(block);
+                block.Foreground = foreground;
+                if (block is Paragraph p)
+                {
+                    p.Margin = new Thickness(16, top, 16, 0);
+                    p.LineHeight = double.NaN;
+                }
+                else
+                {
+                    block.Margin = new Thickness(16, top, 16, 0);
+                }
+                top = 1;
+                doc.Blocks.Add(block);
+            }
+        }
+        catch
+        {
+            // Corrupted or legacy content — show as plain text
+            var p = new Paragraph(new Run(xaml) { Foreground = foreground })
+                    { Margin = new Thickness(16, topMargin, 16, 0), LineHeight = double.NaN };
+            doc.Blocks.Add(p);
+        }
+    }
+}
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+// Converts a simple markdown string to a WPF FlowDocument.
+// Supported syntax:
+//   **bold**  *italic*  __underline__  ~~strike~~
+//   [text](url)  bare https:// URLs
+//   - item / * item  (bullet list lines)
+//   1. item           (numbered list lines)
+//   Plain text passes through unchanged.
+internal static class MarkdownRenderer
+{
+    [Flags]
+    private enum TextStyle { None = 0, Bold = 1, Italic = 2, Underline = 4, Strike = 8 }
+
+    // Inline pattern: order matters — composite/longer tokens first.
+    // Groups: 1-2 ***bold+italic***, 3-4 **bold**, 5-6 *italic*,
+    //         7-8 __underline__, 9-10 ~~strike~~,
+    //         11-12 ```code``` (triple-backtick inline), 13-14 `code` (single-backtick inline),
+    //         15-17 [text](url), 18 bare URL
+    private static readonly System.Text.RegularExpressions.Regex InlinePattern =
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
+        new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex NumberedLine =
+        new(@"^\d+\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex WholeLine_SingleCode =
+        new(@"^`([^`]+)`$", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex WholeLine_TripleCode =
+        new(@"^```(.+)```$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Windows.Media.SolidColorBrush CodeBlockBg =
+        new(System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)); // BgDarkest
+
+    private static Block MakeCodeBlock(string content, Brush textBrush, int startLine = 1)
+    {
+        var mutedBrush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x6D, 0x6F, 0x78)); // TextMuted
+        var sepBrush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(0x3B, 0x3D, 0x43));
+
+        string[] codeLines = content.Split('\n');
+        string lineNums = string.Join("\n", Enumerable.Range(startLine, codeLines.Length));
+
+        var lineNumTb = new System.Windows.Controls.TextBlock
+        {
+            Text              = lineNums,
+            FontFamily        = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground        = mutedBrush,
+            TextAlignment     = System.Windows.TextAlignment.Right,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
+        };
+        var sep = new System.Windows.Controls.Border
+        {
+            Width             = 1,
+            Background        = sepBrush,
+            Margin            = new Thickness(8, 0, 8, 0),
+            VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+        };
+        var codeTb = new System.Windows.Controls.TextBlock
+        {
+            Text              = content,
+            FontFamily        = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground        = textBrush,
+            TextWrapping      = System.Windows.TextWrapping.Wrap,
+            VerticalAlignment = System.Windows.VerticalAlignment.Top,
+        };
+
+        var grid = new System.Windows.Controls.Grid();
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = System.Windows.GridLength.Auto });
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = System.Windows.GridLength.Auto });
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+            { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+        System.Windows.Controls.Grid.SetColumn(lineNumTb, 0);
+        System.Windows.Controls.Grid.SetColumn(sep,       1);
+        System.Windows.Controls.Grid.SetColumn(codeTb,    2);
+        grid.Children.Add(lineNumTb);
+        grid.Children.Add(sep);
+        grid.Children.Add(codeTb);
+
+        return new BlockUIContainer(new System.Windows.Controls.Border
+        {
+            Background   = CodeBlockBg,
+            CornerRadius = new CornerRadius(4),
+            Padding      = new Thickness(10, 8, 10, 8),
+            Margin       = new Thickness(0, 2, 0, 2),
+            Child        = grid,
+        });
+    }
+
+    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
+    {
+        var doc = new FlowDocument();
+        if (string.IsNullOrEmpty(text)) return doc;
+
+        string[] rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+
+        // Single-line message that is entirely an inline code span → render as code block
+        if (rawLines.Length == 1)
+        {
+            var wm = WholeLine_TripleCode.Match(rawLines[0]);
+            if (!wm.Success) wm = WholeLine_SingleCode.Match(rawLines[0]);
+            if (wm.Success)
+            {
+                doc.Blocks.Add(MakeCodeBlock(wm.Groups[1].Value, textBrush));
+                return doc;
+            }
+        }
+
+        int i = 0;
+        while (i < rawLines.Length)
+        {
+            string line = rawLines[i];
+
+            var am = AlignmentDirective.Match(line);
+            if (am.Success)
+            {
+                var alignment = am.Groups[1].Value switch
+                {
+                    "center"  => TextAlignment.Center,
+                    "right"   => TextAlignment.Right,
+                    "justify" => TextAlignment.Justify,
+                    _         => TextAlignment.Left,
+                };
+                string content = am.Groups[2].Value;
+                var alignPara = new Paragraph { Foreground = textBrush, TextAlignment = alignment };
+                ParseInlines(content, alignPara.Inlines, textBrush, linkBrush);
+                doc.Blocks.Add(alignPara);
+                i++;
+                continue;
+            }
+
+            // Opening fence: ``` or ```<number> (e.g. ```42 starts at line 42)
+            string? fenceSuffix = line == "```" ? ""
+                : (line.StartsWith("```") && line[3..].Trim() is { Length: > 0 } s
+                   && s.All(char.IsDigit)) ? s : null;
+            if (fenceSuffix != null)
+            {
+                int startLine = fenceSuffix.Length > 0 ? int.Parse(fenceSuffix) : 1;
+                i++;
+                var sb = new System.Text.StringBuilder();
+                while (i < rawLines.Length && rawLines[i] != "```")
+                {
+                    if (sb.Length > 0) sb.Append('\n');
+                    sb.Append(rawLines[i]);
+                    i++;
+                }
+                if (i < rawLines.Length) i++; // consume closing ```
+                doc.Blocks.Add(MakeCodeBlock(sb.ToString(), textBrush, startLine));
+                continue;
+            }
+
+            if (line.StartsWith("> "))
+            {
+                // Collect consecutive quote lines into one block so the bar is continuous
+                var contentTb = new System.Windows.Controls.TextBlock
+                {
+                    Foreground   = textBrush,
+                    TextWrapping = System.Windows.TextWrapping.Wrap,
+                };
+                bool firstQuoteLine = true;
+                while (i < rawLines.Length && rawLines[i].StartsWith("> "))
+                {
+                    if (!firstQuoteLine) contentTb.Inlines.Add(new LineBreak());
+                    // ParseInlines fills a Paragraph (Documents.InlineCollection);
+                    // migrate inlines to the TextBlock (Controls.InlineCollection)
+                    var tempPara = new Paragraph();
+                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush);
+                    foreach (var il in tempPara.Inlines.ToList())
+                    {
+                        tempPara.Inlines.Remove(il);
+                        contentTb.Inlines.Add(il);
+                    }
+                    firstQuoteLine = false;
+                    i++;
+                }
+
+                var bar = new System.Windows.Controls.Border
+                {
+                    Width             = 2,
+                    Background        = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0x4E, 0x50, 0x58)),
+                    Margin            = new Thickness(0, 0, 10, 0),
+                    VerticalAlignment = System.Windows.VerticalAlignment.Stretch,
+                };
+                var grid = new System.Windows.Controls.Grid();
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+                    { Width = System.Windows.GridLength.Auto });
+                grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition
+                    { Width = new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) });
+                System.Windows.Controls.Grid.SetColumn(bar,       0);
+                System.Windows.Controls.Grid.SetColumn(contentTb, 1);
+                grid.Children.Add(bar);
+                grid.Children.Add(contentTb);
+                doc.Blocks.Add(new BlockUIContainer(grid) { Margin = new Thickness(4, 2, 0, 2) });
+                continue;
+            }
+
+            if (line.StartsWith("- ") || line.StartsWith("* "))
+            {
+                var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+                while (i < rawLines.Length && (rawLines[i].StartsWith("- ") || rawLines[i].StartsWith("* ")))
+                {
+                    var li = new ListItem(new Paragraph());
+                    ParseInlines(rawLines[i][2..], ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(li);
+                    i++;
+                }
+                doc.Blocks.Add(list);
+                continue;
+            }
+
+            if (NumberedLine.IsMatch(line))
+            {
+                var list = new List { MarkerStyle = TextMarkerStyle.Decimal };
+                while (i < rawLines.Length && NumberedLine.IsMatch(rawLines[i]))
+                {
+                    string item = NumberedLine.Replace(rawLines[i], string.Empty);
+                    var li = new ListItem(new Paragraph());
+                    ParseInlines(item, ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(li);
+                    i++;
+                }
+                doc.Blocks.Add(list);
+                continue;
+            }
+
+            var para = new Paragraph { Foreground = textBrush };
+            ParseInlines(line, para.Inlines, textBrush, linkBrush);
+            doc.Blocks.Add(para);
+            i++;
+        }
+
+        return doc;
+    }
+
+    // Recurse into each span's content so nested formats (e.g. **__text__**) compose correctly.
+    private static void ParseInlines(string text, InlineCollection inlines,
+                                     Brush textBrush, Brush linkBrush,
+                                     TextStyle style = TextStyle.None)
+    {
+        text = text.Replace("\\:", ":").Replace("\\\\", "\\");
+        int lastEnd = 0;
+        foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
+        {
+            if (m.Index > lastEnd)
+                inlines.Add(MakeRun(text[lastEnd..m.Index], textBrush, style));
+
+            if (m.Groups[1].Success)       // ***bold+italic***
+                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic);
+            else if (m.Groups[3].Success)  // **bold**
+                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold);
+            else if (m.Groups[5].Success)  // *italic*
+                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic);
+            else if (m.Groups[7].Success)  // __underline__
+                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline);
+            else if (m.Groups[9].Success)  // ~~strike~~
+                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike);
+            else if (m.Groups[11].Success) // ```code``` (triple-backtick inline)
+                inlines.Add(MakeCodeRun(m.Groups[12].Value, textBrush));
+            else if (m.Groups[13].Success) // `code` (single-backtick inline)
+                inlines.Add(MakeCodeRun(m.Groups[14].Value, textBrush));
+            else if (m.Groups[15].Success) // [text](url)
+                inlines.Add(MakeLink(m.Groups[16].Value, m.Groups[17].Value, linkBrush));
+            else                           // bare URL
+                inlines.Add(MakeLink(m.Value, m.Value, linkBrush));
+
+            lastEnd = m.Index + m.Length;
+        }
+
+        if (lastEnd < text.Length)
+            inlines.Add(MakeRun(text[lastEnd..], textBrush, style));
+
+        if (!inlines.Any())
+            inlines.Add(MakeRun(string.Empty, textBrush, style));
+    }
+
+    private static Run MakeRun(string text, Brush brush, TextStyle style)
+    {
+        var run = new Run(text) { Foreground = brush };
+        if (style.HasFlag(TextStyle.Bold))   run.FontWeight = FontWeights.Bold;
+        if (style.HasFlag(TextStyle.Italic)) run.FontStyle  = FontStyles.Italic;
+        var deco = new TextDecorationCollection();
+        if (style.HasFlag(TextStyle.Underline)) foreach (var d in TextDecorations.Underline)      deco.Add(d);
+        if (style.HasFlag(TextStyle.Strike))    foreach (var d in TextDecorations.Strikethrough)  deco.Add(d);
+        if (deco.Count > 0) run.TextDecorations = deco;
+        return run;
+    }
+
+    private static Inline MakeCodeRun(string text, Brush brush)
+    {
+        var tb = new System.Windows.Controls.TextBlock
+        {
+            Text       = text,
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground = brush,
+        };
+        return new InlineUIContainer(new System.Windows.Controls.Border
+        {
+            Background   = CodeBlockBg,
+            CornerRadius = new CornerRadius(3),
+            Padding      = new Thickness(4, 1, 4, 1),
+            Margin       = new Thickness(1, 0, 1, 0),
+            Child        = tb,
+        }) { BaselineAlignment = BaselineAlignment.Center };
+    }
+
+    private static Hyperlink MakeLink(string label, string url, Brush brush)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return new Hyperlink(new Run(label)) { Foreground = brush };
+
+        var tt = new ToolTip
+        {
+            Content = uri.AbsoluteUri,
+            Placement = PlacementMode.Mouse,
+            Template = (ControlTemplate)Application.Current.FindResource("TooltipTemplateNoTail")
+        };
+        var link = new Hyperlink(new Run(label)) { NavigateUri = uri, Foreground = brush, ToolTip = tt };
+        ToolTipService.SetInitialShowDelay(link, 500);
+        link.RequestNavigate += (_, e) =>
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        return link;
     }
 }
