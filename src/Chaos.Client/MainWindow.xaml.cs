@@ -661,6 +661,7 @@ public partial class MainWindow : Window
         int start = MessageInput.SelectionStart;
         int len   = MessageInput.SelectionLength;
         string sel = MessageInput.SelectedText;
+
         MessageInput.Text = MessageInput.Text.Remove(start, len)
                                              .Insert(start, marker + sel + marker);
         MessageInput.SelectionStart  = start + marker.Length;
@@ -1245,6 +1246,11 @@ internal static class MarkdownRenderer
         new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    // Same pattern but with Singleline so . matches \n — used to detect spans that cross lines.
+    private static readonly System.Text.RegularExpressions.Regex MultilineInlineSpan =
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Singleline);
+
     private static readonly System.Text.RegularExpressions.Regex AlignmentDirective =
         new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -1322,7 +1328,12 @@ internal static class MarkdownRenderer
         var doc = new FlowDocument();
         if (string.IsNullOrEmpty(text)) return doc;
 
-        string[] rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        // Replace \n inside inline spans with \x01 so multiline spans stay on one "line".
+        // \x01 is re-expanded to LineBreak inlines inside ParseInlines.
+        string normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
+        string collapsed  = MultilineInlineSpan.Replace(normalized, m =>
+            m.Value.Contains('\n') ? m.Value.Replace('\n', '\x01') : m.Value);
+        string[] rawLines = collapsed.Split('\n');
 
         static int IndentLevel(string raw)
         {
@@ -1504,7 +1515,7 @@ internal static class MarkdownRenderer
         foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
         {
             if (m.Index > lastEnd)
-                inlines.Add(MakeRun(text[lastEnd..m.Index], textBrush, style));
+                AddInlines(text[lastEnd..m.Index], inlines, textBrush, style);
 
             if (m.Groups[1].Success)       // ***bold+italic***
                 ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic);
@@ -1529,10 +1540,21 @@ internal static class MarkdownRenderer
         }
 
         if (lastEnd < text.Length)
-            inlines.Add(MakeRun(text[lastEnd..], textBrush, style));
+            AddInlines(text[lastEnd..], inlines, textBrush, style);
 
         if (!inlines.Any())
             inlines.Add(MakeRun(string.Empty, textBrush, style));
+    }
+
+    // Adds text to inlines, expanding \x01 placeholders (collapsed newlines) into LineBreaks.
+    private static void AddInlines(string text, InlineCollection inlines, Brush brush, TextStyle style)
+    {
+        string[] parts = text.Split('\x01');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (i > 0) inlines.Add(new LineBreak());
+            if (parts[i].Length > 0) inlines.Add(MakeRun(parts[i], brush, style));
+        }
     }
 
     private static Run MakeRun(string text, Brush brush, TextStyle style)
