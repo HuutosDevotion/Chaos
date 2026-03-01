@@ -569,12 +569,12 @@ public partial class MainWindow : Window
     // This prevents "** text **" from being swallowed as bold, leaving lone * chars
     // available for the italic scan.
     // Bold is always the outer wrapper, so *** = ** wrapping *...*
-    private static readonly Regex BoldItalicSpan = new(@"\*\*\*(?!\s)(.*?)(?<!\s)\*\*\*", RegexOptions.Compiled);
-    private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled);
-    private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled);
-    private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled);
-    private static readonly Regex CodeSpan            = new(@"`(.+?)`",     RegexOptions.Compiled);
-    private static readonly Regex TripleInlineCodeSpan = new(@"```(.+?)```", RegexOptions.Compiled);
+    private static readonly Regex BoldItalicSpan = new(@"\*\*\*(?!\s)(.*?)(?<!\s)\*\*\*", RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex CodeSpan            = new(@"`(.+?)`",     RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex TripleInlineCodeSpan = new(@"```(.+?)```", RegexOptions.Compiled | RegexOptions.Singleline);
 
     private void UpdateFormatButtonStates()
     {
@@ -620,27 +620,42 @@ public partial class MainWindow : Window
     // lookahead/lookbehind — in particular, adjacent ** (empty italic or bold boundary)
     // causes the regex to fail. This approach masks all bold-span positions first, then
     // scans for lone * pairs in the remaining text.
+    // Masks only the ** / *** delimiter characters (not the span content) so that
+    // lone * inside a bold span can still be found as italic markers.
+    private static bool[] MaskBoldDelimiters(string text)
+    {
+        var masked = new bool[text.Length];
+        foreach (Match m in BoldItalicSpan.Matches(text))
+        {
+            for (int j = m.Index;                  j < Math.Min(m.Index + 3,          text.Length); j++) masked[j] = true;
+            for (int j = m.Index + m.Length - 3;   j < Math.Min(m.Index + m.Length,   text.Length); j++) masked[j] = true;
+        }
+        foreach (Match m in BoldSpan.Matches(text))
+        {
+            if (m.Length < 4) continue; // degenerate match
+            masked[m.Index]                = true;
+            masked[m.Index + 1]            = true;
+            masked[m.Index + m.Length - 2] = true;
+            masked[m.Index + m.Length - 1] = true;
+        }
+        return masked;
+    }
+
     private static bool IsCursorInItalicSpan(string text, int pos)
     {
         if (text.Length == 0) return false;
+        bool[] masked = MaskBoldDelimiters(text);
 
-        // Mark every character position that belongs to a bold span
-        var inBold = new bool[text.Length];
-        foreach (Match m in BoldSpan.Matches(text))
-            for (int i = m.Index; i < m.Index + m.Length; i++)
-                inBold[i] = true;
-
-        // Scan for lone * pairs (opening and closing) outside bold spans
         int openAt = -1;
         for (int i = 0; i < text.Length; i++)
         {
-            if (text[i] != '*' || inBold[i]) continue;
+            if (text[i] != '*' || masked[i]) continue;
             if (openAt < 0)
-                openAt = i;                      // found opening *
+                openAt = i;
             else
             {
                 if (pos >= openAt + 1 && pos <= i) return true;
-                openAt = -1;                     // found closing *, reset
+                openAt = -1;
             }
         }
         return false;
@@ -728,17 +743,12 @@ public partial class MainWindow : Window
     // Like FindEnclosingSpan but returns the character positions of the opening and closing * for italic.
     private static (int open, int close)? FindItalicSpanContaining(string text, int pos)
     {
-        var inMasked = new bool[text.Length];
-        // Mask bold+italic and bold spans so their * chars don't look like lone italic markers
-        foreach (Match m in BoldItalicSpan.Matches(text))
-            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
-        foreach (Match m in BoldSpan.Matches(text))
-            for (int i = m.Index; i < m.Index + m.Length; i++) inMasked[i] = true;
+        bool[] masked = MaskBoldDelimiters(text);
 
         int openAt = -1;
         for (int i = 0; i < text.Length; i++)
         {
-            if (text[i] != '*' || inMasked[i]) continue;
+            if (text[i] != '*' || masked[i]) continue;
             if (openAt < 0) openAt = i;
             else
             {
