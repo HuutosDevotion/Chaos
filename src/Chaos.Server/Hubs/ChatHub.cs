@@ -201,6 +201,13 @@ public class ChatHub : Hub
             .ToList();
     }
 
+    public async Task<List<string>> GetAllKnownUsers()
+    {
+        var messageAuthors = await _db.Messages.Select(m => m.Author).Distinct().ToListAsync();
+        var connectedNames = _users.Values.Where(u => !string.IsNullOrEmpty(u.Username)).Select(u => u.Username);
+        return messageAuthors.Union(connectedNames, StringComparer.OrdinalIgnoreCase).OrderBy(u => u).ToList();
+    }
+
     public Dictionary<int, List<VoiceMemberDto>> GetAllVoiceMembers()
     {
         return _users.Values
