@@ -19,6 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\twemoji-metadata.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Chaos.Shared\Chaos.Shared.csproj" />
   </ItemGroup>
 

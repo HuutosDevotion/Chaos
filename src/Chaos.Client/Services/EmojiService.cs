@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Text.Json;
 using System.Windows.Media.Imaging;
 using Chaos.Shared;
@@ -16,6 +17,12 @@ public class EmojiService
     private string _username = string.Empty;
     private IKeyValueStore? _store;
 
+    private static readonly HttpClient _http = new();
+
+    private static readonly string _cacheDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Chaos", "emoji-cache");
+
     // Ordered category list for picker display
     private static readonly string[] CategoryOrder =
     {
@@ -23,6 +30,9 @@ public class EmojiService
         "Food & Drink", "Travel & Places", "Activities",
         "Objects", "Symbols", "Flags"
     };
+
+    // Event raised when emoji data changes (for eager grid rebuild)
+    public event Action? EmojisLoaded;
 
     public bool IsLoaded => _allEmojis.Count > 0;
 
@@ -32,10 +42,66 @@ public class EmojiService
         _username = username;
         _store = store;
 
-        var emojis = await chatService.GetEmojisAsync();
-        _allEmojis = emojis;
+        // Ensure disk cache directory exists
+        Directory.CreateDirectory(_cacheDir);
 
-        // Build name lookup, handling duplicates with ~N suffix
+        // 1. Load embedded metadata first (instant, no network)
+        LoadEmbedded();
+
+        // Notify that base emoji set is ready
+        if (_allEmojis.Count > 0)
+            EmojisLoaded?.Invoke();
+
+        // 2. Fetch server emojis in background and merge any new/custom ones
+        try
+        {
+            var serverEmojis = await chatService.GetEmojisAsync();
+            int added = 0;
+            foreach (var emoji in serverEmojis)
+            {
+                if (!_byName.ContainsKey(emoji.Name))
+                {
+                    _allEmojis.Add(emoji);
+                    _byName[emoji.Name] = emoji;
+                    added++;
+                }
+            }
+            if (added > 0)
+                EmojisLoaded?.Invoke();
+        }
+        catch
+        {
+            // Server fetch failed — embedded set is still usable
+        }
+    }
+
+    private void LoadEmbedded()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("twemoji-metadata.json", StringComparison.OrdinalIgnoreCase));
+
+            if (resourceName is null) return;
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream is null) return;
+
+            var emojis = JsonSerializer.Deserialize<List<EmojiDto>>(stream);
+            if (emojis is null || emojis.Count == 0) return;
+
+            _allEmojis = emojis;
+            BuildNameLookup();
+        }
+        catch
+        {
+            // Embedded resource load failed — will fall back to server fetch
+        }
+    }
+
+    private void BuildNameLookup()
+    {
         _byName = new Dictionary<string, EmojiDto>(StringComparer.OrdinalIgnoreCase);
         var nameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -110,9 +176,29 @@ public class EmojiService
     {
         try
         {
-            string url = $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
-            using var http = new HttpClient();
-            var bytes = await http.GetByteArrayAsync(url);
+            byte[] bytes;
+            string cachePath = Path.Combine(_cacheDir, emoji.FileName);
+
+            // Try disk cache first
+            if (File.Exists(cachePath))
+            {
+                bytes = await File.ReadAllBytesAsync(cachePath);
+            }
+            else
+            {
+                // Download and save to disk cache
+                string url = $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
+                bytes = await _http.GetByteArrayAsync(url);
+
+                try
+                {
+                    await File.WriteAllBytesAsync(cachePath, bytes);
+                }
+                catch
+                {
+                    // Disk write failed — still use the downloaded bytes
+                }
+            }
 
             BitmapImage? bmp = null;
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
@@ -135,6 +221,28 @@ public class EmojiService
         {
             _imageCache[emoji.FileName] = null;
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Load images for a collection of Image controls in batches to avoid flooding the UI thread.
+    /// </summary>
+    public async Task LoadImagesBatchedAsync(List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> items, int batchSize = 50)
+    {
+        for (int i = 0; i < items.Count; i += batchSize)
+        {
+            var batch = items.Skip(i).Take(batchSize);
+            var tasks = batch.Select(async item =>
+            {
+                var bmp = await GetImageAsync(item.Emoji);
+                if (bmp is not null)
+                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => item.ImageControl.Source = bmp);
+            });
+            await Task.WhenAll(tasks);
+
+            // Small delay between batches so the UI thread can breathe
+            if (i + batchSize < items.Count)
+                await Task.Delay(10);
         }
     }
 

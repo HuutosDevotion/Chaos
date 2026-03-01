@@ -534,6 +534,15 @@ public partial class MainWindow : Window
                 chatScroll?.ScrollToBottom();
             };
 
+            // Eagerly build the emoji grid in the background after emojis load
+            vm.EmojiService.EmojisLoaded += () =>
+            {
+                _emojiGridBuilt = false;
+                _cachedEmojiGridChildren = null;
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                    PopulateEmojiGrid(null));
+            };
+
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
@@ -647,6 +656,12 @@ public partial class MainWindow : Window
             SetInputText(text[..colonIdx] + replacement + text[cursor..]);
             SetInputCursorOffset(colonIdx + replacement.Length);
         }
+
+        // SetInputText suppresses TextChanged, so trigger emoji detection
+        // and ViewModel sync manually.
+        DetectAndReplaceEmojis();
+        SyncInputToViewModel();
+
         vm.DismissEmojiSuggestions();
         vm.EmojiService.TrackUsage(item.Emoji.Name);
         MessageInput.Focus();
@@ -1391,6 +1406,8 @@ public partial class MainWindow : Window
     // ── Emoji Picker ─────────────────────────────────────────────────────────
 
     private readonly HashSet<string> _collapsedCategories = new();
+    private bool _emojiGridBuilt;
+    private List<UIElement>? _cachedEmojiGridChildren;
 
     private void EmojiPicker_Click(object sender, RoutedEventArgs e)
     {
@@ -1400,21 +1417,45 @@ public partial class MainWindow : Window
             return;
         }
         EmojiSearchBox.Text = string.Empty;
-        PopulateEmojiGrid(null);
+        RestoreCachedEmojiGrid();
         EmojiPickerPopup.IsOpen = true;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => EmojiSearchBox.Focus());
+    }
+
+    private void RestoreCachedEmojiGrid()
+    {
+        if (_emojiGridBuilt && _cachedEmojiGridChildren is not null)
+        {
+            EmojiGridPanel.Children.Clear();
+            foreach (var child in _cachedEmojiGridChildren)
+                EmojiGridPanel.Children.Add(child);
+            // Reset scroll to top
+            if (EmojiGridPanel.Parent is ScrollViewer sv)
+                sv.ScrollToTop();
+            return;
+        }
+        PopulateEmojiGrid(null);
     }
 
     private void EmojiSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         string filter = EmojiSearchBox.Text.Trim();
-        PopulateEmojiGrid(string.IsNullOrEmpty(filter) ? null : filter);
+        if (string.IsNullOrEmpty(filter))
+        {
+            RestoreCachedEmojiGrid();
+        }
+        else
+        {
+            PopulateEmojiGrid(filter);
+        }
     }
 
     private void PopulateEmojiGrid(string? filter)
     {
         EmojiGridPanel.Children.Clear();
         if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
+
+        var pendingImages = new List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)>();
 
         if (filter is not null)
         {
@@ -1434,21 +1475,33 @@ public partial class MainWindow : Window
             }
             var wrap = new System.Windows.Controls.WrapPanel();
             foreach (var emoji in results)
-                wrap.Children.Add(CreateEmojiButton(emoji, vm));
+                wrap.Children.Add(CreateEmojiButton(emoji, vm, pendingImages));
             EmojiGridPanel.Children.Add(wrap);
+            if (pendingImages.Count > 0)
+                _ = vm.EmojiService.LoadImagesBatchedAsync(pendingImages);
             return;
         }
 
         // Category mode with optional frequently used
         var frequent = vm.EmojiService.GetFrequentlyUsed();
         if (frequent.Count > 0)
-            AddCategorySection("Frequently Used", frequent, vm);
+            AddCategorySection("Frequently Used", frequent, vm, pendingImages);
 
         foreach (var (category, emojis) in vm.EmojiService.GetGroupedByCategory())
-            AddCategorySection(category, emojis, vm);
+            AddCategorySection(category, emojis, vm, pendingImages);
+
+        // Cache the built grid children for fast re-display
+        _cachedEmojiGridChildren = new List<UIElement>();
+        foreach (UIElement child in EmojiGridPanel.Children)
+            _cachedEmojiGridChildren.Add(child);
+        _emojiGridBuilt = true;
+
+        if (pendingImages.Count > 0)
+            _ = vm.EmojiService.LoadImagesBatchedAsync(pendingImages);
     }
 
-    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm)
+    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm,
+        List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> pendingImages)
     {
         bool collapsed = _collapsedCategories.Contains(category);
 
@@ -1472,6 +1525,8 @@ public partial class MainWindow : Window
                 _collapsedCategories.Remove(category);
             else
                 _collapsedCategories.Add(category);
+            _emojiGridBuilt = false;
+            _cachedEmojiGridChildren = null;
             PopulateEmojiGrid(null);
         };
         EmojiGridPanel.Children.Add(header);
@@ -1480,11 +1535,12 @@ public partial class MainWindow : Window
 
         var wrap = new System.Windows.Controls.WrapPanel();
         foreach (var emoji in emojis)
-            wrap.Children.Add(CreateEmojiButton(emoji, vm));
+            wrap.Children.Add(CreateEmojiButton(emoji, vm, pendingImages));
         EmojiGridPanel.Children.Add(wrap);
     }
 
-    private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm)
+    private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm,
+        List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> pendingImages)
     {
         var img = new System.Windows.Controls.Image
         {
@@ -1493,7 +1549,7 @@ public partial class MainWindow : Window
             Stretch = Stretch.Uniform,
         };
 
-        // Load image
+        // Load image from memory cache or queue for batched loading
         var cached = vm.EmojiService.GetCachedImage(emoji);
         if (cached is not null)
         {
@@ -1501,12 +1557,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            _ = Task.Run(async () =>
-            {
-                var bmp = await vm.EmojiService.GetImageAsync(emoji);
-                if (bmp is not null)
-                    Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
-            });
+            pendingImages.Add((emoji, img));
         }
 
         var btn = new System.Windows.Controls.Button
@@ -1539,6 +1590,13 @@ public partial class MainWindow : Window
         int pos = GetInputCursorOffset();
         SetInputText(text.Insert(pos, code));
         SetInputCursorOffset(pos + code.Length);
+
+        // SetInputText suppresses TextChanged, so DetectAndReplaceEmojis never ran.
+        // Trigger it manually to convert the :shortcode: text into an inline image
+        // and sync the result back to the ViewModel (needed for Enter-to-send).
+        DetectAndReplaceEmojis();
+        SyncInputToViewModel();
+
         vm.EmojiService.TrackUsage(emoji.Name);
         EmojiPickerPopup.IsOpen = false;
         MessageInput.Focus();
