@@ -35,6 +35,7 @@ builder.Services.AddSignalR();
 builder.Services.AddDbContext<ChaosDbContext>(options =>
     options.UseSqlite("Data Source=chaos.db"));
 builder.Services.AddHostedService<VoiceRelay>();
+builder.Services.AddHostedService<ScreenShareRelay>();
 
 // Chat commands — add new commands by registering another AddTransient<IChatCommand, YourCommand>()
 builder.Services.AddTransient<IChatCommand, RollCommand>();
@@ -91,6 +92,7 @@ Log("  CHAOS SERVER");
 Log("═══════════════════════════════════════════");
 Log($"  SignalR:  http://{localIp}:5000/chathub");
 Log($"  Voice:   udp://{localIp}:9000");
+Log($"  Stream:  udp://{localIp}:9001");
 Log("═══════════════════════════════════════════");
 
 try
