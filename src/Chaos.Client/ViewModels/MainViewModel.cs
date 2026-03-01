@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -125,6 +126,8 @@ public class ChannelViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
+public record PendingImage(byte[] Data, string Filename, BitmapSource Preview);
+
 public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly ChatService _chatService = new();
@@ -156,9 +159,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private int _userId;
     private double _micLevel;
     private string _voiceStatus = string.Empty;
-    private byte[]? _pendingImageData;
-    private string _pendingImageFilename = string.Empty;
-    private BitmapSource? _pendingImagePreview;
+    private readonly IImageGenProvider _imageGenProvider = new OpenAiImageGenProvider();
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
@@ -171,6 +172,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
+    public ObservableCollection<PendingImage> PendingImages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
 
@@ -295,29 +297,23 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set { _voiceStatus = value; OnPropertyChanged(); }
     }
 
-    public BitmapSource? PendingImagePreview
+    public bool HasPendingImage => PendingImages.Count > 0;
+
+    public void AddPendingImage(byte[] data, string filename, BitmapSource preview)
     {
-        get => _pendingImagePreview;
-        private set { _pendingImagePreview = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasPendingImage)); }
+        PendingImages.Add(new PendingImage(data, filename, preview));
     }
 
-    public bool HasPendingImage => _pendingImagePreview is not null;
-
-    public void SetPendingImage(byte[] data, string filename, BitmapSource preview)
+    public void ClearPendingImages()
     {
-        _pendingImageData = data;
-        _pendingImageFilename = filename;
-        PendingImagePreview = preview;
+        PendingImages.Clear();
     }
 
-    public void ClearPendingImage()
+    public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImages());
+    public ICommand RemovePendingImageCommand => new RelayCommand(p =>
     {
-        _pendingImageData = null;
-        _pendingImageFilename = string.Empty;
-        PendingImagePreview = null;
-    }
-
-    public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
+        if (p is PendingImage img) PendingImages.Remove(img);
+    });
 
     private void UpdateSlashSuggestions(string text)
     {
@@ -415,7 +411,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
             InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
             OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+            OpenAiApiKey    = _settingsStore.Get("OpenAiApiKey",    string.Empty),
         };
+
+        PendingImages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPendingImage));
 
         _username = _settingsStore.Get("Username", string.Empty);
 
@@ -594,6 +593,12 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            _allCommands.Add(new SlashCommandDto
+            {
+                Name = "image-gen",
+                Description = "Generate images with AI using reference photos",
+                Usage = "/image-gen <prompt>"
+            });
 
             SafeDispatch(() =>
             {
@@ -735,12 +740,22 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (_selectedTextChannel is null) return;
         if (string.IsNullOrWhiteSpace(MessageText) && !HasPendingImage) return;
 
-        if (_pendingImageData is not null)
+        var trimmed = MessageText.TrimStart();
+        if (trimmed.StartsWith("/image-gen ", StringComparison.OrdinalIgnoreCase))
         {
-            var url = await _chatService.UploadImageAsync(_pendingImageData, _pendingImageFilename);
-            if (url is not null)
-                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url);
-            ClearPendingImage();
+            await HandleImageGenAsync();
+            return;
+        }
+
+        if (HasPendingImage)
+        {
+            foreach (var img in PendingImages.ToList())
+            {
+                var url = await _chatService.UploadImageAsync(img.Data, img.Filename);
+                if (url is not null)
+                    await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url);
+            }
+            ClearPendingImages();
         }
 
         if (!string.IsNullOrWhiteSpace(MessageText))
@@ -748,6 +763,80 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             await _chatService.SendMessage(_selectedTextChannel.Id, MessageText, null);
             MessageText = string.Empty;
         }
+    }
+
+    private async Task HandleImageGenAsync()
+    {
+        if (_selectedTextChannel is null) return;
+
+        var prompt = MessageText.TrimStart();
+        prompt = prompt.Substring(prompt.IndexOf(' ') + 1).Trim();
+
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            AddLocalMessage("System", "Usage: /image-gen <prompt>");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Settings.OpenAiApiKey))
+        {
+            AddLocalMessage("System", "OpenAI API key not configured. Go to Settings > Integrations to add your key.");
+            return;
+        }
+
+        var imageDataList = PendingImages.Select(i => i.Data).ToList();
+        var channelId = _selectedTextChannel.Id;
+        var apiKey = Settings.OpenAiApiKey;
+
+        MessageText = string.Empty;
+        ClearPendingImages();
+
+        var loadingMsg = new MessageDto
+        {
+            Id = -1,
+            Author = Username,
+            Content = "\u23F3 Generating image...",
+            ChannelId = channelId,
+            Timestamp = DateTime.Now
+        };
+        var loadingVm = new MessageViewModel(loadingMsg, Settings, _chatService.BaseUrl);
+        loadingVm.ShowHeader = ShouldShowHeader(loadingVm, Messages.LastOrDefault());
+        Messages.Add(loadingVm);
+
+        var result = await _imageGenProvider.GenerateAsync(apiKey, prompt, imageDataList);
+
+        Messages.Remove(loadingVm);
+
+        if (result.Error is not null)
+        {
+            AddLocalMessage("System", $"Image generation failed: {result.Error}");
+            return;
+        }
+
+        string? imageUrl = null;
+        if (result.ImageData is not null)
+        {
+            imageUrl = await _chatService.UploadImageAsync(result.ImageData, "generated.png");
+        }
+
+        var text = result.Text ?? prompt;
+        await _chatService.SendMessage(channelId, text, imageUrl);
+    }
+
+    private void AddLocalMessage(string author, string content)
+    {
+        if (_selectedTextChannel is null) return;
+        var msg = new MessageDto
+        {
+            Id = 0,
+            Author = author,
+            Content = content,
+            ChannelId = _selectedTextChannel.Id,
+            Timestamp = DateTime.Now
+        };
+        var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
+        vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
+        Messages.Add(vm);
     }
 
     private void OnMessageReceived(MessageDto msg)
@@ -1013,6 +1102,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        _settingsStore.Set("OpenAiApiKey",  Settings.OpenAiApiKey);
         _settingsStore.Set("Username",       Username);
         _settingsStore.Set("WindowLeft",      _windowLeft);
         _settingsStore.Set("WindowTop",       _windowTop);

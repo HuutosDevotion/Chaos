@@ -88,6 +88,16 @@ public class AppSettings : INotifyPropertyChanged
         set { if (Math.Abs(_micThreshold - value) < 0.001f) return; _micThreshold = value; OnPropertyChanged(); }
     }
 
+    // ── Integrations ─────────────────────────────────────────────────────────
+
+    private string _openAiApiKey = string.Empty;
+
+    public string OpenAiApiKey
+    {
+        get => _openAiApiKey;
+        set { if (_openAiApiKey == value) return; _openAiApiKey = value; OnPropertyChanged(); }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

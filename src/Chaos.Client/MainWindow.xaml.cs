@@ -253,11 +253,14 @@ public partial class MainWindow : Window
     private async void ChatInput_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        if (DataContext is not MainViewModel vm) return;
         var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-        var imageFile = files.FirstOrDefault(f => _imageExtensions.Contains(Path.GetExtension(f).ToLower()));
-        if (imageFile is null || DataContext is not MainViewModel vm) return;
-        var data = await File.ReadAllBytesAsync(imageFile);
-        vm.SetPendingImage(data, Path.GetFileName(imageFile), BytesToBitmapSource(data));
+        foreach (var file in files)
+        {
+            if (!_imageExtensions.Contains(Path.GetExtension(file).ToLower())) continue;
+            var data = await File.ReadAllBytesAsync(file);
+            vm.AddPendingImage(data, Path.GetFileName(file), BytesToBitmapSource(data));
+        }
     }
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -319,7 +322,7 @@ public partial class MainWindow : Window
             using var ms = new MemoryStream();
             encoder.Save(ms);
             if (DataContext is MainViewModel vm3)
-                vm3.SetPendingImage(ms.ToArray(), "clipboard.png", bmp);
+                vm3.AddPendingImage(ms.ToArray(), "clipboard.png", bmp);
         }
     }
 
