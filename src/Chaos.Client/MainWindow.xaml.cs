@@ -42,6 +42,315 @@ public partial class MainWindow : Window
 
     private static readonly string[] _imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
 
+    // ── RichTextBox text helpers ─────────────────────────────────────────────
+    // These provide TextBox-like API for the RichTextBox input, serializing
+    // emoji InlineUIContainers as :shortcode: text.
+
+    private bool _suppressTextSync;
+    private static readonly Regex InputEmojiDetect = new(@":([A-Za-z0-9_]+(?:~\d+)?):", RegexOptions.Compiled);
+
+    private string GetInputText()
+    {
+        var doc = MessageInput.Document;
+        var sb = new StringBuilder();
+        bool firstBlock = true;
+        foreach (var block in doc.Blocks)
+        {
+            if (!firstBlock) sb.Append('\n');
+            firstBlock = false;
+            if (block is Paragraph para)
+            {
+                foreach (var inline in para.Inlines)
+                {
+                    if (inline is Run run)
+                        sb.Append(run.Text);
+                    else if (inline is InlineUIContainer uic && uic.Child is Image img && img.Tag is string code)
+                        sb.Append(code);
+                    else if (inline is LineBreak)
+                        sb.Append('\n');
+                }
+            }
+        }
+        return sb.ToString();
+    }
+
+    private void SetInputText(string text)
+    {
+        _suppressTextSync = true;
+        try
+        {
+            MessageInput.Document.Blocks.Clear();
+            if (string.IsNullOrEmpty(text))
+            {
+                MessageInput.Document.Blocks.Add(new Paragraph());
+                return;
+            }
+            var lines = text.Split('\n');
+            foreach (var line in lines)
+            {
+                var para = new Paragraph { Margin = new Thickness(0) };
+                if (string.IsNullOrEmpty(line))
+                {
+                    para.Inlines.Add(new Run());
+                }
+                else
+                {
+                    para.Inlines.Add(new Run(line) { Foreground = (Brush)FindResource("TextPrimaryBrush") });
+                }
+                MessageInput.Document.Blocks.Add(para);
+            }
+        }
+        finally
+        {
+            _suppressTextSync = false;
+        }
+    }
+
+    private int GetInputCursorOffset()
+    {
+        var start = MessageInput.Document.ContentStart;
+        var caret = MessageInput.CaretPosition;
+        return GetTextOffset(start, caret);
+    }
+
+    private void SetInputCursorOffset(int offset)
+    {
+        var pos = GetTextPointerAtOffset(MessageInput.Document.ContentStart, offset);
+        if (pos is not null)
+            MessageInput.CaretPosition = pos;
+    }
+
+    private int GetInputSelectionLength()
+    {
+        if (MessageInput.Selection.IsEmpty) return 0;
+        var sel = MessageInput.Selection;
+        return GetTextOffset(sel.Start, sel.End);
+    }
+
+    private string GetInputSelectedText()
+    {
+        if (MessageInput.Selection.IsEmpty) return string.Empty;
+        // Serialize selection with emoji support
+        var sb = new StringBuilder();
+        var start = MessageInput.Selection.Start;
+        var end = MessageInput.Selection.End;
+
+        var current = start;
+        while (current is not null && current.CompareTo(end) < 0)
+        {
+            if (current.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
+            {
+                var next = current.GetNextContextPosition(LogicalDirection.Forward);
+                if (next is not null)
+                {
+                    var effectiveEnd = next.CompareTo(end) > 0 ? end : next;
+                    var range = new TextRange(current, effectiveEnd);
+                    sb.Append(range.Text);
+                }
+            }
+            else if (current.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.EmbeddedElement)
+            {
+                var element = current.GetAdjacentElement(LogicalDirection.Forward);
+                if (element is InlineUIContainer uic && uic.Child is Image img && img.Tag is string code)
+                    sb.Append(code);
+            }
+            current = current.GetNextContextPosition(LogicalDirection.Forward);
+        }
+        return sb.ToString();
+    }
+
+    private void SetInputSelection(int start, int length)
+    {
+        var startPos = GetTextPointerAtOffset(MessageInput.Document.ContentStart, start);
+        if (startPos is null) return;
+        if (length == 0)
+        {
+            MessageInput.CaretPosition = startPos;
+            return;
+        }
+        var endPos = GetTextPointerAtOffset(startPos, length);
+        if (endPos is not null)
+            MessageInput.Selection.Select(startPos, endPos);
+    }
+
+    private static int GetTextOffset(TextPointer start, TextPointer end)
+    {
+        int offset = 0;
+        var current = start;
+        while (current is not null && current.CompareTo(end) < 0)
+        {
+            var ctx = current.GetPointerContext(LogicalDirection.Forward);
+            if (ctx == TextPointerContext.Text)
+            {
+                var next = current.GetNextContextPosition(LogicalDirection.Forward);
+                if (next is not null)
+                {
+                    var effective = next.CompareTo(end) > 0 ? end : next;
+                    offset += new TextRange(current, effective).Text.Length;
+                }
+            }
+            else if (ctx == TextPointerContext.EmbeddedElement)
+            {
+                var element = current.GetAdjacentElement(LogicalDirection.Forward);
+                if (element is InlineUIContainer uic && uic.Child is Image img && img.Tag is string code)
+                    offset += code.Length;
+                else
+                    offset++;
+            }
+            else if (ctx == TextPointerContext.ElementEnd)
+            {
+                // Check if this is the end of a Paragraph (newline)
+                var element = current.GetAdjacentElement(LogicalDirection.Forward);
+                if (element is Paragraph && current.GetNextContextPosition(LogicalDirection.Forward)?.CompareTo(end) <= 0)
+                    offset++; // count as newline
+            }
+            current = current.GetNextContextPosition(LogicalDirection.Forward);
+        }
+        return offset;
+    }
+
+    private static TextPointer? GetTextPointerAtOffset(TextPointer start, int offset)
+    {
+        int remaining = offset;
+        var current = start;
+        while (current is not null && remaining > 0)
+        {
+            var ctx = current.GetPointerContext(LogicalDirection.Forward);
+            if (ctx == TextPointerContext.Text)
+            {
+                var next = current.GetNextContextPosition(LogicalDirection.Forward);
+                if (next is not null)
+                {
+                    int textLen = new TextRange(current, next).Text.Length;
+                    if (textLen >= remaining)
+                        return current.GetPositionAtOffset(remaining, LogicalDirection.Forward);
+                    remaining -= textLen;
+                }
+            }
+            else if (ctx == TextPointerContext.EmbeddedElement)
+            {
+                var element = current.GetAdjacentElement(LogicalDirection.Forward);
+                int len = 1;
+                if (element is InlineUIContainer uic && uic.Child is Image img && img.Tag is string code)
+                    len = code.Length;
+                if (len >= remaining)
+                {
+                    // Skip past the embedded element
+                    return current.GetNextContextPosition(LogicalDirection.Forward)?
+                        .GetNextContextPosition(LogicalDirection.Forward);
+                }
+                remaining -= len;
+            }
+            else if (ctx == TextPointerContext.ElementEnd)
+            {
+                var element = current.GetAdjacentElement(LogicalDirection.Forward);
+                if (element is Paragraph)
+                {
+                    remaining--; // newline
+                    if (remaining <= 0)
+                        return current.GetNextContextPosition(LogicalDirection.Forward);
+                }
+            }
+            current = current.GetNextContextPosition(LogicalDirection.Forward);
+        }
+        return current ?? start.DocumentEnd;
+    }
+
+    private void SyncInputToViewModel()
+    {
+        if (_suppressTextSync) return;
+        if (DataContext is MainViewModel vm)
+        {
+            _suppressTextSync = true;
+            vm.MessageText = GetInputText();
+            _suppressTextSync = false;
+        }
+    }
+
+    private void DetectAndReplaceEmojis()
+    {
+        if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
+
+        // Walk all Runs looking for :shortcode: patterns
+        var runs = new List<Run>();
+        foreach (var block in MessageInput.Document.Blocks.OfType<Paragraph>())
+            runs.AddRange(block.Inlines.OfType<Run>());
+
+        foreach (var run in runs)
+        {
+            var match = InputEmojiDetect.Match(run.Text);
+            if (!match.Success) continue;
+
+            string shortcode = match.Groups[1].Value;
+            var emoji = vm.EmojiService.Resolve(shortcode);
+            if (emoji is null) continue;
+
+            // Replace the :shortcode: text with an emoji image
+            string before = run.Text[..match.Index];
+            string after = run.Text[(match.Index + match.Length)..];
+
+            var parent = run.Parent as Paragraph;
+            if (parent is null) continue;
+
+            _suppressTextSync = true;
+            try
+            {
+                var img = new Image
+                {
+                    Width = 20,
+                    Height = 20,
+                    Stretch = Stretch.Uniform,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Tag = $":{shortcode}:",
+                };
+                img.ToolTip = new ToolTip { Content = $":{shortcode}:" };
+                ToolTipService.SetInitialShowDelay(img, 0);
+
+                var cached = vm.EmojiService.GetCachedImage(emoji);
+                if (cached is not null)
+                {
+                    img.Source = cached;
+                }
+                else
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        var bmp = await vm.EmojiService.GetImageAsync(emoji);
+                        if (bmp is not null)
+                            Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
+                    });
+                }
+
+                var container = new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.Center };
+
+                // Insert new inlines
+                if (!string.IsNullOrEmpty(after))
+                {
+                    var afterRun = new Run(after) { Foreground = run.Foreground };
+                    parent.Inlines.InsertAfter(run, afterRun);
+                }
+                parent.Inlines.InsertAfter(run, container);
+
+                if (!string.IsNullOrEmpty(before))
+                {
+                    run.Text = before;
+                }
+                else
+                {
+                    parent.Inlines.Remove(run);
+                }
+
+                // Move cursor to after the emoji
+                MessageInput.CaretPosition = container.ElementEnd;
+            }
+            finally
+            {
+                _suppressTextSync = false;
+            }
+            break; // Process one emoji at a time
+        }
+    }
+
     // Last known bounds while the window was in Normal state.
     // Updated by SizeChanged/LocationChanged only when not maximized/minimized,
     // so they always represent the correct restore geometry.
@@ -51,6 +360,47 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Icon = BitmapFrame.Create(new Uri("pack://application:,,,/Assets/app.ico"));
+
+        // Hook up RichTextBox text sync and emoji detection
+        Loaded += (_, _) =>
+        {
+            // Set initial empty document
+            MessageInput.Document = new FlowDocument(new Paragraph { Margin = new Thickness(0) })
+            {
+                PagePadding = new Thickness(0),
+            };
+
+            MessageInput.TextChanged += (_, _) =>
+            {
+                if (_suppressTextSync) return;
+                SyncInputToViewModel();
+                DetectAndReplaceEmojis();
+
+                // Emoji autocomplete
+                if (DataContext is MainViewModel vm2)
+                {
+                    string text = GetInputText();
+                    int pos = GetInputCursorOffset();
+                    vm2.UpdateEmojiSuggestions(text, pos);
+                }
+            };
+
+            // Sync ViewModel → RichTextBox when MessageText is cleared (e.g. after send)
+            if (DataContext is MainViewModel vm)
+            {
+                vm.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName == nameof(MainViewModel.MessageText) && !_suppressTextSync)
+                    {
+                        string currentText = GetInputText();
+                        if (currentText != vm.MessageText)
+                        {
+                            SetInputText(vm.MessageText);
+                        }
+                    }
+                };
+            }
+        };
 
         if (DataContext is MainViewModel vm)
         {
@@ -206,6 +556,13 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
+                if (args.PropertyName == nameof(MainViewModel.SelectedEmojiSuggestionIndex))
+                {
+                    int idx = vm.SelectedEmojiSuggestionIndex;
+                    if (idx >= 0 && idx < vm.EmojiSuggestions.Count)
+                        EmojiSuggestionList.ScrollIntoView(vm.EmojiSuggestions[idx]);
+                }
+
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
                     {
@@ -267,39 +624,104 @@ public partial class MainWindow : Window
         vm.SetPendingImage(data, Path.GetFileName(imageFile), BytesToBitmapSource(data));
     }
 
+    private void EmojiSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is EmojiSuggestionItem item &&
+            DataContext is MainViewModel vm)
+        {
+            ApplyEmojiSuggestion(vm, item);
+            e.Handled = true;
+        }
+    }
+
+    private void ApplyEmojiSuggestion(MainViewModel vm, EmojiSuggestionItem item)
+    {
+        // Find the last ':' before cursor and replace from there to cursor with the full :shortcode:
+        string text = GetInputText();
+        int cursor = GetInputCursorOffset();
+        int colonIdx = text.LastIndexOf(':', cursor - 1);
+        if (colonIdx >= 0)
+        {
+            string replacement = $"{item.CommandName} ";
+            SetInputText(text[..colonIdx] + replacement + text[cursor..]);
+            SetInputCursorOffset(colonIdx + replacement.Length);
+        }
+        vm.DismissEmojiSuggestions();
+        vm.EmojiService.TrackUsage(item.Emoji.Name);
+        MessageInput.Focus();
+    }
+
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
+        // Emoji suggestions take priority when visible
+        if (DataContext is MainViewModel vm && vm.ShowEmojiSuggestions)
         {
             if (e.Key == Key.Down)
             {
-                vm.NavigateSuggestions(1);
+                vm.NavigateEmojiSuggestions(1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Up)
             {
-                vm.NavigateSuggestions(-1);
+                vm.NavigateEmojiSuggestions(-1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Tab)
             {
-                int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
-                if (idx < vm.SlashSuggestions.Count)
-                    ApplySuggestion(vm, vm.SlashSuggestions[idx]);
+                int idx = vm.SelectedEmojiSuggestionIndex >= 0 ? vm.SelectedEmojiSuggestionIndex : 0;
+                if (idx < vm.EmojiSuggestions.Count)
+                    ApplyEmojiSuggestion(vm, vm.EmojiSuggestions[idx]);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter && vm.SelectedEmojiSuggestionIndex >= 0)
+            {
+                ApplyEmojiSuggestion(vm, vm.EmojiSuggestions[vm.SelectedEmojiSuggestionIndex]);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Escape)
             {
-                vm.DismissSuggestions();
+                vm.DismissEmojiSuggestions();
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
+        }
+
+        if (DataContext is MainViewModel vm1 && vm1.ShowSlashSuggestions)
+        {
+            if (e.Key == Key.Down)
             {
-                ApplySuggestion(vm, vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                vm1.NavigateSuggestions(1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Up)
+            {
+                vm1.NavigateSuggestions(-1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Tab)
+            {
+                int idx = vm1.SelectedSuggestionIndex >= 0 ? vm1.SelectedSuggestionIndex : 0;
+                if (idx < vm1.SlashSuggestions.Count)
+                    ApplySuggestion(vm1, vm1.SlashSuggestions[idx]);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Escape)
+            {
+                vm1.DismissSuggestions();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter && vm1.SelectedSuggestionIndex >= 0)
+            {
+                ApplySuggestion(vm1, vm1.SlashSuggestions[vm1.SelectedSuggestionIndex]);
                 e.Handled = true;
                 return;
             }
@@ -321,11 +743,11 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
         {
-            int pos = MessageInput.SelectionStart;
-            int len = MessageInput.SelectionLength;
-            MessageInput.Text = MessageInput.Text.Remove(pos, len).Insert(pos, "    ");
-            MessageInput.SelectionStart  = pos + 4;
-            MessageInput.SelectionLength = 0;
+            int pos = GetInputCursorOffset();
+            int len = GetInputSelectionLength();
+            string text = GetInputText();
+            SetInputText(text.Remove(pos, len).Insert(pos, "    "));
+            SetInputSelection(pos + 4, 0);
             e.Handled = true;
             return;
         }
@@ -389,7 +811,7 @@ public partial class MainWindow : Window
     private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
     {
         vm.SelectSuggestion(cmd);
-        MessageInput.CaretIndex = MessageInput.Text.Length;
+        SetInputCursorOffset(GetInputText().Length);
         MessageInput.Focus();
     }
 
@@ -568,8 +990,8 @@ public partial class MainWindow : Window
 
     private void UpdateFormatButtonStates()
     {
-        string text = MessageInput.Text;
-        int pos = MessageInput.SelectionStart;
+        string text = GetInputText();
+        int pos = GetInputCursorOffset();
         bool inBoldItalic = FormatDetection.IsCursorInSpan(text, pos, FormatDetection.BoldItalicSpan, 3);
         TooltipHelper.SetIsActive(BoldButton,          inBoldItalic || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.BoldSpan, 2));
         TooltipHelper.SetIsActive(ItalicButton,        inBoldItalic || FormatDetection.IsCursorInItalicSpan(text, pos));
@@ -591,24 +1013,24 @@ public partial class MainWindow : Window
     // markerLen is the length of the opening/closing delimiter (** = 2, __ = 2, ~~ = 2).
     private void InsertMarkdownAround(string marker)
     {
-        int start = MessageInput.SelectionStart;
-        int len   = MessageInput.SelectionLength;
-        string sel = MessageInput.SelectedText;
+        int start = GetInputCursorOffset();
+        int len   = GetInputSelectionLength();
+        string sel = GetInputSelectedText();
+        string text = GetInputText();
 
-        MessageInput.Text = MessageInput.Text.Remove(start, len)
-                                             .Insert(start, marker + sel + marker);
-        MessageInput.SelectionStart  = start + marker.Length;
-        MessageInput.SelectionLength = sel.Length;
+        text = text.Remove(start, len).Insert(start, marker + sel + marker);
+        SetInputText(text);
+        SetInputSelection(start + marker.Length, sel.Length);
         MessageInput.Focus();
     }
 
     // With a selection, always add the wrapper. With a point cursor, toggle off if already inside the span.
     private void ToggleInlineFormat(string marker)
     {
-        if (MessageInput.SelectionLength > 0) { InsertMarkdownAround(marker); return; }
+        if (GetInputSelectionLength() > 0) { InsertMarkdownAround(marker); return; }
 
-        string text = MessageInput.Text;
-        int pos = MessageInput.SelectionStart;
+        string text = GetInputText();
+        int pos = GetInputCursorOffset();
 
         if (marker == "**")
         {
@@ -676,8 +1098,8 @@ public partial class MainWindow : Window
 
     private void RemoveSpanMarkers(int openAt, int openLen, int closeAt, int closeLen)
     {
-        int origPos = MessageInput.SelectionStart;
-        string text = MessageInput.Text;
+        int origPos = GetInputCursorOffset();
+        string text = GetInputText();
         // Remove close first (higher index) so openAt stays valid
         text = text.Remove(closeAt, closeLen);
         text = text.Remove(openAt, openLen);
@@ -687,9 +1109,8 @@ public partial class MainWindow : Window
         else if (pos > closeAt)        pos  = closeAt;
         if (pos >= openAt + openLen)   pos -= openLen;
         else if (pos > openAt)         pos  = openAt;
-        MessageInput.Text = text;
-        MessageInput.SelectionStart  = pos;
-        MessageInput.SelectionLength = 0;
+        SetInputText(text);
+        SetInputSelection(pos, 0);
         MessageInput.Focus();
     }
 
@@ -699,7 +1120,7 @@ public partial class MainWindow : Window
     private void ToggleCode()
     {
         // Multi-line selection → fenced code block
-        if (MessageInput.SelectionLength > 0 && MessageInput.SelectedText.Contains('\n'))
+        if (GetInputSelectionLength() > 0 && GetInputSelectedText().Contains('\n'))
         {
             ToggleFencedCode();
             return;
@@ -711,34 +1132,34 @@ public partial class MainWindow : Window
     private void ToggleFencedCode()
     {
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd];
+        string text = GetInputText();
+        string region = text[lineStart..lineEnd];
         string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
         // Already fenced → remove the fence lines (opening may be ```<number>)
         if (lines.Length >= 2 && lines[0].StartsWith("```") && lines[^1] == "```")
         {
             string inner = string.Join("\n", lines[1..^1]);
-            MessageInput.Text = MessageInput.Text[..lineStart] + inner + MessageInput.Text[lineEnd..];
-            MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = inner.Length;
+            SetInputText(text[..lineStart] + inner + text[lineEnd..]);
+            SetInputSelection(lineStart, inner.Length);
             MessageInput.Focus();
             return;
         }
 
         string fenced = "```\n" + region + "\n```";
-        MessageInput.Text = MessageInput.Text[..lineStart] + fenced + MessageInput.Text[lineEnd..];
-        MessageInput.SelectionStart  = lineStart;
-        MessageInput.SelectionLength = fenced.Length;
+        SetInputText(text[..lineStart] + fenced + text[lineEnd..]);
+        SetInputSelection(lineStart, fenced.Length);
         MessageInput.Focus();
     }
 
     private void ToggleQuote()
     {
-        int origStart  = MessageInput.SelectionStart;
-        int origLength = MessageInput.SelectionLength;
+        int origStart  = GetInputCursorOffset();
+        int origLength = GetInputSelectionLength();
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd];
+        string text = GetInputText();
+        string region = text[lineStart..lineEnd];
         string[] lines = region.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
         bool allQuoted = lines.All(l => string.IsNullOrEmpty(l) || l.StartsWith("> "));
@@ -749,18 +1170,16 @@ public partial class MainWindow : Window
         }).ToArray();
 
         string newRegion = string.Join("\n", newLines);
-        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+        SetInputText(text[..lineStart] + newRegion + text[lineEnd..]);
 
         if (origLength == 0)
         {
             int delta = allQuoted ? -2 : 2;
-            MessageInput.SelectionStart  = Math.Max(lineStart, origStart + delta);
-            MessageInput.SelectionLength = 0;
+            SetInputSelection(Math.Max(lineStart, origStart + delta), 0);
         }
         else
         {
-            MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = newRegion.Length;
+            SetInputSelection(lineStart, newRegion.Length);
         }
         MessageInput.Focus();
     }
@@ -776,28 +1195,27 @@ public partial class MainWindow : Window
 
     private void FormatOutdent_Click(object sender, RoutedEventArgs e)
     {
-        int origStart  = MessageInput.SelectionStart;
-        int origLength = MessageInput.SelectionLength;
+        int origStart  = GetInputCursorOffset();
+        int origLength = GetInputSelectionLength();
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd];
+        string text = GetInputText();
+        string region = text[lineStart..lineEnd];
         string[] lines = region.Split('\n');
         string[] newLines = lines.Select(l =>
             l.StartsWith("    ") ? l[4..] : l.TrimStart(' ')).ToArray();
         string newRegion = string.Join("\n", newLines);
 
-        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+        SetInputText(text[..lineStart] + newRegion + text[lineEnd..]);
 
         if (origLength == 0)
         {
             int spacesRemoved = lines[0].Length - newLines[0].Length;
-            MessageInput.SelectionStart  = Math.Max(lineStart, origStart - spacesRemoved);
-            MessageInput.SelectionLength = 0;
+            SetInputSelection(Math.Max(lineStart, origStart - spacesRemoved), 0);
         }
         else
         {
-            MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = newRegion.Length;
+            SetInputSelection(lineStart, newRegion.Length);
         }
         MessageInput.Focus();
     }
@@ -806,8 +1224,8 @@ public partial class MainWindow : Window
 
     private bool TryHandleListEnter()
     {
-        string text = MessageInput.Text;
-        int    pos  = MessageInput.SelectionStart;
+        string text = GetInputText();
+        int    pos  = GetInputCursorOffset();
 
         int lineStart = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
         int lineEnd   = text.IndexOf('\n', lineStart);
@@ -820,14 +1238,14 @@ public partial class MainWindow : Window
             bool empty = line.Length == 2;
             if (empty)
             {
-                MessageInput.Text = text.Remove(lineStart, 2);
-                MessageInput.SelectionStart = lineStart;
+                SetInputText(text.Remove(lineStart, 2));
+                SetInputCursorOffset(lineStart);
             }
             else
             {
                 string insert = "\n- ";
-                MessageInput.Text = text.Insert(pos, insert);
-                MessageInput.SelectionStart = pos + insert.Length;
+                SetInputText(text.Insert(pos, insert));
+                SetInputCursorOffset(pos + insert.Length);
             }
             return true;
         }
@@ -841,14 +1259,14 @@ public partial class MainWindow : Window
             string prefix = $"{num}. ";
             if (empty)
             {
-                MessageInput.Text = text.Remove(lineStart, prefix.Length);
-                MessageInput.SelectionStart = lineStart;
+                SetInputText(text.Remove(lineStart, prefix.Length));
+                SetInputCursorOffset(lineStart);
             }
             else
             {
                 string insert = $"\n{num + 1}. ";
-                MessageInput.Text = text.Insert(pos, insert);
-                MessageInput.SelectionStart = pos + insert.Length;
+                SetInputText(text.Insert(pos, insert));
+                SetInputCursorOffset(pos + insert.Length);
             }
             return true;
         }
@@ -859,35 +1277,34 @@ public partial class MainWindow : Window
 
     private void PrefixSelectedLines(Func<int, string> prefixFor)
     {
-        int origStart  = MessageInput.SelectionStart;
-        int origLength = MessageInput.SelectionLength;
+        int origStart  = GetInputCursorOffset();
+        int origLength = GetInputSelectionLength();
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        bool hasTrailingNewline = lineEnd < MessageInput.Text.Length;
-        string region = MessageInput.Text[lineStart..lineEnd];
+        string text = GetInputText();
+        bool hasTrailingNewline = lineEnd < text.Length;
+        string region = text[lineStart..lineEnd];
         string[] lines = region.Split('\n');
         string newRegion = string.Join("\n", lines.Select((l, i) => prefixFor(i) + l));
 
-        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
+        SetInputText(text[..lineStart] + newRegion + text[lineEnd..]);
 
         if (origLength == 0)
         {
-            MessageInput.SelectionStart  = origStart + prefixFor(0).Length;
-            MessageInput.SelectionLength = 0;
+            SetInputSelection(origStart + prefixFor(0).Length, 0);
         }
         else
         {
-            MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = hasTrailingNewline ? newRegion.Length - 1 : newRegion.Length;
+            SetInputSelection(lineStart, hasTrailingNewline ? newRegion.Length - 1 : newRegion.Length);
         }
         MessageInput.Focus();
     }
 
     private void GetSelectedLineRegion(out int lineStart, out int lineEnd)
     {
-        string text = MessageInput.Text;
-        int selStart = MessageInput.SelectionStart;
-        int selEnd   = selStart + MessageInput.SelectionLength;
+        string text = GetInputText();
+        int selStart = GetInputCursorOffset();
+        int selEnd   = selStart + GetInputSelectionLength();
         lineStart = selStart == 0 ? 0 : text.LastIndexOf('\n', selStart - 1) + 1;
         int nl = selEnd < text.Length ? text.IndexOf('\n', selEnd) : -1;
         lineEnd = nl >= 0 ? nl : text.Length;
@@ -895,9 +1312,9 @@ public partial class MainWindow : Window
 
     private void ApplyToLineRegion(int lineStart, int lineEnd, string newRegion)
     {
-        MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
-        MessageInput.SelectionStart  = lineStart;
-        MessageInput.SelectionLength = newRegion.Length;
+        string text = GetInputText();
+        SetInputText(text[..lineStart] + newRegion + text[lineEnd..]);
+        SetInputSelection(lineStart, newRegion.Length);
         MessageInput.Focus();
     }
 
@@ -905,9 +1322,9 @@ public partial class MainWindow : Window
     {
         if (DataContext is not MainViewModel vm) return;
 
-        string display = MessageInput.SelectedText;
-        int start = MessageInput.SelectionStart;
-        int len   = MessageInput.SelectionLength;
+        string display = GetInputSelectedText();
+        int start = GetInputCursorOffset();
+        int len   = GetInputSelectionLength();
 
         vm.OpenModal(new HyperlinkModalViewModel(
             initialUrl:     display.StartsWith("http") ? display : "https://",
@@ -915,8 +1332,9 @@ public partial class MainWindow : Window
             confirm: (url, displayText) =>
             {
                 string md = string.IsNullOrEmpty(displayText) ? url : $"[{displayText}]({url})";
-                MessageInput.Text = MessageInput.Text.Remove(start, len).Insert(start, md);
-                MessageInput.CaretIndex = start + md.Length;
+                string text = GetInputText();
+                SetInputText(text.Remove(start, len).Insert(start, md));
+                SetInputCursorOffset(start + md.Length);
                 vm.CloseModal();
                 MessageInput.Focus();
             },
@@ -950,8 +1368,9 @@ public partial class MainWindow : Window
         {
             var secondary = (Brush)FindResource("TextSecondaryBrush");
             var accent    = (Brush)FindResource("AccentBlueBrush");
+            var emojiSvc = (DataContext as MainViewModel)?.EmojiService;
             MessagePreview.Document = MarkdownRenderer.Render(
-                MessageInput.Text, secondary, accent);
+                GetInputText(), secondary, accent, emojiSvc);
             MessageInput.Visibility   = Visibility.Collapsed;
             MessagePreview.Visibility = Visibility.Visible;
             FormattingToolbar.Visibility = Visibility.Visible; // keep toolbar visible while previewing
@@ -967,6 +1386,162 @@ public partial class MainWindow : Window
             PreviewToggleButton.Tag = "Preview rendered message";
             TooltipHelper.SetIsActive(PreviewToggleButton, false);
         }
+    }
+
+    // ── Emoji Picker ─────────────────────────────────────────────────────────
+
+    private readonly HashSet<string> _collapsedCategories = new();
+
+    private void EmojiPicker_Click(object sender, RoutedEventArgs e)
+    {
+        if (EmojiPickerPopup.IsOpen)
+        {
+            EmojiPickerPopup.IsOpen = false;
+            return;
+        }
+        EmojiSearchBox.Text = string.Empty;
+        PopulateEmojiGrid(null);
+        EmojiPickerPopup.IsOpen = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => EmojiSearchBox.Focus());
+    }
+
+    private void EmojiSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        string filter = EmojiSearchBox.Text.Trim();
+        PopulateEmojiGrid(string.IsNullOrEmpty(filter) ? null : filter);
+    }
+
+    private void PopulateEmojiGrid(string? filter)
+    {
+        EmojiGridPanel.Children.Clear();
+        if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
+
+        if (filter is not null)
+        {
+            // Search mode: flat grid of matching emojis
+            var results = vm.EmojiService.Search(filter, 100);
+            if (results.Count == 0)
+            {
+                EmojiGridPanel.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text = "No emojis found",
+                    Foreground = (Brush)FindResource("TextMutedBrush"),
+                    FontSize = 13,
+                    Margin = new Thickness(8, 16, 8, 8),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                });
+                return;
+            }
+            var wrap = new System.Windows.Controls.WrapPanel();
+            foreach (var emoji in results)
+                wrap.Children.Add(CreateEmojiButton(emoji, vm));
+            EmojiGridPanel.Children.Add(wrap);
+            return;
+        }
+
+        // Category mode with optional frequently used
+        var frequent = vm.EmojiService.GetFrequentlyUsed();
+        if (frequent.Count > 0)
+            AddCategorySection("Frequently Used", frequent, vm);
+
+        foreach (var (category, emojis) in vm.EmojiService.GetGroupedByCategory())
+            AddCategorySection(category, emojis, vm);
+    }
+
+    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm)
+    {
+        bool collapsed = _collapsedCategories.Contains(category);
+
+        // Category header
+        var header = new System.Windows.Controls.Button
+        {
+            Content = (collapsed ? "\u25B6 " : "\u25BC ") + category,
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            FontSize = 11,
+            FontWeight = FontWeights.Bold,
+            Cursor = Cursors.Hand,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(4, 6, 4, 4),
+            Focusable = false,
+        };
+        header.Click += (_, _) =>
+        {
+            if (_collapsedCategories.Contains(category))
+                _collapsedCategories.Remove(category);
+            else
+                _collapsedCategories.Add(category);
+            PopulateEmojiGrid(null);
+        };
+        EmojiGridPanel.Children.Add(header);
+
+        if (collapsed) return;
+
+        var wrap = new System.Windows.Controls.WrapPanel();
+        foreach (var emoji in emojis)
+            wrap.Children.Add(CreateEmojiButton(emoji, vm));
+        EmojiGridPanel.Children.Add(wrap);
+    }
+
+    private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm)
+    {
+        var img = new System.Windows.Controls.Image
+        {
+            Width = 28,
+            Height = 28,
+            Stretch = Stretch.Uniform,
+        };
+
+        // Load image
+        var cached = vm.EmojiService.GetCachedImage(emoji);
+        if (cached is not null)
+        {
+            img.Source = cached;
+        }
+        else
+        {
+            _ = Task.Run(async () =>
+            {
+                var bmp = await vm.EmojiService.GetImageAsync(emoji);
+                if (bmp is not null)
+                    Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
+            });
+        }
+
+        var btn = new System.Windows.Controls.Button
+        {
+            Width = 36,
+            Height = 36,
+            Content = img,
+            Background = System.Windows.Media.Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Cursor = Cursors.Hand,
+            Padding = new Thickness(4),
+            Focusable = false,
+            ToolTip = new ToolTip { Content = $":{emoji.Name}:" },
+        };
+        ToolTipService.SetInitialShowDelay(btn, 200);
+
+        btn.Click += (_, _) =>
+        {
+            OnEmojiClicked(emoji, vm);
+        };
+
+        return btn;
+    }
+
+    private void OnEmojiClicked(Shared.EmojiDto emoji, MainViewModel vm)
+    {
+        // Insert :shortcode: at cursor position
+        string code = $":{emoji.Name}: ";
+        string text = GetInputText();
+        int pos = GetInputCursorOffset();
+        SetInputText(text.Insert(pos, code));
+        SetInputCursorOffset(pos + code.Length);
+        vm.EmojiService.TrackUsage(emoji.Name);
+        EmojiPickerPopup.IsOpen = false;
+        MessageInput.Focus();
     }
 
     // ── Message FlowDocument ──────────────────────────────────────────────────
@@ -1005,9 +1580,14 @@ public partial class MainWindow : Window
             }
             else
             {
-                // Markdown (or plain) text — render inline formatting, lists, links
+                // Determine emoji service and size
+                var vm = DataContext as MainViewModel;
+                var emojiService = vm?.EmojiService;
+                int emojiSize = MarkdownRenderer.IsEmojiOnly(msg.Content, emojiService) ? 48 : 32;
+
+                // Markdown (or plain) text — render inline formatting, lists, links, emojis
                 var rendered = MarkdownRenderer.Render(msg.Content, secondary,
-                                   (Brush)FindResource("AccentBlueBrush"));
+                                   (Brush)FindResource("AccentBlueBrush"), emojiService, emojiSize);
                 double blockTop = top;
                 foreach (var block in rendered.Blocks.ToList())
                 {
@@ -1110,6 +1690,7 @@ public partial class MainWindow : Window
 // Supported syntax:
 //   **bold**  *italic*  __underline__  ~~strike~~
 //   [text](url)  bare https:// URLs
+//   :emoji_name:  inline emoji images
 //   - item / * item  (bullet list lines)
 //   1. item           (numbered list lines)
 //   Plain text passes through unchanged.
@@ -1122,10 +1703,14 @@ internal static class MarkdownRenderer
     // Groups: 1-2 ***bold+italic***, 3-4 **bold**, 5-6 *italic*,
     //         7-8 __underline__, 9-10 ~~strike~~,
     //         11-12 ```code``` (triple-backtick inline), 13-14 `code` (single-backtick inline),
-    //         15-17 [text](url), 18 bare URL
+    //         15-17 [text](url), 18 bare URL, 19-20 :emoji:
     private static readonly System.Text.RegularExpressions.Regex InlinePattern =
-        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)",
+        new(@"(\*\*\*(.+?)\*\*\*)|(\*\*(.+?)\*\*)|(\*(.+?)\*)|(__(.+?)__)|(\~\~(.+?)\~\~)|(```(.+?)```)|(`(.+?)`)|(\[(.+?)\]\((https?://\S+?)\))|(https?://\S+)|(:([A-Za-z0-9_]+(?:~\d+)?):)",
             System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Regex for detecting emoji-only messages (after stripping shortcodes, only whitespace remains)
+    private static readonly System.Text.RegularExpressions.Regex EmojiOnlyPattern =
+        new(@"^(\s*:[A-Za-z0-9_]+(?:~\d+)?:\s*)+$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     // Same pattern but with Singleline so . matches \n — used to detect spans that cross lines.
     // Backtick patterns are intentionally omitted: inline code does not span lines, and
@@ -1203,7 +1788,24 @@ internal static class MarkdownRenderer
         });
     }
 
-    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
+    public static bool IsEmojiOnly(string text, Services.EmojiService? emojiService)
+    {
+        if (emojiService is null || !emojiService.IsLoaded) return false;
+        if (!EmojiOnlyPattern.IsMatch(text)) return false;
+        // Verify all shortcodes actually resolve to emojis
+        foreach (System.Text.RegularExpressions.Match m in
+            System.Text.RegularExpressions.Regex.Matches(text, @":([A-Za-z0-9_]+(?:~\d+)?):"))
+        {
+            if (emojiService.Resolve(m.Groups[1].Value) is null) return false;
+        }
+        return true;
+    }
+
+    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush) =>
+        Render(text, textBrush, linkBrush, null, 32);
+
+    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush,
+                                      Services.EmojiService? emojiService, int emojiSize = 32)
     {
         var doc = new FlowDocument();
         if (string.IsNullOrEmpty(text)) return doc;
@@ -1279,7 +1881,7 @@ internal static class MarkdownRenderer
                     // ParseInlines fills a Paragraph (Documents.InlineCollection);
                     // migrate inlines to the TextBlock (Controls.InlineCollection)
                     var tempPara = new Paragraph();
-                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush);
+                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush, TextStyle.None, emojiService, emojiSize);
                     foreach (var il in tempPara.Inlines.ToList())
                     {
                         tempPara.Inlines.Remove(il);
@@ -1323,7 +1925,7 @@ internal static class MarkdownRenderer
                         var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
                         var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
                         lip.Inlines.Add(new Run("• "));
-                        ParseInlines(tr[2..], lip.Inlines, textBrush, linkBrush);
+                        ParseInlines(tr[2..], lip.Inlines, textBrush, linkBrush, TextStyle.None, emojiService, emojiSize);
                         itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                         doc.Blocks.Add(itemList);
                         i++;
@@ -1349,7 +1951,7 @@ internal static class MarkdownRenderer
                         var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
                         var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
                         lip.Inlines.Add(new Run(marker));
-                        ParseInlines(item, lip.Inlines, textBrush, linkBrush);
+                        ParseInlines(item, lip.Inlines, textBrush, linkBrush, TextStyle.None, emojiService, emojiSize);
                         itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                         doc.Blocks.Add(itemList);
                         i++;
@@ -1359,7 +1961,7 @@ internal static class MarkdownRenderer
             }
 
             var para = new Paragraph { Foreground = textBrush };
-            ParseInlines(line, para.Inlines, textBrush, linkBrush);
+            ParseInlines(line, para.Inlines, textBrush, linkBrush, TextStyle.None, emojiService, emojiSize);
             doc.Blocks.Add(para);
             i++;
         }
@@ -1370,7 +1972,9 @@ internal static class MarkdownRenderer
     // Recurse into each span's content so nested formats (e.g. **__text__**) compose correctly.
     private static void ParseInlines(string text, InlineCollection inlines,
                                      Brush textBrush, Brush linkBrush,
-                                     TextStyle style = TextStyle.None)
+                                     TextStyle style = TextStyle.None,
+                                     Services.EmojiService? emojiService = null,
+                                     int emojiSize = 32)
     {
         text = text.Replace("\\:", ":").Replace("\\\\", "\\");
         int lastEnd = 0;
@@ -1380,21 +1984,30 @@ internal static class MarkdownRenderer
                 AddInlines(text[lastEnd..m.Index], inlines, textBrush, style);
 
             if (m.Groups[1].Success)       // ***bold+italic***
-                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic);
+                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic, emojiService, emojiSize);
             else if (m.Groups[3].Success)  // **bold**
-                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold);
+                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold, emojiService, emojiSize);
             else if (m.Groups[5].Success)  // *italic*
-                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic);
+                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic, emojiService, emojiSize);
             else if (m.Groups[7].Success)  // __underline__
-                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline);
+                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline, emojiService, emojiSize);
             else if (m.Groups[9].Success)  // ~~strike~~
-                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike);
+                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike, emojiService, emojiSize);
             else if (m.Groups[11].Success) // ```code``` (triple-backtick inline)
                 inlines.Add(MakeCodeRun(m.Groups[12].Value, textBrush));
             else if (m.Groups[13].Success) // `code` (single-backtick inline)
                 inlines.Add(MakeCodeRun(m.Groups[14].Value, textBrush));
             else if (m.Groups[15].Success) // [text](url)
                 inlines.Add(MakeLink(m.Groups[16].Value, m.Groups[17].Value, linkBrush));
+            else if (m.Groups[19].Success) // :emoji:
+            {
+                string shortcode = m.Groups[20].Value;
+                var emoji = emojiService?.Resolve(shortcode);
+                if (emoji is not null)
+                    inlines.Add(MakeEmojiInline(emoji, emojiService!, emojiSize));
+                else
+                    AddInlines(m.Value, inlines, textBrush, style); // unresolved — show as text
+            }
             else                           // bare URL
                 inlines.Add(MakeLink(m.Value, m.Value, linkBrush));
 
@@ -1447,6 +2060,44 @@ internal static class MarkdownRenderer
             Margin       = new Thickness(1, 0, 1, 0),
             Child        = tb,
         }) { BaselineAlignment = BaselineAlignment.Center };
+    }
+
+    private static Inline MakeEmojiInline(Shared.EmojiDto emoji, Services.EmojiService emojiService, int size)
+    {
+        var img = new System.Windows.Controls.Image
+        {
+            Width = size,
+            Height = size,
+            Stretch = Stretch.Uniform,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+        };
+
+        var tt = new ToolTip
+        {
+            Content = $":{emoji.Name}:",
+            Placement = PlacementMode.Mouse,
+            Template = Application.Current?.FindResource("TooltipTemplateNoTail") as ControlTemplate,
+        };
+        img.ToolTip = tt;
+        ToolTipService.SetInitialShowDelay(img, 0);
+
+        // Load image async
+        var cached = emojiService.GetCachedImage(emoji);
+        if (cached is not null)
+        {
+            img.Source = cached;
+        }
+        else
+        {
+            _ = Task.Run(async () =>
+            {
+                var bmp = await emojiService.GetImageAsync(emoji);
+                if (bmp is not null)
+                    Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
+            });
+        }
+
+        return new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.Center };
     }
 
     private static Hyperlink MakeLink(string label, string url, Brush brush)

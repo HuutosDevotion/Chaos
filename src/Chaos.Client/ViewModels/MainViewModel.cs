@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
@@ -130,6 +131,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
+    public EmojiService EmojiService { get; } = new();
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
     private readonly DispatcherTimer _remoteSpeakingTimer;
@@ -162,6 +164,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
+    private int _selectedEmojiSuggestionIndex = -1;
+    private bool _showEmojiSuggestions;
+    private static readonly Regex EmojiAutocompletePattern = new(@":([A-Za-z0-9_]{2,})$", RegexOptions.Compiled);
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
@@ -172,6 +177,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
+    public ObservableCollection<EmojiSuggestionItem> EmojiSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
 
     public string ServerAddress
@@ -224,6 +230,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _selectedSuggestionIndex;
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
+    }
+
+    public bool ShowEmojiSuggestions
+    {
+        get => _showEmojiSuggestions;
+        set { _showEmojiSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedEmojiSuggestionIndex
+    {
+        get => _selectedEmojiSuggestionIndex;
+        set { _selectedEmojiSuggestionIndex = value; OnPropertyChanged(); }
     }
 
     public object? ActiveModal
@@ -350,6 +368,72 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (next < 0) next = SlashSuggestions.Count - 1;
         else if (next >= SlashSuggestions.Count) next = 0;
         SelectedSuggestionIndex = next;
+    }
+
+    // Emoji suggestion support
+    public void UpdateEmojiSuggestions(string text, int cursorPos)
+    {
+        if (!EmojiService.IsLoaded || ShowSlashSuggestions)
+        {
+            DismissEmojiSuggestions();
+            return;
+        }
+
+        string textUpToCursor = cursorPos <= text.Length ? text[..cursorPos] : text;
+        var match = EmojiAutocompletePattern.Match(textUpToCursor);
+        if (!match.Success)
+        {
+            DismissEmojiSuggestions();
+            return;
+        }
+
+        string query = match.Groups[1].Value;
+        var results = EmojiService.Search(query, 15);
+
+        EmojiSuggestions.Clear();
+        SelectedEmojiSuggestionIndex = -1;
+
+        foreach (var emoji in results)
+        {
+            var item = new EmojiSuggestionItem
+            {
+                CommandName = $":{emoji.Name}:",
+                Emoji = emoji,
+            };
+            // Load image
+            var cached = EmojiService.GetCachedImage(emoji);
+            if (cached is not null)
+            {
+                item.Image = cached;
+            }
+            else
+            {
+                _ = Task.Run(async () =>
+                {
+                    var bmp = await EmojiService.GetImageAsync(emoji);
+                    if (bmp is not null)
+                        SafeDispatchAsync(() => item.Image = bmp);
+                });
+            }
+            EmojiSuggestions.Add(item);
+        }
+
+        ShowEmojiSuggestions = EmojiSuggestions.Count > 0;
+    }
+
+    public void DismissEmojiSuggestions()
+    {
+        ShowEmojiSuggestions = false;
+        SelectedEmojiSuggestionIndex = -1;
+    }
+
+    public void NavigateEmojiSuggestions(int direction)
+    {
+        if (EmojiSuggestions.Count == 0) return;
+        int next = SelectedEmojiSuggestionIndex + direction;
+        if (next < 0) next = EmojiSuggestions.Count - 1;
+        else if (next >= EmojiSuggestions.Count) next = 0;
+        SelectedEmojiSuggestionIndex = next;
     }
 
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
@@ -597,6 +681,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            await EmojiService.LoadAsync(_chatService, Username, _settingsStore);
 
             SafeDispatch(() =>
             {
@@ -748,6 +833,14 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         if (!string.IsNullOrWhiteSpace(MessageText))
         {
+            // Track emoji usage before sending
+            var emojiMatches = System.Text.RegularExpressions.Regex.Matches(
+                MessageText, @":([A-Za-z0-9_]+(?:~\d+)?):");
+            foreach (System.Text.RegularExpressions.Match match in emojiMatches)
+            {
+                EmojiService.TrackUsage(match.Groups[1].Value);
+            }
+
             await _chatService.SendMessage(_selectedTextChannel.Id, MessageText, null);
             MessageText = string.Empty;
         }
@@ -1041,6 +1134,19 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
+}
+
+public class EmojiSuggestionItem : INotifyPropertyChanged
+{
+    private BitmapImage? _image;
+    public string CommandName { get; set; } = string.Empty;
+    public EmojiDto Emoji { get; set; } = new();
+    public BitmapImage? Image
+    {
+        get => _image;
+        set { _image = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Image))); }
+    }
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 public class RelayCommand : ICommand

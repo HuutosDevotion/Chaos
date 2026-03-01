@@ -83,6 +83,13 @@ public class ChatService : IAsyncDisposable
         return new();
     }
 
+    public async Task<List<EmojiDto>> GetEmojisAsync()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<EmojiDto>>("GetEmojis");
+        return new();
+    }
+
     public async Task<List<ChannelDto>> GetChannels()
     {
         if (_connection is not null)

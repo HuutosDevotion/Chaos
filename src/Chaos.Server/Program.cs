@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Chaos.Server.Commands;
 using Chaos.Server.Data;
 using Chaos.Server.Hubs;
+using Chaos.Server.Models;
 using Chaos.Server.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -56,6 +57,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ChaosDbContext>();
     db.Database.EnsureCreated();
+    await EmojiSeeder.SeedAsync(db, builder.Environment.ContentRootPath);
 }
 
 app.UseCors();

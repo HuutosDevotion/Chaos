@@ -43,6 +43,17 @@ public class ChatHub : Hub
 
     public List<SlashCommandDto> GetAvailableCommands() => _commandDispatcher.GetCommandInfos();
 
+    public async Task<List<EmojiDto>> GetEmojis()
+    {
+        return await _db.Emojis.Select(e => new EmojiDto
+        {
+            Id = e.Id,
+            Name = e.Name,
+            Category = e.Category,
+            FileName = e.FileName
+        }).ToListAsync();
+    }
+
     public async Task<List<ChannelDto>> GetChannels()
     {
         return await _db.Channels.Select(c => new ChannelDto

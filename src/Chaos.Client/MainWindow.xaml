@@ -1198,6 +1198,62 @@
                             </ListBox>
                         </Border>
 
+                        <!-- Emoji Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowEmojiSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="EmojiSuggestionList"
+                                     ItemsSource="{Binding EmojiSuggestions}"
+                                     SelectedIndex="{Binding SelectedEmojiSuggestionIndex, Mode=TwoWay}"
+                                     Focusable="False"
+                                     MaxHeight="360"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="EmojiSuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="8,4" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Image Source="{Binding Image}" Width="20" Height="20"
+                                                   Stretch="Uniform" Margin="0,0,8,0"
+                                                   VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding CommandName}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontSize="13" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+
                         <!-- Typing Indicator -->
                         <TextBlock Text="{Binding TypingText}"
                                    Foreground="{StaticResource TextMutedBrush}"
@@ -1205,6 +1261,42 @@
                                    FontStyle="Italic"
                                    Margin="4,2,0,4"
                                    Visibility="{Binding HasTypingUsers, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- Emoji Picker Popup -->
+                        <Popup x:Name="EmojiPickerPopup"
+                               PlacementTarget="{Binding ElementName=EmojiPickerButton}"
+                               Placement="Top"
+                               StaysOpen="False"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade">
+                            <Border Background="{StaticResource BgDarkBrush}"
+                                    BorderBrush="#40FFFFFF" BorderThickness="1"
+                                    CornerRadius="8" Width="380" Height="400">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Search bar -->
+                                    <Border Grid.Row="0" Padding="8,8,8,4">
+                                        <TextBox x:Name="EmojiSearchBox"
+                                                 Style="{StaticResource DarkTextBox}"
+                                                 BorderThickness="0"
+                                                 Background="{StaticResource BgInputBrush}"
+                                                 Padding="8,6"
+                                                 TextChanged="EmojiSearch_TextChanged" />
+                                    </Border>
+
+                                    <!-- Emoji grid -->
+                                    <ScrollViewer Grid.Row="1"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="EmojiGridPanel" Margin="8,0,8,8" />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Popup>
 
                         <!-- Text input row -->
                         <Border Background="{StaticResource BgInputBrush}"
@@ -1401,18 +1493,41 @@
                                     </WrapPanel>
                                 </Border>
 
-                                <!-- Edit mode: fast plain TextBox -->
-                                <TextBox x:Name="MessageInput"
-                                         Style="{StaticResource DarkTextBox}"
-                                         Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
-                                         BorderThickness="0"
-                                         Background="Transparent"
-                                         AcceptsReturn="True"
-                                         TextWrapping="Wrap"
-                                         Padding="12,16"
-                                         MaxHeight="120"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                         PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                <!-- Edit mode: RichTextBox + Emoji button -->
+                                <DockPanel>
+                                    <Button x:Name="EmojiPickerButton" DockPanel.Dock="Right"
+                                            Style="{StaticResource ToolbarButton}"
+                                            Click="EmojiPicker_Click" Focusable="False"
+                                            VerticalAlignment="Top" Margin="0,12,8,0">
+                                        <!-- Smiley face icon -->
+                                        <Viewbox Width="20" Height="20">
+                                            <Canvas Width="20" Height="20">
+                                                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="18" Height="18"
+                                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                         StrokeThickness="1.5" Fill="Transparent" />
+                                                <Ellipse Canvas.Left="6.5" Canvas.Top="7" Width="2" Height="2"
+                                                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                <Ellipse Canvas.Left="11.5" Canvas.Top="7" Width="2" Height="2"
+                                                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                <Path Data="M6,13 Q10,16 14,13"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Fill="Transparent" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <RichTextBox x:Name="MessageInput"
+                                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                                 CaretBrush="{StaticResource TextPrimaryBrush}"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 AcceptsReturn="True"
+                                                 Padding="12,16"
+                                                 MaxHeight="120"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                </DockPanel>
 
                                 <!-- Preview mode: read-only rendered markdown -->
                                 <RichTextBox x:Name="MessagePreview"
