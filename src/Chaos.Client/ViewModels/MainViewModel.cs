@@ -136,30 +136,24 @@ public class ChannelViewModel : INotifyPropertyChanged
         }
     }
 
-    private bool _hasMention;
-    public bool HasMention
+    private int _mentionCount;
+    public int MentionCount
     {
-        get => _hasMention;
+        get => _mentionCount;
         set
         {
-            if (_hasMention == value) return;
-            _hasMention = value;
+            if (_mentionCount == value) return;
+            _mentionCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MentionCount)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasMention)));
         }
     }
 
+    public bool HasMention => MentionCount > 0;
+
     public bool HasUnread => UnreadCount > 0;
 
     public event PropertyChangedEventHandler? PropertyChanged;
-}
-
-public class MentionNotification
-{
-    public string Author { get; set; } = string.Empty;
-    public string ChannelName { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; }
-    public int ChannelId { get; set; }
 }
 
 public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
@@ -202,13 +196,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _typingText = string.Empty;
 
     private object? _activeModal;
-    private bool _isInboxOpen;
+    private List<string> _allKnownUsers = new();
+    private bool _showMentionSuggestions;
+    private int _selectedMentionIndex = -1;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
-    public ObservableCollection<MentionNotification> Mentions { get; } = new();
+    public ObservableCollection<string> MentionSuggestions { get; } = new();
 
     public string ServerAddress
     {
@@ -238,6 +234,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _messageText = value;
             OnPropertyChanged();
             UpdateSlashSuggestions(value);
+            UpdateMentionSuggestions(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -355,35 +352,92 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
 
-    public bool IsInboxOpen
+    public bool ShowMentionSuggestions
     {
-        get => _isInboxOpen;
-        set { _isInboxOpen = value; OnPropertyChanged(); }
+        get => _showMentionSuggestions;
+        set { _showMentionSuggestions = value; OnPropertyChanged(); }
     }
 
-    public int TotalMentionCount => Channels.Count(c => c.HasMention);
-    public bool HasMentions => TotalMentionCount > 0;
+    public int SelectedMentionIndex
+    {
+        get => _selectedMentionIndex;
+        set { _selectedMentionIndex = value; OnPropertyChanged(); }
+    }
 
-    public ICommand ToggleInboxCommand => new RelayCommand(_ => IsInboxOpen = !IsInboxOpen);
-    public ICommand GoToMentionCommand => new RelayCommand(p =>
+    private void UpdateMentionSuggestions(string text)
     {
-        if (p is MentionNotification mention)
+        MentionSuggestions.Clear();
+        SelectedMentionIndex = -1;
+
+        if (string.IsNullOrEmpty(text))
         {
-            var channel = Channels.FirstOrDefault(c => c.Id == mention.ChannelId);
-            if (channel is not null)
-                SelectedTextChannel = channel;
-            IsInboxOpen = false;
+            ShowMentionSuggestions = false;
+            return;
         }
-    });
-    public ICommand DismissMentionCommand => new RelayCommand(p =>
+
+        // Find the last '@' that is not preceded by a word character
+        int atIndex = -1;
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            if (text[i] == '@')
+            {
+                if (i == 0 || !char.IsLetterOrDigit(text[i - 1]))
+                    atIndex = i;
+                break;
+            }
+            if (text[i] == ' ' && atIndex == -1)
+            {
+                // Keep looking for @ before this space
+            }
+        }
+
+        if (atIndex < 0)
+        {
+            ShowMentionSuggestions = false;
+            return;
+        }
+
+        var partial = text[(atIndex + 1)..];
+        if (partial.Contains(' '))
+        {
+            ShowMentionSuggestions = false;
+            return;
+        }
+
+        foreach (var user in _allKnownUsers)
+        {
+            if (user.StartsWith(partial, StringComparison.OrdinalIgnoreCase))
+                MentionSuggestions.Add(user);
+        }
+
+        ShowMentionSuggestions = MentionSuggestions.Count > 0;
+    }
+
+    public void SelectMentionSuggestion(string username)
     {
-        if (p is MentionNotification mention)
-        {
-            Mentions.Remove(mention);
-            OnPropertyChanged(nameof(TotalMentionCount));
-            OnPropertyChanged(nameof(HasMentions));
-        }
-    });
+        var text = MessageText;
+        // Find the last '@'
+        int atIndex = text.LastIndexOf('@');
+        if (atIndex >= 0)
+            MessageText = text[..atIndex] + $"@{username} ";
+        ShowMentionSuggestions = false;
+        SelectedMentionIndex = -1;
+    }
+
+    public void NavigateMentionSuggestions(int direction)
+    {
+        if (MentionSuggestions.Count == 0) return;
+        int next = SelectedMentionIndex + direction;
+        if (next < 0) next = MentionSuggestions.Count - 1;
+        else if (next >= MentionSuggestions.Count) next = 0;
+        SelectedMentionIndex = next;
+    }
+
+    public void DismissMentionSuggestions()
+    {
+        ShowMentionSuggestions = false;
+        SelectedMentionIndex = -1;
+    }
 
     private void UpdateSlashSuggestions(string text)
     {
@@ -445,9 +499,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             {
                 _selectedTextChannel.IsSelected = true;
                 _selectedTextChannel.UnreadCount = 0;
-                _selectedTextChannel.HasMention = false;
-                OnPropertyChanged(nameof(TotalMentionCount));
-                OnPropertyChanged(nameof(HasMentions));
+                _selectedTextChannel.MentionCount = 0;
             }
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasTextChannel));
@@ -635,6 +687,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            _allKnownUsers = await _chatService.GetAllKnownUsersAsync();
 
             SafeDispatch(() =>
             {
@@ -850,26 +903,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 {
                     channel.UnreadCount++;
                     if (indicator.MentionedUsers.Any(u => string.Equals(u, Username, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        channel.HasMention = true;
-                        OnPropertyChanged(nameof(TotalMentionCount));
-                        OnPropertyChanged(nameof(HasMentions));
-                    }
+                        channel.MentionCount++;
                 }
-            }
-
-            if (indicator.MentionedUsers.Any(u => string.Equals(u, Username, StringComparison.OrdinalIgnoreCase)))
-            {
-                Mentions.Insert(0, new MentionNotification
-                {
-                    Author = indicator.Author,
-                    ChannelName = indicator.ChannelName,
-                    Content = indicator.ContentPreview,
-                    Timestamp = indicator.Timestamp,
-                    ChannelId = indicator.ChannelId
-                });
-                OnPropertyChanged(nameof(TotalMentionCount));
-                OnPropertyChanged(nameof(HasMentions));
             }
         });
     }

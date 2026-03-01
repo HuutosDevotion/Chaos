@@ -86,46 +86,53 @@ public class UnreadMentionTests
         Assert.False(raised);
     }
 
-    // ── HasMention changes ─────────────────────────────────────────────────
+    // ── MentionCount changes ────────────────────────────────────────────────
 
     [Fact]
-    public void HasMention_SetTrue_RaisesPropertyChanged()
+    public void MentionCount_Increment_SetsHasMentionTrue()
+    {
+        var ch = TextChannel();
+        ch.MentionCount = 1;
+
+        Assert.True(ch.HasMention);
+        Assert.Equal(1, ch.MentionCount);
+    }
+
+    [Fact]
+    public void MentionCount_SetToZero_SetsHasMentionFalse()
+    {
+        var ch = TextChannel();
+        ch.MentionCount = 3;
+        ch.MentionCount = 0;
+
+        Assert.False(ch.HasMention);
+    }
+
+    [Fact]
+    public void MentionCount_RaisesPropertyChanged()
     {
         var ch = TextChannel();
         var raised = new List<string?>();
         ch.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        ch.HasMention = true;
+        ch.MentionCount = 2;
 
+        Assert.Contains(nameof(ChannelViewModel.MentionCount), raised);
         Assert.Contains(nameof(ChannelViewModel.HasMention), raised);
     }
 
     [Fact]
-    public void HasMention_SetToSameValue_DoesNotRaise()
+    public void MentionCount_SetToSameValue_DoesNotRaise()
     {
         var ch = TextChannel();
-        ch.HasMention = true;
+        ch.MentionCount = 1;
 
         var raised = false;
         ch.PropertyChanged += (_, _) => raised = true;
 
-        ch.HasMention = true;
+        ch.MentionCount = 1;
 
         Assert.False(raised);
-    }
-
-    [Fact]
-    public void HasMention_ResetToFalse_RaisesPropertyChanged()
-    {
-        var ch = TextChannel();
-        ch.HasMention = true;
-
-        var raised = new List<string?>();
-        ch.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
-
-        ch.HasMention = false;
-
-        Assert.Contains(nameof(ChannelViewModel.HasMention), raised);
     }
 
     // ── Simulated unread workflow ──────────────────────────────────────────
@@ -152,39 +159,17 @@ public class UnreadMentionTests
     {
         var ch = TextChannel();
 
-        // Simulate receiving a mention
+        // Simulate receiving mentions
         ch.UnreadCount = 1;
-        ch.HasMention = true;
+        ch.MentionCount = 1;
         Assert.True(ch.HasMention);
         Assert.True(ch.HasUnread);
 
         // Simulate selecting the channel (clears both)
         ch.UnreadCount = 0;
-        ch.HasMention = false;
+        ch.MentionCount = 0;
         Assert.False(ch.HasMention);
         Assert.False(ch.HasUnread);
-    }
-
-    // ── MentionNotification model ──────────────────────────────────────────
-
-    [Fact]
-    public void MentionNotification_PropertiesRoundTrip()
-    {
-        var now = DateTime.UtcNow;
-        var notification = new MentionNotification
-        {
-            Author = "alice",
-            ChannelName = "general",
-            Content = "Hey @bob check this out",
-            Timestamp = now,
-            ChannelId = 42
-        };
-
-        Assert.Equal("alice", notification.Author);
-        Assert.Equal("general", notification.ChannelName);
-        Assert.Equal("Hey @bob check this out", notification.Content);
-        Assert.Equal(now, notification.Timestamp);
-        Assert.Equal(42, notification.ChannelId);
     }
 
     // ── Multiple channels unread state ─────────────────────────────────────
@@ -197,7 +182,7 @@ public class UnreadMentionTests
 
         ch1.UnreadCount = 5;
         ch2.UnreadCount = 2;
-        ch2.HasMention = true;
+        ch2.MentionCount = 1;
 
         Assert.True(ch1.HasUnread);
         Assert.False(ch1.HasMention);

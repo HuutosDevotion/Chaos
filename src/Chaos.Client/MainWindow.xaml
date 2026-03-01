@@ -750,27 +750,24 @@
                                             </Style>
                                         </Button.Style>
                                         <DockPanel>
-                                            <!-- Unread badge (right-aligned) -->
+                                            <!-- Red mention count badge (right-aligned, visible only for mentions) -->
                                             <Border DockPanel.Dock="Right" CornerRadius="8"
                                                     MinWidth="18" Height="18"
                                                     Padding="5,1" Margin="4,0,0,0"
+                                                    Background="{StaticResource AccentRedBrush}"
                                                     VerticalAlignment="Center"
                                                     HorizontalAlignment="Right">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="{StaticResource AccentBlueBrush}" />
                                                         <Setter Property="Visibility" Value="Collapsed" />
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasUnread}" Value="True">
-                                                                <Setter Property="Visibility" Value="Visible" />
-                                                            </DataTrigger>
                                                             <DataTrigger Binding="{Binding HasMention}" Value="True">
-                                                                <Setter Property="Background" Value="{StaticResource AccentRedBrush}" />
+                                                                <Setter Property="Visibility" Value="Visible" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
                                                 </Border.Style>
-                                                <TextBlock Text="{Binding UnreadCount}"
+                                                <TextBlock Text="{Binding MentionCount}"
                                                            Foreground="White" FontSize="11"
                                                            FontWeight="Bold"
                                                            HorizontalAlignment="Center"
@@ -778,6 +775,24 @@
                                             </Border>
 
                                             <StackPanel Orientation="Horizontal">
+                                                <!-- White unread dot (left of channel name, visible when unread but no mention) -->
+                                                <Ellipse Width="8" Height="8" Fill="White"
+                                                         VerticalAlignment="Center" Margin="0,0,4,0">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding HasUnread}" Value="True" />
+                                                                        <Condition Binding="{Binding HasMention}" Value="False" />
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
                                                 <TextBlock Text="{Binding Icon}"
                                                            FontSize="16" Margin="0,0,6,0"
                                                            VerticalAlignment="Center">
@@ -944,7 +959,6 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
@@ -982,34 +996,7 @@
                             </Button.ToolTip>
                         </Button>
 
-                        <!-- Inbox Button with mention badge -->
-                        <Button x:Name="InboxAnchor" Grid.Column="3"
-                                Style="{StaticResource DarkButton}"
-                                Command="{Binding ToggleInboxCommand}"
-                                FontSize="13" Padding="6,4"
-                                Margin="4,0,0,0" VerticalAlignment="Center"
-                                behaviors:TooltipHelper.CenterOnElement="True"
-                                ToolTipService.InitialShowDelay="0">
-                            <Grid>
-                                <TextBlock Text="&#x2709;" FontSize="14" />
-                                <Border CornerRadius="6" Background="{StaticResource AccentRedBrush}"
-                                        MinWidth="14" Height="14"
-                                        Padding="3,0" Margin="10,-8,-6,0"
-                                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Visibility="{Binding HasMentions, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="{Binding TotalMentionCount}"
-                                               Foreground="White" FontSize="9"
-                                               FontWeight="Bold"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                </Border>
-                            </Grid>
-                            <Button.ToolTip>
-                                <ToolTip Content="Inbox" />
-                            </Button.ToolTip>
-                        </Button>
-
-                        <Button Grid.Column="4" Content="⚙"
+                        <Button Grid.Column="3" Content="⚙"
                                 Style="{StaticResource DarkButton}"
                                 Command="{Binding OpenSettingsCommand}"
                                 FontSize="13" Padding="6,4"
@@ -1023,104 +1010,6 @@
                     </Grid>
                 </Border>
 
-                <!-- Inbox Popup Panel -->
-                <Popup IsOpen="{Binding IsInboxOpen}" StaysOpen="False"
-                       Placement="Top" PlacementTarget="{Binding ElementName=InboxAnchor}"
-                       AllowsTransparency="True" PopupAnimation="Fade"
-                       HorizontalOffset="-10" VerticalOffset="-4">
-                    <Border Background="{StaticResource BgDarkBrush}"
-                            BorderBrush="#40FFFFFF" BorderThickness="1"
-                            CornerRadius="8" Width="320" MaxHeight="400">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
-                                    Padding="12,10">
-                                <TextBlock Text="INBOX" FontSize="12" FontWeight="Bold"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
-                            </Border>
-
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                                          MaxHeight="340">
-                                <ItemsControl ItemsSource="{Binding Mentions}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Cursor="Hand"
-                                                    Command="{Binding DataContext.GoToMentionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}">
-                                                <Button.Style>
-                                                    <Style TargetType="Button">
-                                                        <Setter Property="Background" Value="Transparent" />
-                                                        <Setter Property="BorderThickness" Value="0" />
-                                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                                        <Setter Property="Template">
-                                                            <Setter.Value>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                                                            Padding="12,8" BorderBrush="#222326"
-                                                                            BorderThickness="0,0,0,1">
-                                                                        <ContentPresenter />
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Setter.Value>
-                                                        </Setter>
-                                                    </Style>
-                                                </Button.Style>
-                                                <StackPanel>
-                                                    <DockPanel>
-                                                        <TextBlock DockPanel.Dock="Right"
-                                                                   Text="{Binding Timestamp, StringFormat='{}{0:HH:mm}'}"
-                                                                   Foreground="{StaticResource TextMutedBrush}"
-                                                                   FontSize="10" VerticalAlignment="Center" />
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="{Binding Author}"
-                                                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                                                       FontSize="12" FontWeight="SemiBold" />
-                                                            <TextBlock Foreground="{StaticResource TextMutedBrush}"
-                                                                       FontSize="11" Margin="6,0,0,0"
-                                                                       VerticalAlignment="Center">
-                                                                <Run Text="in #" /><Run Text="{Binding ChannelName, Mode=OneWay}" />
-                                                            </TextBlock>
-                                                        </StackPanel>
-                                                    </DockPanel>
-                                                    <TextBlock Text="{Binding Content}"
-                                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                                               FontSize="12" TextTrimming="CharacterEllipsis"
-                                                               MaxHeight="36" Margin="0,4,0,0" />
-                                                </StackPanel>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-
-                            <!-- Empty state -->
-                            <TextBlock Grid.Row="1" Text="No mentions yet"
-                                       Foreground="{StaticResource TextMutedBrush}"
-                                       FontSize="13" HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" Margin="0,20">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Mentions.Count}" Value="0">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </Grid>
-                    </Border>
-                </Popup>
             </Grid>
 
             <!-- Resize handle between left sidebar and chat -->
@@ -1291,6 +1180,57 @@
                                                        FontSize="11" Margin="12,0,0,0"
                                                        VerticalAlignment="Center" />
                                         </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+
+                        <!-- @ Mention Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowMentionSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="MentionSuggestionList"
+                                     ItemsSource="{Binding MentionSuggestions}"
+                                     SelectedIndex="{Binding SelectedMentionIndex, Mode=TwoWay}"
+                                     Focusable="False"
+                                     MaxHeight="200"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="MentionSuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontSize="14" VerticalAlignment="Center">
+                                            <Run Text="@" Foreground="{StaticResource AccentBlueBrush}" FontWeight="SemiBold" /><Run Text="{Binding Mode=OneWay}" Foreground="{StaticResource TextPrimaryBrush}" />
+                                        </TextBlock>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>

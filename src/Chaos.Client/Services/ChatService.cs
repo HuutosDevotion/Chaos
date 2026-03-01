@@ -170,6 +170,13 @@ public class ChatService : IAsyncDisposable
         return new();
     }
 
+    public async Task<List<string>> GetAllKnownUsersAsync()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<string>>("GetAllKnownUsers");
+        return new();
+    }
+
     public async Task<Dictionary<int, List<VoiceMemberDto>>> GetAllVoiceMembers()
     {
         if (_connection is not null)

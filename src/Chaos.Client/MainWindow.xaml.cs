@@ -2,7 +2,6 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -200,6 +199,13 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
+                if (args.PropertyName == nameof(MainViewModel.SelectedMentionIndex))
+                {
+                    int idx = vm.SelectedMentionIndex;
+                    if (idx >= 0 && idx < vm.MentionSuggestions.Count)
+                        MentionSuggestionList.ScrollIntoView(vm.MentionSuggestions[idx]);
+                }
+
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
                     {
@@ -263,26 +269,26 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
+        if (DataContext is MainViewModel vm && vm.ShowMentionSuggestions)
         {
             if (e.Key == Key.Down)
             {
-                vm.NavigateSuggestions(1);
+                vm.NavigateMentionSuggestions(1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Up)
             {
-                vm.NavigateSuggestions(-1);
+                vm.NavigateMentionSuggestions(-1);
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Tab)
+            if (e.Key == Key.Tab || (e.Key == Key.Enter && vm.SelectedMentionIndex >= 0))
             {
-                int idx = vm.SelectedSuggestionIndex >= 0 ? vm.SelectedSuggestionIndex : 0;
-                if (idx < vm.SlashSuggestions.Count)
+                int idx = vm.SelectedMentionIndex >= 0 ? vm.SelectedMentionIndex : 0;
+                if (idx < vm.MentionSuggestions.Count)
                 {
-                    vm.SelectSuggestion(vm.SlashSuggestions[idx]);
+                    vm.SelectMentionSuggestion(vm.MentionSuggestions[idx]);
                     MessageInput.CaretIndex = MessageInput.Text.Length;
                 }
                 e.Handled = true;
@@ -290,13 +296,46 @@ public partial class MainWindow : Window
             }
             if (e.Key == Key.Escape)
             {
-                vm.DismissSuggestions();
+                vm.DismissMentionSuggestions();
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Enter && vm.SelectedSuggestionIndex >= 0)
+        }
+
+        if (DataContext is MainViewModel vm1 && vm1.ShowSlashSuggestions)
+        {
+            if (e.Key == Key.Down)
             {
-                vm.SelectSuggestion(vm.SlashSuggestions[vm.SelectedSuggestionIndex]);
+                vm1.NavigateSuggestions(1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Up)
+            {
+                vm1.NavigateSuggestions(-1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Tab)
+            {
+                int idx = vm1.SelectedSuggestionIndex >= 0 ? vm1.SelectedSuggestionIndex : 0;
+                if (idx < vm1.SlashSuggestions.Count)
+                {
+                    vm1.SelectSuggestion(vm1.SlashSuggestions[idx]);
+                    MessageInput.CaretIndex = MessageInput.Text.Length;
+                }
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Escape)
+            {
+                vm1.DismissSuggestions();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.Enter && vm1.SelectedSuggestionIndex >= 0)
+            {
+                vm1.SelectSuggestion(vm1.SlashSuggestions[vm1.SelectedSuggestionIndex]);
                 MessageInput.CaretIndex = MessageInput.Text.Length;
                 e.Handled = true;
                 return;
@@ -363,6 +402,19 @@ public partial class MainWindow : Window
             DataContext is MainViewModel vm)
         {
             vm.SelectSuggestion(cmd);
+            MessageInput.Focus();
+            MessageInput.CaretIndex = MessageInput.Text.Length;
+            e.Handled = true;
+        }
+    }
+
+    private void MentionSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is string username &&
+            DataContext is MainViewModel vm)
+        {
+            vm.SelectMentionSuggestion(username);
             MessageInput.Focus();
             MessageInput.CaretIndex = MessageInput.Text.Length;
             e.Handled = true;
@@ -549,27 +601,9 @@ public partial class MainWindow : Window
         var vm        = DataContext as MainViewModel;
         double fontSize = vm?.Settings.FontSize ?? 14;
 
-        var connectedUsers = vm?.ConnectedUsers;
-        var currentUser = vm?.Username ?? string.Empty;
-        bool mentionsCurrentUser = !string.IsNullOrEmpty(msg.Content)
-            && !string.IsNullOrEmpty(currentUser)
-            && Regex.IsMatch(msg.Content, $@"@{Regex.Escape(currentUser)}(?!\w)", RegexOptions.IgnoreCase);
-
-        var mentionHighlightBg = new SolidColorBrush(Color.FromArgb(25, 88, 101, 242));
-        mentionHighlightBg.Freeze();
-        var mentionHighlightBorder = new SolidColorBrush(Color.FromArgb(80, 88, 101, 242));
-        mentionHighlightBorder.Freeze();
-
         if (msg.ShowHeader)
         {
             var p = new Paragraph { Margin = new Thickness(0, msg.Padding.Top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
-            if (mentionsCurrentUser)
-            {
-                p.Background = mentionHighlightBg;
-                p.BorderBrush = mentionHighlightBorder;
-                p.BorderThickness = new Thickness(2, 0, 0, 0);
-                p.Padding = new Thickness(14, 0, 16, 0);
-            }
             p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
@@ -578,35 +612,8 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(msg.Content))
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
-            var accentBlue = (Brush)FindResource("AccentBlueBrush");
-            var mentionTextBg = new SolidColorBrush(Color.FromArgb(50, 88, 101, 242));
-            mentionTextBg.Freeze();
-
             var p = new Paragraph { Margin = new Thickness(0, top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
-            if (mentionsCurrentUser)
-            {
-                p.Background = mentionHighlightBg;
-                p.BorderBrush = mentionHighlightBorder;
-                p.BorderThickness = new Thickness(2, 0, 0, 0);
-                p.Padding = new Thickness(14, 0, 16, 0);
-            }
-            foreach (var segment in MentionParser.Parse(msg.Content, connectedUsers))
-            {
-                if (segment.IsMention)
-                {
-                    p.Inlines.Add(new Run(segment.Text)
-                    {
-                        Foreground = accentBlue,
-                        FontWeight = FontWeights.SemiBold,
-                        Background = mentionTextBg
-                    });
-                }
-                else
-                {
-                    p.Inlines.Add(new Run(segment.Text) { Foreground = secondary });
-                }
-            }
-
+            p.Inlines.Add(new Run(msg.Content) { Foreground = secondary });
             doc.Blocks.Add(p);
         }
 
