@@ -590,8 +590,11 @@ public partial class MainWindow : Window
         int lineEndPos   = text.IndexOf('\n', lineStartPos);
         if (lineEndPos < 0) lineEndPos = text.Length;
         string currentLine = text[lineStartPos..lineEndPos];
-        var alignMatch = AlignmentLine.Match(currentLine);
+        var alignMatch = AlignmentLine.Match(currentLine.TrimEnd('\r'));
         string? activeAlign = alignMatch.Success ? alignMatch.Groups[1].Value : null;
+        if (activeAlign == null)
+            foreach (Match m in AlignmentBlock.Matches(text))
+                if (pos > m.Index && pos < m.Index + m.Length) { activeAlign = m.Groups[1].Value; break; }
         TooltipHelper.SetIsActive(AlignLeftButton,    activeAlign == "left");
         TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
         TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
@@ -936,16 +939,43 @@ public partial class MainWindow : Window
     private static readonly Regex AlignmentLine =
         new(@"^:(left|center|right|justify) (.*):$", RegexOptions.Compiled);
 
+    // Multiline version: ^ anchors per-line so it can find blocks anywhere in the full text.
+    private static readonly Regex AlignmentBlock =
+        new(@"^:(left|center|right|justify) ([\s\S]+?):$", RegexOptions.Compiled | RegexOptions.Multiline);
+
     private void ApplyAlignmentToLines(string align)
     {
         int origStart  = MessageInput.SelectionStart;
         int origLength = MessageInput.SelectionLength;
+        string prefix  = $":{align} ";
+
+        // No selection: check if cursor is inside a multiline alignment block and act on the whole block.
+        if (origLength == 0)
+        {
+            string fullText = MessageInput.Text;
+            Match? enclosing = null;
+            foreach (Match m in AlignmentBlock.Matches(fullText))
+                if (origStart > m.Index && origStart < m.Index + m.Length) { enclosing = m; break; }
+
+            if (enclosing != null)
+            {
+                string existingAlign = enclosing.Groups[1].Value;
+                string content       = enclosing.Groups[2].Value;
+                string newBlock      = existingAlign == align ? content : $"{prefix}{content}:";
+                int bStart = enclosing.Index;
+                int bEnd   = enclosing.Index + enclosing.Length;
+                MessageInput.Text = fullText[..bStart] + newBlock + fullText[bEnd..];
+                int delta = newBlock.Length - (bEnd - bStart);
+                MessageInput.SelectionStart  = Math.Clamp(origStart + delta, bStart, bStart + newBlock.Length);
+                MessageInput.SelectionLength = 0;
+                MessageInput.Focus();
+                return;
+            }
+        }
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
-        string region = MessageInput.Text[lineStart..lineEnd].Replace("\r\n", "\n").Replace("\r", "\n");
-
+        string region = MessageInput.Text[lineStart..lineEnd].Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd('\n');
         string newRegion;
-        string prefix = $":{align} ";
 
         var single = AlignmentLine.Match(region);
         if (single.Success && single.Length == region.Length)
@@ -955,21 +985,26 @@ public partial class MainWindow : Window
             string content  = single.Groups[2].Value;
             newRegion = existing == align ? content : $"{prefix}{content}:";
         }
-        else if (region.StartsWith(prefix) && region.EndsWith(":"))
-        {
-            // Multiline block with the same alignment — remove wrapper
-            newRegion = region[prefix.Length..^1];
-        }
         else
         {
-            // Strip any existing per-line alignment wrappers, then wrap the whole region
-            string[] lines = region.Split('\n');
-            string content = string.Join("\n", lines.Select(line =>
+            var block = AlignmentBlock.Match(region);
+            if (block.Success && block.Index == 0 && block.Length == region.Length)
             {
-                var m = AlignmentLine.Match(line);
-                return m.Success ? m.Groups[2].Value : line;
-            }));
-            newRegion = $"{prefix}{content}:";
+                // Multiline block: toggle off or swap alignment
+                string existing = block.Groups[1].Value;
+                string content  = block.Groups[2].Value;
+                newRegion = existing == align ? content : $"{prefix}{content}:";
+            }
+            else
+            {
+                // Strip any per-line wrappers, then wrap the whole region as one block
+                string content = string.Join("\n", region.Split('\n').Select(line =>
+                {
+                    var m = AlignmentLine.Match(line);
+                    return m.Success ? m.Groups[2].Value : line;
+                }));
+                newRegion = $"{prefix}{content}:";
+            }
         }
 
         MessageInput.Text = MessageInput.Text[..lineStart] + newRegion + MessageInput.Text[lineEnd..];
