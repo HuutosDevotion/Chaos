@@ -135,6 +135,22 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
     public ObservableCollection<string> InputDevices { get; } = new();
     public ObservableCollection<string> OutputDevices { get; } = new();
 
+    // Voice mode
+    public bool IsVoiceActivity
+    {
+        get => Settings.VoiceMode == VoiceMode.VoiceActivity;
+        set { if (value) Settings.VoiceMode = VoiceMode.VoiceActivity; OnPropertyChanged(); OnPropertyChanged(nameof(IsPushToTalk)); }
+    }
+
+    public bool IsPushToTalk
+    {
+        get => Settings.VoiceMode == VoiceMode.PushToTalk;
+        set { if (value) Settings.VoiceMode = VoiceMode.PushToTalk; OnPropertyChanged(); OnPropertyChanged(nameof(IsVoiceActivity)); }
+    }
+
+    // Opus bitrate options
+    public int[] BitrateOptions { get; } = { 32000, 48000, 64000, 96000 };
+
     public bool IsMicTesting
     {
         get => _isMicTesting;
@@ -175,6 +191,11 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
                 _micTestWaveOut.Volume = Math.Clamp(Settings.OutputVolume, 0f, 1f);
             if (e.PropertyName == nameof(AppSettings.InputDevice))
                 StartThresholdMonitor();
+            if (e.PropertyName == nameof(AppSettings.VoiceMode))
+            {
+                OnPropertyChanged(nameof(IsVoiceActivity));
+                OnPropertyChanged(nameof(IsPushToTalk));
+            }
         };
 
         InputDevices.Add("Default");
@@ -220,7 +241,7 @@ public class VoiceSettingsViewModel : SettingsPageViewModel
             _micTestWaveIn = new WaveInEvent
             {
                 WaveFormat = MicTestFormat,
-                BufferMilliseconds = 40,
+                BufferMilliseconds = 20,
                 DeviceNumber = ResolveInputDevice(Settings.InputDevice)
             };
             _micTestWaveIn.DataAvailable += OnMicTestDataAvailable;

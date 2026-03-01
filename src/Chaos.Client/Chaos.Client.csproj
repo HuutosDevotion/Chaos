@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.*" />
+    <PackageReference Include="Concentus" Version="2.*" />
     <PackageReference Include="NAudio" Version="2.2.*" />
   </ItemGroup>
 

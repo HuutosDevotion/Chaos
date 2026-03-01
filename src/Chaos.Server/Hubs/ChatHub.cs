@@ -15,6 +15,8 @@ public class ConnectedUser
     public int? TextChannelId { get; set; }
     public int? VoiceChannelId { get; set; }
     public int VoiceUserId { get; set; } // matches the userId in UDP packets
+    public bool IsMuted { get; set; }
+    public bool IsDeafened { get; set; }
 }
 
 public class ChatHub : Hub
@@ -40,6 +42,8 @@ public class ChatHub : Hub
         await Clients.All.SendAsync("UserConnected", username);
         await Clients.Caller.SendAsync("UsernameSet", username);
     }
+
+    public Task Ping() => Clients.Caller.SendAsync("Pong");
 
     public List<SlashCommandDto> GetAvailableCommands() => _commandDispatcher.GetCommandInfos();
 
@@ -182,8 +186,21 @@ public class ChatHub : Hub
             .ToDictionary(g => g.Key, g => g.Select(u => new VoiceMemberDto
             {
                 Username = u.Username,
-                VoiceUserId = u.VoiceUserId
+                VoiceUserId = u.VoiceUserId,
+                IsMuted = u.IsMuted,
+                IsDeafened = u.IsDeafened
             }).ToList());
+    }
+
+    public async Task UpdateMuteState(bool isMuted, bool isDeafened)
+    {
+        if (_users.TryGetValue(Context.ConnectionId, out var user) && user.VoiceChannelId.HasValue)
+        {
+            user.IsMuted = isMuted;
+            user.IsDeafened = isDeafened;
+            await Clients.All.SendAsync("UserMuteStateChanged",
+                user.Username, user.VoiceChannelId.Value, isMuted, isDeafened);
+        }
     }
 
     public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
