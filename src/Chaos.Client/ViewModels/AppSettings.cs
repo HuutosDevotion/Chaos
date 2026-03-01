@@ -13,6 +13,7 @@ public class AppSettings : INotifyPropertyChanged
     private double _messageSpacing = 4;
     private double _uiScale = 1.0;
     private bool _groupMessages;
+    private bool _showFormattingToolbar;
 
     public double FontSize
     {
@@ -48,6 +49,12 @@ public class AppSettings : INotifyPropertyChanged
     {
         get => _groupMessages;
         set { if (_groupMessages == value) return; _groupMessages = value; OnPropertyChanged(); }
+    }
+
+    public bool ShowFormattingToolbar
+    {
+        get => _showFormattingToolbar;
+        set { if (_showFormattingToolbar == value) return; _showFormattingToolbar = value; OnPropertyChanged(); }
     }
 
     // ── Voice ─────────────────────────────────────────────────────────────────

@@ -203,6 +203,35 @@ public class AppSettingsTests
         Assert.False(raised);
     }
 
+    // ── ShowFormattingToolbar ─────────────────────────────────────────────────
+
+    [Fact]
+    public void ShowFormattingToolbar_DefaultsFalse() => Assert.False(new AppSettings().ShowFormattingToolbar);
+
+    [Fact]
+    public void ShowFormattingToolbar_SetTrue_RaisesPropertyChanged()
+    {
+        var s = new AppSettings();
+        var raised = new List<string?>();
+        s.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        s.ShowFormattingToolbar = true;
+
+        Assert.Contains(nameof(AppSettings.ShowFormattingToolbar), raised);
+    }
+
+    [Fact]
+    public void ShowFormattingToolbar_SetSameValue_DoesNotRaise()
+    {
+        var s = new AppSettings();
+        var raised = false;
+        s.PropertyChanged += (_, _) => raised = true;
+
+        s.ShowFormattingToolbar = false;
+
+        Assert.False(raised);
+    }
+
     // ── INotifyPropertyChanged — device and volume properties ─────────────────
 
     [Fact]
