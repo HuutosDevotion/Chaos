@@ -41,6 +41,8 @@ public class ScreenShareService : IDisposable
 
     private StreamQuality _quality = StreamQuality.Medium;
     private int _frameId;
+    private int _consecutiveCaptureFailures;
+    private const int MaxConsecutiveFailures = 300; // ~30s at 10fps
 
     public event Action<int, BitmapSource>? FrameReceived; // senderId, frame
     public event Action<string>? Error;
@@ -118,13 +120,29 @@ public class ScreenShareService : IDisposable
 
         while (!ct.IsCancellationRequested)
         {
-            // Check if window target is still alive
-            if (target.Type == CaptureTargetType.Window && !IsWindow(target.Handle))
+            // Bug fix #1: Check if window target is still alive — tolerate minimized windows
+            if (target.Type == CaptureTargetType.Window)
             {
-                SendUnregister();
-                _isStreaming = false;
-                Error?.Invoke("Captured window was closed.");
-                return;
+                if (!IsWindow(target.Handle))
+                {
+                    _consecutiveCaptureFailures++;
+                    if (_consecutiveCaptureFailures >= MaxConsecutiveFailures)
+                    {
+                        SendUnregister();
+                        _isStreaming = false;
+                        Error?.Invoke("Captured window was closed.");
+                        return;
+                    }
+                    Thread.Sleep(frameInterval);
+                    continue;
+                }
+
+                // Skip capture when minimized but don't stop
+                if (IsIconic(target.Handle))
+                {
+                    Thread.Sleep(frameInterval);
+                    continue;
+                }
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -133,9 +151,21 @@ public class ScreenShareService : IDisposable
                 var jpegData = CaptureTargetAsJpeg(target, preset.W, preset.H, preset.Q);
 
                 if (jpegData is null || jpegData.Length == 0)
+                {
+                    _consecutiveCaptureFailures++;
+                    if (_consecutiveCaptureFailures >= MaxConsecutiveFailures)
+                    {
+                        SendUnregister();
+                        _isStreaming = false;
+                        Error?.Invoke("Capture failed repeatedly — stopping stream.");
+                        return;
+                    }
                     continue;
+                }
 
-                _frameId++;
+                _consecutiveCaptureFailures = 0;
+
+                var currentFrameId = Interlocked.Increment(ref _frameId);
 
                 // Packet format:
                 //   Single:     [4B userId][4B channelId][4B frameId][1B flags=0x00][jpegData]
@@ -150,11 +180,13 @@ public class ScreenShareService : IDisposable
                     var packet = new byte[singleHeaderSize + jpegData.Length];
                     BitConverter.GetBytes(_videoUserId).CopyTo(packet, 0);
                     BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
-                    BitConverter.GetBytes(_frameId).CopyTo(packet, 8);
+                    BitConverter.GetBytes(currentFrameId).CopyTo(packet, 8);
                     packet[12] = 0x00; // single-frame flag
                     Buffer.BlockCopy(jpegData, 0, packet, singleHeaderSize, jpegData.Length);
 
-                    _udpClient?.Send(packet, packet.Length, _serverEndpoint);
+                    // Bug fix #4: null-check udpClient before send (may be disposed during shutdown)
+                    var client = _udpClient;
+                    client?.Send(packet, packet.Length, _serverEndpoint);
                 }
                 else
                 {
@@ -169,13 +201,16 @@ public class ScreenShareService : IDisposable
                         var packet = new byte[fragHeaderSize + len];
                         BitConverter.GetBytes(_videoUserId).CopyTo(packet, 0);
                         BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
-                        BitConverter.GetBytes(_frameId).CopyTo(packet, 8);
+                        BitConverter.GetBytes(currentFrameId).CopyTo(packet, 8);
                         packet[12] = 0x01; // fragmented flag
                         BitConverter.GetBytes((short)i).CopyTo(packet, 13);
                         BitConverter.GetBytes((short)totalChunks).CopyTo(packet, 15);
                         Buffer.BlockCopy(jpegData, offset, packet, fragHeaderSize, len);
 
-                        _udpClient?.Send(packet, packet.Length, _serverEndpoint);
+                        // Bug fix #4: null-check udpClient before send
+                        var client = _udpClient;
+                        if (client is null || ct.IsCancellationRequested) break;
+                        client.Send(packet, packet.Length, _serverEndpoint);
                     }
                 }
 
@@ -199,8 +234,8 @@ public class ScreenShareService : IDisposable
 
     private async Task ReceiveLoop(CancellationToken ct)
     {
-        // Buffer for fragmented frames: frameId -> (chunks[], received count, total)
-        var frameBuffer = new Dictionary<int, (byte[][] Chunks, int Received, int Total)>();
+        // Buffer for fragmented frames: frameId -> (chunks[], received count, total, firstSeen)
+        var frameBuffer = new Dictionary<int, (byte[][] Chunks, int Received, int Total, DateTime FirstSeen)>();
 
         while (!ct.IsCancellationRequested && _udpClient is not null)
         {
@@ -216,6 +251,15 @@ public class ScreenShareService : IDisposable
                 int frameId = BitConverter.ToInt32(data, 8);
                 byte flags = data[12];
 
+                // Bug fix #2: Clean stale incomplete frames on EVERY packet (not just fragments)
+                // Also use time-based eviction (2s timeout) for incomplete frames
+                var now = DateTime.UtcNow;
+                var staleIds = frameBuffer.Keys.Where(k =>
+                    k < frameId - 10 ||
+                    (now - frameBuffer[k].FirstSeen).TotalSeconds > 2).ToList();
+                foreach (var id in staleIds)
+                    frameBuffer.Remove(id);
+
                 byte[] jpegData;
 
                 if (flags == 0x01 && data.Length >= 17)
@@ -227,7 +271,7 @@ public class ScreenShareService : IDisposable
 
                     if (!frameBuffer.TryGetValue(frameId, out var entry))
                     {
-                        entry = (new byte[totalChunks][], 0, totalChunks);
+                        entry = (new byte[totalChunks][], 0, totalChunks, DateTime.UtcNow);
                         frameBuffer[frameId] = entry;
                     }
 
@@ -238,10 +282,6 @@ public class ScreenShareService : IDisposable
                         entry.Received++;
                         frameBuffer[frameId] = entry;
                     }
-
-                    // Clean stale incomplete frames on every packet to prevent unbounded growth
-                    var staleIds = frameBuffer.Keys.Where(k => k < frameId - 10).ToList();
-                    foreach (var id in staleIds) frameBuffer.Remove(id);
 
                     if (entry.Received < entry.Total)
                         continue;
@@ -406,8 +446,8 @@ public class ScreenShareService : IDisposable
         _isStreaming = false;
         _isWatching = false;
 
-        // Wait for background work to finish before disposing shared resources
-        _captureThread?.Join(TimeSpan.FromSeconds(2));
+        // Bug fix #4: Increase join timeout to give capture thread time to exit cleanly
+        _captureThread?.Join(TimeSpan.FromSeconds(5));
         _captureThread = null;
 
         SendUnregister();
@@ -464,6 +504,7 @@ public class ScreenShareService : IDisposable
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
     [DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int w, int h);
     [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);

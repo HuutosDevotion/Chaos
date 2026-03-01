@@ -981,6 +981,7 @@
                         <!-- Screen Share Button -->
                         <Button Content="{Binding ScreenShareButtonText}"
                                 Command="{Binding ToggleScreenShareCommand}"
+                                ToolTip="Screen share is video only. Voice chat continues separately."
                                 FontSize="11" Padding="0,5" Margin="0,6,0,0"
                                 Cursor="Hand" BorderThickness="0">
                             <Button.Style>
