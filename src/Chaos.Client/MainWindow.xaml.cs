@@ -564,116 +564,36 @@ public partial class MainWindow : Window
     private void FormatUnderline_Click(object sender, RoutedEventArgs e)     => ToggleInlineFormat("__");
     private void FormatStrikethrough_Click(object sender, RoutedEventArgs e) => ToggleInlineFormat("~~");
 
-    // Regex patterns for 2-char delimiter spans (bold, underline, strikethrough).
-    // (?!\s) / (?<!\s) mirror CommonMark: ** must touch non-whitespace on both sides.
-    // This prevents "** text **" from being swallowed as bold, leaving lone * chars
-    // available for the italic scan.
-    // Bold is always the outer wrapper, so *** = ** wrapping *...*
-    private static readonly Regex BoldItalicSpan = new(@"\*\*\*(?!\s)(.*?)(?<!\s)\*\*\*", RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex BoldSpan       = new(@"\*\*(?!\s)(.*?)(?<!\s)\*\*",     RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex UnderlineSpan  = new(@"__(.*?)__",                       RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex StrikeSpan     = new(@"~~(.*?)~~",                       RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex CodeSpan            = new(@"`(.+?)`",     RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex TripleInlineCodeSpan = new(@"```(.+?)```", RegexOptions.Compiled | RegexOptions.Singleline);
+    // Span regex patterns and cursor-detection helpers live in FormatDetection (see FormatDetection.cs).
 
     private void UpdateFormatButtonStates()
     {
         string text = MessageInput.Text;
         int pos = MessageInput.SelectionStart;
-        bool inBoldItalic = IsCursorInSpan(text, pos, BoldItalicSpan, 3);
-        TooltipHelper.SetIsActive(BoldButton,          inBoldItalic || IsCursorInSpan(text, pos, BoldSpan, 2));
-        TooltipHelper.SetIsActive(ItalicButton,        inBoldItalic || IsCursorInItalicSpan(text, pos));
-        TooltipHelper.SetIsActive(UnderlineButton,     IsCursorInSpan(text, pos, UnderlineSpan, 2));
-        TooltipHelper.SetIsActive(StrikethroughButton, IsCursorInSpan(text, pos, StrikeSpan, 2));
+        bool inBoldItalic = FormatDetection.IsCursorInSpan(text, pos, FormatDetection.BoldItalicSpan, 3);
+        TooltipHelper.SetIsActive(BoldButton,          inBoldItalic || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.BoldSpan, 2));
+        TooltipHelper.SetIsActive(ItalicButton,        inBoldItalic || FormatDetection.IsCursorInItalicSpan(text, pos));
+        TooltipHelper.SetIsActive(UnderlineButton,     FormatDetection.IsCursorInSpan(text, pos, FormatDetection.UnderlineSpan, 2));
+        TooltipHelper.SetIsActive(StrikethroughButton, FormatDetection.IsCursorInSpan(text, pos, FormatDetection.StrikeSpan, 2));
 
         int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
-        int lineEndPos   = text.IndexOf('\n', lineStartPos);
-        if (lineEndPos < 0) lineEndPos = text.Length;
-        string currentLine = text[lineStartPos..lineEndPos];
-        var alignMatch = AlignmentLine.Match(currentLine.TrimEnd('\r'));
-        string? activeAlign = alignMatch.Success ? alignMatch.Groups[1].Value : null;
-        if (activeAlign == null)
-            foreach (Match m in AlignmentBlock.Matches(text))
-                if (pos > m.Index && pos < m.Index + m.Length) { activeAlign = m.Groups[1].Value; break; }
+        string? activeAlign = FormatDetection.GetActiveAlignment(text, pos);
         TooltipHelper.SetIsActive(AlignLeftButton,    activeAlign == "left");
         TooltipHelper.SetIsActive(AlignCenterButton,  activeAlign == "center");
         TooltipHelper.SetIsActive(AlignRightButton,   activeAlign == "right");
         TooltipHelper.SetIsActive(AlignJustifyButton, activeAlign == "justify");
-        bool inFencedCode = IsLineInFencedBlock(text, lineStartPos);
+        bool inFencedCode = FormatDetection.IsLineInFencedBlock(text, lineStartPos);
         TooltipHelper.SetIsActive(CodeButton,  inFencedCode
-            || IsCursorInSpan(text, pos, CodeSpan, 1)
-            || IsCursorInSpan(text, pos, TripleInlineCodeSpan, 3));
+            || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.CodeSpan, 1)
+            || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.TripleInlineCodeSpan, 3));
+        int lineEndPos = text.IndexOf('\n', lineStartPos);
+        if (lineEndPos < 0) lineEndPos = text.Length;
+        string currentLine = text[lineStartPos..lineEndPos];
         TooltipHelper.SetIsActive(QuoteButton, currentLine.StartsWith("> "));
     }
 
     // Returns true when `pos` falls inside the content region of any span matched by `pattern`.
     // markerLen is the length of the opening/closing delimiter (** = 2, __ = 2, ~~ = 2).
-    private static bool IsCursorInSpan(string text, int pos, Regex pattern, int markerLen)
-    {
-        foreach (Match m in pattern.Matches(text))
-            if (pos >= m.Index + markerLen && pos <= m.Index + m.Length - markerLen)
-                return true;
-        return false;
-    }
-
-    // Italic uses a manual scan instead of regex because the * vs ** ambiguity breaks
-    // lookahead/lookbehind — in particular, adjacent ** (empty italic or bold boundary)
-    // causes the regex to fail. This approach masks all bold-span positions first, then
-    // scans for lone * pairs in the remaining text.
-    // Masks only the ** / *** delimiter characters (not the span content) so that
-    // lone * inside a bold span can still be found as italic markers.
-    private static bool[] MaskBoldDelimiters(string text)
-    {
-        var masked = new bool[text.Length];
-        foreach (Match m in BoldItalicSpan.Matches(text))
-        {
-            for (int j = m.Index;                  j < Math.Min(m.Index + 3,          text.Length); j++) masked[j] = true;
-            for (int j = m.Index + m.Length - 3;   j < Math.Min(m.Index + m.Length,   text.Length); j++) masked[j] = true;
-        }
-        foreach (Match m in BoldSpan.Matches(text))
-        {
-            if (m.Length < 4) continue; // degenerate match
-            masked[m.Index]                = true;
-            masked[m.Index + 1]            = true;
-            masked[m.Index + m.Length - 2] = true;
-            masked[m.Index + m.Length - 1] = true;
-        }
-        return masked;
-    }
-
-    private static bool IsCursorInItalicSpan(string text, int pos)
-    {
-        if (text.Length == 0) return false;
-        bool[] masked = MaskBoldDelimiters(text);
-
-        int openAt = -1;
-        for (int i = 0; i < text.Length; i++)
-        {
-            if (text[i] != '*' || masked[i]) continue;
-            if (openAt < 0)
-                openAt = i;
-            else
-            {
-                if (pos >= openAt + 1 && pos <= i) return true;
-                openAt = -1;
-            }
-        }
-        return false;
-    }
-
-    // Returns true when lineStartPos falls inside a ``` fenced block.
-    // Counts ``` lines before the current line; odd = inside a block.
-    private static bool IsLineInFencedBlock(string text, int lineStartPos)
-    {
-        string prefix = text[..lineStartPos];
-        int fenceCount = prefix.Replace("\r\n", "\n").Replace("\r", "\n")
-                               .Split('\n')
-                               .Count(l => l == "```" ||
-                                           (l.StartsWith("```") && l[3..].Trim().All(char.IsDigit)
-                                            && l.Length > 3));
-        return fenceCount % 2 == 1;
-    }
-
     private void InsertMarkdownAround(string marker)
     {
         int start = MessageInput.SelectionStart;
@@ -698,34 +618,34 @@ public partial class MainWindow : Window
         if (marker == "**")
         {
             // Bold is outer — check bold+italic first
-            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            var m = FindEnclosingSpan(text, pos, FormatDetection.BoldItalicSpan, 3);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
-            m = FindEnclosingSpan(text, pos, BoldSpan, 2);
+            m = FindEnclosingSpan(text, pos, FormatDetection.BoldSpan, 2);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
         }
         else if (marker == "*")
         {
             // Italic is inner — strip the inner * from bold+italic
-            var m = FindEnclosingSpan(text, pos, BoldItalicSpan, 3);
+            var m = FindEnclosingSpan(text, pos, FormatDetection.BoldItalicSpan, 3);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s + 2, 1, m.Value.s + m.Value.l - 3, 1); return; }
             var it = FindItalicSpanContaining(text, pos);
             if (it.HasValue) { RemoveSpanMarkers(it.Value.open, 1, it.Value.close, 1); return; }
         }
         else if (marker == "__")
         {
-            var m = FindEnclosingSpan(text, pos, UnderlineSpan, 2);
+            var m = FindEnclosingSpan(text, pos, FormatDetection.UnderlineSpan, 2);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
         }
         else if (marker == "~~")
         {
-            var m = FindEnclosingSpan(text, pos, StrikeSpan, 2);
+            var m = FindEnclosingSpan(text, pos, FormatDetection.StrikeSpan, 2);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 2, m.Value.s + m.Value.l - 2, 2); return; }
         }
         else if (marker == "`")
         {
-            var m = FindEnclosingSpan(text, pos, TripleInlineCodeSpan, 3);
+            var m = FindEnclosingSpan(text, pos, FormatDetection.TripleInlineCodeSpan, 3);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 3, m.Value.s + m.Value.l - 3, 3); return; }
-            m = FindEnclosingSpan(text, pos, CodeSpan, 1);
+            m = FindEnclosingSpan(text, pos, FormatDetection.CodeSpan, 1);
             if (m.HasValue) { RemoveSpanMarkers(m.Value.s, 1, m.Value.s + m.Value.l - 1, 1); return; }
         }
 
@@ -743,7 +663,7 @@ public partial class MainWindow : Window
     // Like FindEnclosingSpan but returns the character positions of the opening and closing * for italic.
     private static (int open, int close)? FindItalicSpanContaining(string text, int pos)
     {
-        bool[] masked = MaskBoldDelimiters(text);
+        bool[] masked = FormatDetection.MaskBoldDelimiters(text);
 
         int openAt = -1;
         for (int i = 0; i < text.Length; i++)
@@ -946,13 +866,6 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static readonly Regex AlignmentLine =
-        new(@"^:(left|center|right|justify) (.*):$", RegexOptions.Compiled);
-
-    // Multiline version: ^ anchors per-line so it can find blocks anywhere in the full text.
-    private static readonly Regex AlignmentBlock =
-        new(@"^:(left|center|right|justify) ([\s\S]+?):$", RegexOptions.Compiled | RegexOptions.Multiline);
-
     private void ApplyAlignmentToLines(string align)
     {
         int origStart  = MessageInput.SelectionStart;
@@ -964,7 +877,7 @@ public partial class MainWindow : Window
         {
             string fullText = MessageInput.Text;
             Match? enclosing = null;
-            foreach (Match m in AlignmentBlock.Matches(fullText))
+            foreach (Match m in FormatDetection.AlignmentBlock.Matches(fullText))
                 if (origStart > m.Index && origStart < m.Index + m.Length) { enclosing = m; break; }
 
             if (enclosing != null)
@@ -987,7 +900,7 @@ public partial class MainWindow : Window
         string region = MessageInput.Text[lineStart..lineEnd].Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd('\n');
         string newRegion;
 
-        var single = AlignmentLine.Match(region);
+        var single = FormatDetection.AlignmentLine.Match(region);
         if (single.Success && single.Length == region.Length)
         {
             // Single-line block: toggle off same alignment, swap to new
@@ -997,7 +910,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            var block = AlignmentBlock.Match(region);
+            var block = FormatDetection.AlignmentBlock.Match(region);
             if (block.Success && block.Index == 0 && block.Length == region.Length)
             {
                 // Multiline block: toggle off or swap alignment
@@ -1010,7 +923,7 @@ public partial class MainWindow : Window
                 // Strip any per-line wrappers, then wrap the whole region as one block
                 string content = string.Join("\n", region.Split('\n').Select(line =>
                 {
-                    var m = AlignmentLine.Match(line);
+                    var m = FormatDetection.AlignmentLine.Match(line);
                     return m.Success ? m.Groups[2].Value : line;
                 }));
                 newRegion = $"{prefix}{content}:";
