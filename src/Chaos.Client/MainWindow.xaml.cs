@@ -981,6 +981,7 @@ public partial class MainWindow : Window
         int origLength = MessageInput.SelectionLength;
 
         GetSelectedLineRegion(out int lineStart, out int lineEnd);
+        bool hasTrailingNewline = lineEnd < MessageInput.Text.Length;
         string region = MessageInput.Text[lineStart..lineEnd];
         string[] lines = region.Split('\n');
         string newRegion = string.Join("\n", lines.Select((l, i) => prefixFor(i) + l));
@@ -989,15 +990,13 @@ public partial class MainWindow : Window
 
         if (origLength == 0)
         {
-            // No selection: nudge cursor forward by the length of the added prefix
             MessageInput.SelectionStart  = origStart + prefixFor(0).Length;
             MessageInput.SelectionLength = 0;
         }
         else
         {
-            // Had selection: keep entire modified region selected (existing behaviour)
             MessageInput.SelectionStart  = lineStart;
-            MessageInput.SelectionLength = newRegion.Length;
+            MessageInput.SelectionLength = hasTrailingNewline ? newRegion.Length - 1 : newRegion.Length;
         }
         MessageInput.Focus();
     }
@@ -1325,6 +1324,18 @@ internal static class MarkdownRenderer
 
         string[] rawLines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
+        static int IndentLevel(string raw)
+        {
+            int spaces = 0;
+            foreach (char c in raw)
+            {
+                if (c == ' ')  spaces++;
+                else if (c == '\t') spaces += 4;
+                else break;
+            }
+            return spaces / 4;
+        }
+
         // Single-line message that is entirely an inline code span → render as code block
         if (rawLines.Length == 1)
         {
@@ -1426,38 +1437,52 @@ internal static class MarkdownRenderer
                 continue;
             }
 
-            if (line.StartsWith("- ") || line.StartsWith("* "))
             {
-                var list = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20, 0, 0, 0) };
-                while (i < rawLines.Length && (rawLines[i].StartsWith("- ") || rawLines[i].StartsWith("* ")))
+                string lineT = line.TrimStart(' ', '\t');
+                if (lineT.StartsWith("- ") || lineT.StartsWith("* "))
                 {
-                    var lip = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
-                    lip.Inlines.Add(new Run("• "));
-                    ParseInlines(rawLines[i][2..], lip.Inlines, textBrush, linkBrush);
-                    list.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
-                    i++;
+                    while (i < rawLines.Length)
+                    {
+                        string raw = rawLines[i];
+                        string tr  = raw.TrimStart(' ', '\t');
+                        if (!tr.StartsWith("- ") && !tr.StartsWith("* ")) break;
+                        int level    = IndentLevel(raw);
+                        var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
+                        var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
+                        lip.Inlines.Add(new Run("• "));
+                        ParseInlines(tr[2..], lip.Inlines, textBrush, linkBrush);
+                        itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
+                        doc.Blocks.Add(itemList);
+                        i++;
+                    }
+                    continue;
                 }
-                doc.Blocks.Add(list);
-                continue;
             }
 
-            if (NumberedLine.IsMatch(line))
             {
-                var list = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20, 0, 0, 0) };
-                while (i < rawLines.Length)
+                string lineT = line.TrimStart(' ', '\t');
+                var m0 = NumberedLine.Match(lineT);
+                if (m0.Success)
                 {
-                    var m = NumberedLine.Match(rawLines[i]);
-                    if (!m.Success) break;
-                    string marker = m.Groups[1].Value + ". ";
-                    string item   = rawLines[i][m.Length..];
-                    var lip = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
-                    lip.Inlines.Add(new Run(marker));
-                    ParseInlines(item, lip.Inlines, textBrush, linkBrush);
-                    list.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
-                    i++;
+                    while (i < rawLines.Length)
+                    {
+                        string raw = rawLines[i];
+                        string tr  = raw.TrimStart(' ', '\t');
+                        var m = NumberedLine.Match(tr);
+                        if (!m.Success) break;
+                        int level    = IndentLevel(raw);
+                        string marker = m.Groups[1].Value + ". ";
+                        string item   = tr[m.Length..];
+                        var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
+                        var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
+                        lip.Inlines.Add(new Run(marker));
+                        ParseInlines(item, lip.Inlines, textBrush, linkBrush);
+                        itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
+                        doc.Blocks.Add(itemList);
+                        i++;
+                    }
+                    continue;
                 }
-                doc.Blocks.Add(list);
-                continue;
             }
 
             var para = new Paragraph { Foreground = textBrush };
