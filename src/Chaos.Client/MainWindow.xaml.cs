@@ -1250,7 +1250,7 @@ internal static class MarkdownRenderer
         new(@"^:(left|center|right|justify) (.*):$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static readonly System.Text.RegularExpressions.Regex NumberedLine =
-        new(@"^\d+\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"^(\d+)\.\s", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private static readonly System.Text.RegularExpressions.Regex WholeLine_SingleCode =
         new(@"^`([^`]+)`$", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -1428,12 +1428,13 @@ internal static class MarkdownRenderer
 
             if (line.StartsWith("- ") || line.StartsWith("* "))
             {
-                var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+                var list = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20, 0, 0, 0) };
                 while (i < rawLines.Length && (rawLines[i].StartsWith("- ") || rawLines[i].StartsWith("* ")))
                 {
-                    var li = new ListItem(new Paragraph());
-                    ParseInlines(rawLines[i][2..], ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
-                    list.ListItems.Add(li);
+                    var lip = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
+                    lip.Inlines.Add(new Run("• "));
+                    ParseInlines(rawLines[i][2..], lip.Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                     i++;
                 }
                 doc.Blocks.Add(list);
@@ -1442,13 +1443,17 @@ internal static class MarkdownRenderer
 
             if (NumberedLine.IsMatch(line))
             {
-                var list = new List { MarkerStyle = TextMarkerStyle.Decimal };
-                while (i < rawLines.Length && NumberedLine.IsMatch(rawLines[i]))
+                var list = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20, 0, 0, 0) };
+                while (i < rawLines.Length)
                 {
-                    string item = NumberedLine.Replace(rawLines[i], string.Empty);
-                    var li = new ListItem(new Paragraph());
-                    ParseInlines(item, ((Paragraph)li.Blocks.FirstBlock).Inlines, textBrush, linkBrush);
-                    list.ListItems.Add(li);
+                    var m = NumberedLine.Match(rawLines[i]);
+                    if (!m.Success) break;
+                    string marker = m.Groups[1].Value + ". ";
+                    string item   = rawLines[i][m.Length..];
+                    var lip = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
+                    lip.Inlines.Add(new Run(marker));
+                    ParseInlines(item, lip.Inlines, textBrush, linkBrush);
+                    list.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                     i++;
                 }
                 doc.Blocks.Add(list);
