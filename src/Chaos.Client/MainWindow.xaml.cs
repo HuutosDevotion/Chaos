@@ -598,6 +598,7 @@ public partial class MainWindow : Window
                         var textBox = FindFirstDescendant<TextBox>(ModalContentControl);
                         if (textBox is not null) { textBox.Focus(); textBox.SelectAll(); }
                     });
+
             };
         }
     }
