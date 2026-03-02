@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:Chaos.Client"
              xmlns:behaviors="clr-namespace:Chaos.Client.Behaviors"
+             xmlns:controls="clr-namespace:Chaos.Client.Controls"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
         <!-- Dark Theme Colors -->
@@ -429,6 +430,25 @@
                                   StrokeThickness="1"
                                   HorizontalAlignment="Center"
                                   Margin="0,-1,0,0" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- SubmenuHost: in-visual-tree submenu panel with window-constrained positioning -->
+        <Style TargetType="{x:Type controls:SubmenuHost}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type controls:SubmenuHost}">
+                        <Grid x:Name="PART_Overlay" Background="Transparent" Visibility="Collapsed">
+                            <Canvas x:Name="PART_Canvas" ClipToBounds="True">
+                                <Border x:Name="PART_ContentBorder"
+                                        Background="{StaticResource BgDarkBrush}"
+                                        BorderBrush="#40FFFFFF" BorderThickness="1"
+                                        CornerRadius="8">
+                                    <ContentPresenter />
+                                </Border>
+                            </Canvas>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
