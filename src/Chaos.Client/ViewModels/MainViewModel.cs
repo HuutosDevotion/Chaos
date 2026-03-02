@@ -133,6 +133,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly IKeyValueStore _settingsStore;
     public EmojiService EmojiService { get; } = new();
     public EmojiPickerViewModel EmojiPicker { get; } = new();
+    public EmojiAutocompleteViewModel EmojiAutocomplete { get; } = new();
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
     private readonly DispatcherTimer _remoteSpeakingTimer;
@@ -165,9 +166,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
-    private int _selectedEmojiSuggestionIndex = -1;
-    private bool _showEmojiSuggestions;
-    private static readonly Regex EmojiAutocompletePattern = new(@":([A-Za-z0-9_]{2,})$", RegexOptions.Compiled);
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
@@ -178,7 +176,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
-    public ObservableCollection<EmojiSuggestionItem> EmojiSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
 
     public string ServerAddress
@@ -233,17 +230,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
 
-    public bool ShowEmojiSuggestions
-    {
-        get => _showEmojiSuggestions;
-        set { _showEmojiSuggestions = value; OnPropertyChanged(); }
-    }
 
-    public int SelectedEmojiSuggestionIndex
-    {
-        get => _selectedEmojiSuggestionIndex;
-        set { _selectedEmojiSuggestionIndex = value; OnPropertyChanged(); }
-    }
 
     public object? ActiveModal
     {
@@ -373,59 +360,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // Emoji suggestion support
     public void UpdateEmojiSuggestions(string text, int cursorPos)
-    {
-        // This method can be called from any thread.
-        // Do all search/regex work here, then marshal UI updates.
-        if (!EmojiService.IsLoaded || ShowSlashSuggestions)
-        {
-            SafeDispatch(DismissEmojiSuggestions);
-            return;
-        }
+        => EmojiAutocomplete.Update(text, cursorPos, EmojiService, ShowSlashSuggestions, SafeDispatch);
 
-        string textUpToCursor = cursorPos <= text.Length ? text[..cursorPos] : text;
-        var match = EmojiAutocompletePattern.Match(textUpToCursor);
-        if (!match.Success)
-        {
-            SafeDispatch(DismissEmojiSuggestions);
-            return;
-        }
+    public void DismissEmojiSuggestions() => EmojiAutocomplete.Dismiss();
 
-        string query = match.Groups[1].Value;
-        var results = EmojiService.Search(query, 15);
-
-        // Pre-build items with images on this thread (all from RAM cache)
-        var items = results.Select(emoji => new EmojiSuggestionItem
-        {
-            CommandName = $":{emoji.Name}:",
-            Emoji = emoji,
-            Image = EmojiService.GetCachedImage(emoji),
-        }).ToList();
-
-        // Only touch ObservableCollection on UI thread
-        SafeDispatch(() =>
-        {
-            EmojiSuggestions.Clear();
-            SelectedEmojiSuggestionIndex = -1;
-            foreach (var item in items)
-                EmojiSuggestions.Add(item);
-            ShowEmojiSuggestions = EmojiSuggestions.Count > 0;
-        });
-    }
-
-    public void DismissEmojiSuggestions()
-    {
-        ShowEmojiSuggestions = false;
-        SelectedEmojiSuggestionIndex = -1;
-    }
-
-    public void NavigateEmojiSuggestions(int direction)
-    {
-        if (EmojiSuggestions.Count == 0) return;
-        int next = SelectedEmojiSuggestionIndex + direction;
-        if (next < 0) next = EmojiSuggestions.Count - 1;
-        else if (next >= EmojiSuggestions.Count) next = 0;
-        SelectedEmojiSuggestionIndex = next;
-    }
+    public void NavigateEmojiSuggestions(int direction) => EmojiAutocomplete.Navigate(direction);
 
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
     public string MuteTooltipText => IsMuted ? "Unmute" : "Mute";
@@ -1127,18 +1066,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 }
 
-public class EmojiSuggestionItem : INotifyPropertyChanged
-{
-    private BitmapImage? _image;
-    public string CommandName { get; set; } = string.Empty;
-    public EmojiDto Emoji { get; set; } = new();
-    public BitmapImage? Image
-    {
-        get => _image;
-        set { _image = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Image))); }
-    }
-    public event PropertyChangedEventHandler? PropertyChanged;
-}
 
 public class RelayCommand : ICommand
 {

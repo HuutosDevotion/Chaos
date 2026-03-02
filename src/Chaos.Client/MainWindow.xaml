@@ -1199,61 +1199,7 @@
                             </ListBox>
                         </Border>
 
-                        <!-- Emoji Autocomplete -->
-                        <Border CornerRadius="8" Margin="0,0,0,4"
-                                Background="{StaticResource BgDarkBrush}"
-                                BorderBrush="#40FFFFFF" BorderThickness="1"
-                                Visibility="{Binding ShowEmojiSuggestions, Converter={StaticResource BoolToVis}}">
-                            <ListBox x:Name="EmojiSuggestionList"
-                                     ItemsSource="{Binding EmojiSuggestions}"
-                                     SelectedIndex="{Binding SelectedEmojiSuggestionIndex, Mode=TwoWay}"
-                                     Focusable="False"
-                                     MaxHeight="360"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     PreviewMouseLeftButtonDown="EmojiSuggestionList_PreviewMouseLeftButtonDown">
-                                <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
-                                        <Setter Property="Focusable" Value="False" />
-                                        <Setter Property="Padding" Value="8,4" />
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="ListBoxItem">
-                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
-                                                            Background="{TemplateBinding Background}"
-                                                            CornerRadius="4">
-                                                        <ContentPresenter />
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
-                                                        </Trigger>
-                                                        <Trigger Property="IsSelected" Value="True">
-                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Style>
-                                </ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Image Source="{Binding Image}" Width="20" Height="20"
-                                                   Stretch="Uniform" Margin="0,0,8,0"
-                                                   VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding CommandName}"
-                                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                                       FontSize="13" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Border>
+                        <!-- Emoji Autocomplete (moved to SubmenuHost at end of RootGrid) -->
 
                         <!-- Typing Indicator -->
                         <TextBlock Text="{Binding TypingText}"
@@ -1570,6 +1516,68 @@
                     </StackPanel>
                 </Border>
             </Grid>
+        </controls:SubmenuHost>
+
+        <!-- Emoji Autocomplete Submenu -->
+        <controls:SubmenuHost x:Name="EmojiAutocompleteHost"
+                              Grid.RowSpan="2" Panel.ZIndex="14"
+                              Background="{StaticResource BgInputBrush}"
+                              IsOpen="{Binding EmojiAutocomplete.IsOpen, Mode=TwoWay}"
+                              PlacementTarget="{Binding ElementName=TextInputBorder}"
+                              Placement="Top"
+                              SubmenuMaxHeight="{Binding EmojiAutocomplete.MaxHeight}"
+                              VerticalOffset="-4">
+            <ListBox x:Name="EmojiSuggestionList"
+                     ItemsSource="{Binding EmojiAutocomplete.Suggestions}"
+                     SelectedIndex="{Binding EmojiAutocomplete.SelectedIndex, Mode=TwoWay}"
+                     Focusable="False"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="6,4,6,0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     PreviewMouseLeftButtonDown="EmojiSuggestionList_PreviewMouseLeftButtonDown">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Padding" Value="8,4" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="4">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{Binding Image}" Width="20" Height="20"
+                                   Stretch="Uniform" Margin="0,0,8,0"
+                                   VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CommandName}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="{Binding DataContext.Settings.FontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </controls:SubmenuHost>
     </Grid>
 </Window>

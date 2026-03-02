@@ -592,12 +592,6 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
-                if (args.PropertyName == nameof(MainViewModel.SelectedEmojiSuggestionIndex))
-                {
-                    int idx = vm.SelectedEmojiSuggestionIndex;
-                    if (idx >= 0 && idx < vm.EmojiSuggestions.Count)
-                        EmojiSuggestionList.ScrollIntoView(vm.EmojiSuggestions[idx]);
-                }
 
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
@@ -606,6 +600,24 @@ public partial class MainWindow : Window
                         if (textBox is not null) { textBox.Focus(); textBox.SelectAll(); }
                     });
 
+            };
+
+            vm.EmojiAutocomplete.BeforeOpen = () =>
+            {
+                double inputWidth = TextInputBorder.ActualWidth;
+                double menuWidth = inputWidth > 40 ? inputWidth - 32 : inputWidth;
+                EmojiAutocompleteHost.SubmenuWidth = menuWidth;
+                EmojiAutocompleteHost.HorizontalOffset = (inputWidth - menuWidth) / 2;
+            };
+
+            vm.EmojiAutocomplete.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(EmojiAutocompleteViewModel.SelectedIndex))
+                {
+                    int idx = vm.EmojiAutocomplete.SelectedIndex;
+                    if (idx >= 0 && idx < vm.EmojiAutocomplete.Suggestions.Count)
+                        EmojiSuggestionList.ScrollIntoView(vm.EmojiAutocomplete.Suggestions[idx]);
+                }
             };
         }
     }
@@ -712,37 +724,38 @@ public partial class MainWindow : Window
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Emoji suggestions take priority when visible
-        if (DataContext is MainViewModel vm && vm.ShowEmojiSuggestions)
+        if (DataContext is MainViewModel vm && vm.EmojiAutocomplete.IsOpen)
         {
+            var ac = vm.EmojiAutocomplete;
             if (e.Key == Key.Down)
             {
-                vm.NavigateEmojiSuggestions(1);
+                ac.Navigate(1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Up)
             {
-                vm.NavigateEmojiSuggestions(-1);
+                ac.Navigate(-1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Tab)
             {
-                int idx = vm.SelectedEmojiSuggestionIndex >= 0 ? vm.SelectedEmojiSuggestionIndex : 0;
-                if (idx < vm.EmojiSuggestions.Count)
-                    ApplyEmojiSuggestion(vm, vm.EmojiSuggestions[idx]);
+                int idx = ac.SelectedIndex >= 0 ? ac.SelectedIndex : 0;
+                if (idx < ac.Suggestions.Count)
+                    ApplyEmojiSuggestion(vm, ac.Suggestions[idx]);
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Enter && vm.SelectedEmojiSuggestionIndex >= 0)
+            if (e.Key == Key.Enter && ac.SelectedIndex >= 0)
             {
-                ApplyEmojiSuggestion(vm, vm.EmojiSuggestions[vm.SelectedEmojiSuggestionIndex]);
+                ApplyEmojiSuggestion(vm, ac.Suggestions[ac.SelectedIndex]);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Escape)
             {
-                vm.DismissEmojiSuggestions();
+                ac.Dismiss();
                 e.Handled = true;
                 return;
             }

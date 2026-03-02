@@ -437,13 +437,14 @@
         </Style>
         <!-- SubmenuHost: in-visual-tree submenu panel with window-constrained positioning -->
         <Style TargetType="{x:Type controls:SubmenuHost}">
+            <Setter Property="Background" Value="{StaticResource BgDarkBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type controls:SubmenuHost}">
                         <Grid x:Name="PART_Overlay" Visibility="Collapsed">
                             <Canvas x:Name="PART_Canvas" ClipToBounds="True">
                                 <Border x:Name="PART_ContentBorder"
-                                        Background="{StaticResource BgDarkBrush}"
+                                        Background="{TemplateBinding Background}"
                                         BorderBrush="#40FFFFFF" BorderThickness="1"
                                         CornerRadius="8">
                                     <ContentPresenter />
