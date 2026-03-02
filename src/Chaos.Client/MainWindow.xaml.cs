@@ -74,15 +74,15 @@ public partial class MainWindow : Window
         return sb.ToString();
     }
 
-    private string GetSelectedInputText()
+    private static string GetSelectedTextWithEmoji(RichTextBox rtb)
     {
-        var sel = MessageInput.Selection;
+        var sel = rtb.Selection;
         if (sel.IsEmpty) return string.Empty;
 
         var sb = new StringBuilder();
         bool firstParagraph = true;
 
-        foreach (var block in MessageInput.Document.Blocks.OfType<Paragraph>())
+        foreach (var block in rtb.Document.Blocks.OfType<Paragraph>())
         {
             if (block.ElementEnd.CompareTo(sel.Start) <= 0) continue;
             if (block.ElementStart.CompareTo(sel.End) >= 0) break;
@@ -410,14 +410,14 @@ public partial class MainWindow : Window
             // Override Copy/Cut to serialize emoji images as :shortcode: text
             MessageInput.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, e) =>
             {
-                var text = GetSelectedInputText();
+                var text = GetSelectedTextWithEmoji(MessageInput);
                 if (string.IsNullOrEmpty(text)) return;
                 Clipboard.SetText(text);
                 e.Handled = true;
             }));
             MessageInput.CommandBindings.Add(new CommandBinding(ApplicationCommands.Cut, (_, e) =>
             {
-                var text = GetSelectedInputText();
+                var text = GetSelectedTextWithEmoji(MessageInput);
                 if (string.IsNullOrEmpty(text)) return;
                 Clipboard.SetText(text);
                 MessageInput.Selection.Text = string.Empty;
@@ -549,6 +549,15 @@ public partial class MainWindow : Window
                     e.Handled = true;
                 }
             };
+
+            // Override Copy to serialize emoji images as :shortcode: text
+            MessageList.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, e) =>
+            {
+                var text = GetSelectedTextWithEmoji(MessageList);
+                if (string.IsNullOrEmpty(text)) return;
+                Clipboard.SetText(text);
+                e.Handled = true;
+            }));
 
             // Null until the ListBox is first rendered (it lives inside a Collapsed grid
             // at startup, so its control template isn't applied until IsConnected = true).
@@ -2278,6 +2287,7 @@ internal static class MarkdownRenderer
             Height = size,
             Stretch = Stretch.Uniform,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            Tag = $":{emoji.Name}:",
         };
 
         var tt = new ToolTip
