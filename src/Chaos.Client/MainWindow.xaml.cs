@@ -563,6 +563,13 @@ public partial class MainWindow : Window
                     PopulateEmojiGrid(null));
             };
 
+            // Invalidate cached grid when images finish preloading so next open rebuilds with real images
+            vm.EmojiService.ImagesReady += () =>
+            {
+                _emojiGridBuilt = false;
+                _cachedEmojiGridChildren = null;
+            };
+
             vm.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(MainViewModel.SelectedTextChannel) && vm.SelectedTextChannel is not null)
@@ -1441,6 +1448,7 @@ public partial class MainWindow : Window
     // ── Emoji Picker ─────────────────────────────────────────────────────────
 
     private readonly HashSet<string> _collapsedCategories = new();
+    private readonly Dictionary<string, FrameworkElement> _categoryHeaders = new();
     private bool _emojiGridBuilt;
     private List<UIElement>? _cachedEmojiGridChildren;
 
@@ -1454,6 +1462,7 @@ public partial class MainWindow : Window
         }
         EmojiSearchBox.Text = string.Empty;
         RestoreCachedEmojiGrid();
+        BuildCategorySidebar(vm);
         vm.EmojiPicker.Open();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => EmojiSearchBox.Focus());
     }
@@ -1465,12 +1474,55 @@ public partial class MainWindow : Window
             EmojiGridPanel.Children.Clear();
             foreach (var child in _cachedEmojiGridChildren)
                 EmojiGridPanel.Children.Add(child);
-            // Reset scroll to top
-            if (EmojiGridPanel.Parent is ScrollViewer sv)
-                sv.ScrollToTop();
+            EmojiScrollViewer.ScrollToTop();
             return;
         }
         PopulateEmojiGrid(null);
+    }
+
+    private void BuildCategorySidebar(MainViewModel vm)
+    {
+        CategorySidebar.Children.Clear();
+
+        var categories = new List<(string Name, Shared.EmojiDto? Icon)>();
+        var frequent = vm.EmojiService.GetFrequentlyUsed();
+        if (frequent.Count > 0)
+            categories.Add(("Frequently Used", frequent[0]));
+
+        foreach (var (cat, emojis) in vm.EmojiService.GetGroupedByCategory())
+        {
+            var first = emojis.Count > 0 ? emojis[0] : null;
+            categories.Add((cat, first));
+        }
+
+        var sidebarStyle = (Style)FindResource("EmojiCategorySidebarButton");
+        foreach (var (cat, icon) in categories)
+        {
+            var btnImg = new System.Windows.Controls.Image
+            {
+                Width = 18,
+                Height = 18,
+                Stretch = Stretch.Uniform,
+                Source = icon != null ? vm.EmojiService.GetCachedImage(icon) : null,
+            };
+
+            var btn = new System.Windows.Controls.Button
+            {
+                Content = btnImg,
+                Style = sidebarStyle,
+                ToolTip = new ToolTip { Content = cat },
+            };
+            ToolTipService.SetInitialShowDelay(btn, 0);
+
+            var capturedCat = cat;
+            btn.Click += (_, _) =>
+            {
+                if (_categoryHeaders.TryGetValue(capturedCat, out var header))
+                    header.BringIntoView();
+            };
+
+            CategorySidebar.Children.Add(btn);
+        }
     }
 
     private void EmojiSearch_TextChanged(object sender, TextChangedEventArgs e)
@@ -1489,6 +1541,7 @@ public partial class MainWindow : Window
     private void PopulateEmojiGrid(string? filter)
     {
         EmojiGridPanel.Children.Clear();
+        _categoryHeaders.Clear();
         if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
 
         if (filter is not null)
@@ -1533,19 +1586,28 @@ public partial class MainWindow : Window
     {
         bool collapsed = _collapsedCategories.Contains(category);
 
-        // Category header
+        var caretText = new System.Windows.Controls.TextBlock
+        {
+            Text = collapsed ? "\u203A" : "\u25BE",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
+        };
+        DockPanel.SetDock(caretText, Dock.Right);
+
+        var nameText = new System.Windows.Controls.TextBlock
+        {
+            Text = category,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var panel = new DockPanel();
+        panel.Children.Add(caretText);
+        panel.Children.Add(nameText);
+
         var header = new System.Windows.Controls.Button
         {
-            Content = (collapsed ? "\u25B6 " : "\u25BC ") + category,
-            Foreground = (Brush)FindResource("TextMutedBrush"),
-            Background = System.Windows.Media.Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            FontSize = 11,
-            FontWeight = FontWeights.Bold,
-            Cursor = Cursors.Hand,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(4, 6, 4, 4),
-            Focusable = false,
+            Content = panel,
+            Style = (Style)FindResource("EmojiCategoryHeader"),
         };
         header.Click += (_, _) =>
         {
@@ -1557,6 +1619,7 @@ public partial class MainWindow : Window
             _cachedEmojiGridChildren = null;
             PopulateEmojiGrid(null);
         };
+        _categoryHeaders[category] = header;
         EmojiGridPanel.Children.Add(header);
 
         if (collapsed) return;
@@ -1579,21 +1642,15 @@ public partial class MainWindow : Window
 
         var btn = new System.Windows.Controls.Button
         {
-            Width = 36,
-            Height = 36,
             Content = img,
-            Background = System.Windows.Media.Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Cursor = Cursors.Hand,
-            Padding = new Thickness(4),
-            Focusable = false,
-            ToolTip = new ToolTip { Content = $":{emoji.Name}:" },
+            Style = (Style)FindResource("EmojiGridButton"),
         };
-        ToolTipService.SetInitialShowDelay(btn, 200);
 
-        btn.Click += (_, _) =>
+        btn.Click += (_, _) => OnEmojiClicked(emoji, vm);
+        btn.MouseEnter += (_, _) =>
         {
-            OnEmojiClicked(emoji, vm);
+            EmojiPreviewImage.Source = vm.EmojiService.GetCachedImage(emoji);
+            EmojiPreviewName.Text = $":{emoji.Name}:";
         };
 
         return btn;

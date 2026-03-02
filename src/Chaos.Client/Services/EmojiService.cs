@@ -157,7 +157,8 @@ public class EmojiService
         if (string.IsNullOrWhiteSpace(query)) return new();
         query = query.Trim().ToLower();
 
-        return _allEmojis
+        var snapshot = _allEmojis.ToList();
+        return snapshot
             .Where(e => e.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Take(maxResults)
             .ToList();
@@ -165,14 +166,15 @@ public class EmojiService
 
     public List<EmojiDto> GetByCategory(string category)
     {
-        return _allEmojis.Where(e => e.Category == category).ToList();
+        return _allEmojis.ToList().Where(e => e.Category == category).ToList();
     }
 
     public string[] GetCategories() => CategoryOrder;
 
     public List<(string Category, List<EmojiDto> Emojis)> GetGroupedByCategory()
     {
-        var grouped = _allEmojis.GroupBy(e => e.Category)
+        var snapshot = _allEmojis.ToList();
+        var grouped = snapshot.GroupBy(e => e.Category)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         return CategoryOrder
@@ -214,7 +216,14 @@ public class EmojiService
             else
             {
                 string url = $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
-                bytes = await _http.GetByteArrayAsync(url);
+                using var resp = await _http.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    _imageCache[emoji.FileName] = null;
+                    _loadingTasks.TryRemove(emoji.FileName, out _);
+                    return null;
+                }
+                bytes = await resp.Content.ReadAsByteArrayAsync();
 
                 try
                 {

@@ -1528,24 +1528,41 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- Search bar -->
-                <Border Grid.Row="0" Padding="8,8,8,4">
+                <Border Grid.Row="0" Padding="12,10,12,8"
+                        BorderBrush="#3A3C42" BorderThickness="0,0,0,1">
                     <TextBox x:Name="EmojiSearchBox"
-                             Style="{StaticResource DarkTextBox}"
-                             BorderThickness="0"
-                             Background="{StaticResource BgInputBrush}"
-                             Padding="8,6"
+                             Style="{StaticResource EmojiSearchTextBox}"
                              TextChanged="EmojiSearch_TextChanged" />
                 </Border>
 
-                <!-- Emoji grid -->
-                <ScrollViewer Grid.Row="1"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="EmojiGridPanel" Margin="8,0,8,8" />
-                </ScrollViewer>
+                <!-- Sidebar + emoji grid -->
+                <DockPanel Grid.Row="1">
+                    <Border DockPanel.Dock="Left" BorderBrush="#3A3C42" BorderThickness="0,0,1,0" Padding="4">
+                        <StackPanel x:Name="CategorySidebar" Width="36" />
+                    </Border>
+                    <ScrollViewer x:Name="EmojiScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="EmojiGridPanel" Margin="8,4,8,8" />
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Preview panel -->
+                <Border Grid.Row="2" BorderBrush="#3A3C42" BorderThickness="0,1,0,0"
+                        Padding="12,8" MinHeight="42">
+                    <StackPanel x:Name="EmojiPreviewPanel" Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <Image x:Name="EmojiPreviewImage" Width="28" Height="28"
+                               Stretch="Uniform" Margin="0,0,8,0" />
+                        <TextBlock x:Name="EmojiPreviewName"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="13" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </controls:SubmenuHost>
     </Grid>
