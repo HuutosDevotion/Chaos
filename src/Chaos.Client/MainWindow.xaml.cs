@@ -546,11 +546,13 @@ public partial class MainWindow : Window
                     PopulateEmojiGrid(null));
             };
 
-            // Invalidate cached grid when images finish preloading so next open rebuilds with real images
+            // Rebuild grid when images finish preloading so it's ready with real images
             vm.EmojiService.ImagesReady += () =>
             {
                 _emojiGridBuilt = false;
                 _cachedEmojiGridChildren = null;
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                    PopulateEmojiGrid(null));
             };
 
             vm.PropertyChanged += (_, args) =>
