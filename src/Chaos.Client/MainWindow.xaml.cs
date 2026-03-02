@@ -47,7 +47,6 @@ public partial class MainWindow : Window
     // emoji InlineUIContainers as :shortcode: text.
 
     private bool _suppressTextSync;
-    private System.Windows.Threading.DispatcherTimer? _emojiSuggestionTimer;
     private static readonly Regex InputEmojiDetect = new(@":([A-Za-z0-9_]+(?:~\d+)?):", RegexOptions.Compiled);
 
     private string GetInputText()
@@ -371,38 +370,22 @@ public partial class MainWindow : Window
                 PagePadding = new Thickness(0),
             };
 
-            _emojiSuggestionTimer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(150)
-            };
-            _emojiSuggestionTimer.Tick += (_, _) =>
-            {
-                _emojiSuggestionTimer.Stop();
-                if (DataContext is MainViewModel vm3)
-                {
-                    // Use GetTextInRun to get only the text in the current Run
-                    // at the caret. This avoids serialized emoji images (:shortcode:)
-                    // from being included, which caused false autocomplete triggers.
-                    var caret = MessageInput.CaretPosition;
-                    string textBeforeCaret = caret.GetTextInRun(LogicalDirection.Backward);
-                    if (string.IsNullOrEmpty(textBeforeCaret))
-                    {
-                        vm3.DismissEmojiSuggestions();
-                        return;
-                    }
-                    vm3.UpdateEmojiSuggestions(textBeforeCaret, textBeforeCaret.Length);
-                }
-            };
-
             MessageInput.TextChanged += (_, _) =>
             {
                 if (_suppressTextSync) return;
                 SyncInputToViewModel();
                 DetectAndReplaceEmojis();
 
-                // Debounce emoji autocomplete so it doesn't run on every keystroke
-                _emojiSuggestionTimer!.Stop();
-                _emojiSuggestionTimer.Start();
+                // Update emoji autocomplete immediately (in-memory search is fast)
+                if (DataContext is MainViewModel vm3)
+                {
+                    var caret = MessageInput.CaretPosition;
+                    string textBeforeCaret = caret.GetTextInRun(LogicalDirection.Backward);
+                    if (string.IsNullOrEmpty(textBeforeCaret))
+                        vm3.DismissEmojiSuggestions();
+                    else
+                        vm3.UpdateEmojiSuggestions(textBeforeCaret, textBeforeCaret.Length);
+                }
             };
 
             // Sync ViewModel → RichTextBox when MessageText is cleared (e.g. after send)
