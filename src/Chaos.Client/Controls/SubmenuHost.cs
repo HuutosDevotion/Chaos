@@ -50,6 +50,9 @@ public class SubmenuHost : ContentControl
         DependencyProperty.Register(nameof(SubmenuMaxHeight), typeof(double), typeof(SubmenuHost),
             new PropertyMetadata(double.NaN));
 
+    public static readonly DependencyProperty ToggleElementProperty =
+        DependencyProperty.Register(nameof(ToggleElement), typeof(UIElement), typeof(SubmenuHost));
+
     public bool IsOpen
     {
         get => (bool)GetValue(IsOpenProperty);
@@ -96,6 +99,13 @@ public class SubmenuHost : ContentControl
     {
         get => (double)GetValue(SubmenuMaxHeightProperty);
         set => SetValue(SubmenuMaxHeightProperty, value);
+    }
+
+    /// <summary>The element that toggles this submenu (e.g. a Button). Clicks on it won't auto-close.</summary>
+    public UIElement? ToggleElement
+    {
+        get => (UIElement?)GetValue(ToggleElementProperty);
+        set => SetValue(ToggleElementProperty, value);
     }
 
     public override void OnApplyTemplate()
@@ -214,6 +224,16 @@ public class SubmenuHost : ContentControl
             pos.X <= _contentBorder.ActualWidth &&
             pos.Y <= _contentBorder.ActualHeight)
             return;
+
+        // If the click landed on the toggle element, let its Click handler deal with open/close
+        if (ToggleElement is FrameworkElement toggle)
+        {
+            var togglePos = e.GetPosition(toggle);
+            if (togglePos.X >= 0 && togglePos.Y >= 0 &&
+                togglePos.X <= toggle.ActualWidth &&
+                togglePos.Y <= toggle.ActualHeight)
+                return;
+        }
 
         // Click was outside — close, but don't handle the event so it reaches its target
         IsOpen = false;

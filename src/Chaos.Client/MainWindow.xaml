@@ -1484,6 +1484,7 @@
                               Grid.RowSpan="2" Panel.ZIndex="15"
                               IsOpen="{Binding EmojiPicker.IsOpen, Mode=TwoWay}"
                               PlacementTarget="{Binding ElementName=TextInputBorder}"
+                              ToggleElement="{Binding ElementName=EmojiPickerButton}"
                               Placement="Top"
                               SubmenuWidth="435" SubmenuHeight="435"
                               VerticalOffset="-4">
