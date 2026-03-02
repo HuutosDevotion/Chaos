@@ -219,6 +219,13 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
+                if (args.PropertyName == nameof(MainViewModel.SelectedMentionSuggestionIndex))
+                {
+                    int idx = vm.SelectedMentionSuggestionIndex;
+                    if (idx >= 0 && idx < vm.MentionSuggestions.Count)
+                        MentionSuggestionList.ScrollIntoView(vm.MentionSuggestions[idx]);
+                }
+
                 if (args.PropertyName == nameof(MainViewModel.PendingScrollToMessageId)
                     && vm.PendingScrollToMessageId.HasValue)
                 {
@@ -247,6 +254,7 @@ public partial class MainWindow : Window
             {
                 block.BringIntoView();
                 _hasPendingScrollToMessage = false;
+                if (DataContext is MainViewModel vm) vm.AutoClearMention(messageId);
                 return;
             }
         }
@@ -306,7 +314,23 @@ public partial class MainWindow : Window
 
     private void MessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (DataContext is MainViewModel vm && vm.ShowSlashSuggestions)
+        if (DataContext is not MainViewModel vm) return;
+
+        if (vm.ShowMentionSuggestions)
+        {
+            if (e.Key == Key.Down)  { vm.NavigateMentionSuggestions(1);  e.Handled = true; return; }
+            if (e.Key == Key.Up)    { vm.NavigateMentionSuggestions(-1); e.Handled = true; return; }
+            if (e.Key == Key.Tab || (e.Key == Key.Enter && vm.SelectedMentionSuggestionIndex >= 0))
+            {
+                int idx = vm.SelectedMentionSuggestionIndex >= 0 ? vm.SelectedMentionSuggestionIndex : 0;
+                if (idx < vm.MentionSuggestions.Count)
+                    ApplyMentionSuggestion(vm, vm.MentionSuggestions[idx]);
+                e.Handled = true; return;
+            }
+            if (e.Key == Key.Escape) { vm.DismissMentionSuggestions(); e.Handled = true; return; }
+        }
+
+        if (vm.ShowSlashSuggestions)
         {
             if (e.Key == Key.Down)
             {
@@ -342,7 +366,7 @@ public partial class MainWindow : Window
             }
         }
 
-        if (e.Key == Key.Enter && DataContext is MainViewModel vm2)
+        if (e.Key == Key.Enter)
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
             {
@@ -350,8 +374,8 @@ public partial class MainWindow : Window
                     e.Handled = true;
                 return; // handled by list logic, or let TextBox insert newline naturally
             }
-            if (vm2.SendMessageCommand.CanExecute(null))
-                vm2.SendMessageCommand.Execute(null);
+            if (vm.SendMessageCommand.CanExecute(null))
+                vm.SendMessageCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -426,6 +450,24 @@ public partial class MainWindow : Window
     private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
     {
         vm.SelectSuggestion(cmd);
+        MessageInput.CaretIndex = MessageInput.Text.Length;
+        MessageInput.Focus();
+    }
+
+    private void MentionSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement el &&
+            el.DataContext is string username &&
+            DataContext is MainViewModel vm)
+        {
+            ApplyMentionSuggestion(vm, username);
+            e.Handled = true;
+        }
+    }
+
+    private void ApplyMentionSuggestion(MainViewModel vm, string username)
+    {
+        vm.SelectMentionSuggestion(username);
         MessageInput.CaretIndex = MessageInput.Text.Length;
         MessageInput.Focus();
     }
@@ -1049,8 +1091,9 @@ public partial class MainWindow : Window
             else
             {
                 // Markdown (or plain) text — render inline formatting, lists, links
+                var vm = DataContext as MainViewModel;
                 var rendered = MarkdownRenderer.Render(msg.Content, secondary,
-                                   (Brush)FindResource("AccentBlueBrush"));
+                                   (Brush)FindResource("AccentBlueBrush"), vm?.Username ?? "");
                 double blockTop = top;
                 bool isFirst = true;
                 foreach (var block in rendered.Blocks.ToList())
@@ -1188,6 +1231,9 @@ internal static class MarkdownRenderer
     private static readonly System.Text.RegularExpressions.Regex WholeLine_TripleCode =
         new(@"^```(.+)```$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static readonly System.Text.RegularExpressions.Regex MentionPattern =
+        new(@"@(\w+)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static readonly System.Windows.Media.SolidColorBrush CodeBlockBg =
         new(System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x22)); // BgDarkest
 
@@ -1249,7 +1295,7 @@ internal static class MarkdownRenderer
         });
     }
 
-    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush)
+    public static FlowDocument Render(string text, Brush textBrush, Brush linkBrush, string currentUsername = "")
     {
         var doc = new FlowDocument();
         if (string.IsNullOrEmpty(text)) return doc;
@@ -1325,7 +1371,7 @@ internal static class MarkdownRenderer
                     // ParseInlines fills a Paragraph (Documents.InlineCollection);
                     // migrate inlines to the TextBlock (Controls.InlineCollection)
                     var tempPara = new Paragraph();
-                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush);
+                    ParseInlines(rawLines[i][2..], tempPara.Inlines, textBrush, linkBrush, currentUsername: currentUsername);
                     foreach (var il in tempPara.Inlines.ToList())
                     {
                         tempPara.Inlines.Remove(il);
@@ -1369,7 +1415,7 @@ internal static class MarkdownRenderer
                         var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
                         var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
                         lip.Inlines.Add(new Run("• "));
-                        ParseInlines(tr[2..], lip.Inlines, textBrush, linkBrush);
+                        ParseInlines(tr[2..], lip.Inlines, textBrush, linkBrush, currentUsername: currentUsername);
                         itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                         doc.Blocks.Add(itemList);
                         i++;
@@ -1395,7 +1441,7 @@ internal static class MarkdownRenderer
                         var itemList = new List { MarkerStyle = TextMarkerStyle.None, Padding = new Thickness(20 + level * 16, 0, 0, 0) };
                         var lip      = new Paragraph { TextIndent = -14, Foreground = textBrush, Margin = new Thickness(0) };
                         lip.Inlines.Add(new Run(marker));
-                        ParseInlines(item, lip.Inlines, textBrush, linkBrush);
+                        ParseInlines(item, lip.Inlines, textBrush, linkBrush, currentUsername: currentUsername);
                         itemList.ListItems.Add(new ListItem(lip) { Margin = new Thickness(0), Padding = new Thickness(0) });
                         doc.Blocks.Add(itemList);
                         i++;
@@ -1405,7 +1451,7 @@ internal static class MarkdownRenderer
             }
 
             var para = new Paragraph { Foreground = textBrush };
-            ParseInlines(line, para.Inlines, textBrush, linkBrush);
+            ParseInlines(line, para.Inlines, textBrush, linkBrush, currentUsername: currentUsername);
             doc.Blocks.Add(para);
             i++;
         }
@@ -1416,25 +1462,26 @@ internal static class MarkdownRenderer
     // Recurse into each span's content so nested formats (e.g. **__text__**) compose correctly.
     private static void ParseInlines(string text, InlineCollection inlines,
                                      Brush textBrush, Brush linkBrush,
-                                     TextStyle style = TextStyle.None)
+                                     TextStyle style = TextStyle.None,
+                                     string currentUsername = "")
     {
         text = text.Replace("\\:", ":").Replace("\\\\", "\\");
         int lastEnd = 0;
         foreach (System.Text.RegularExpressions.Match m in InlinePattern.Matches(text))
         {
             if (m.Index > lastEnd)
-                AddInlines(text[lastEnd..m.Index], inlines, textBrush, style);
+                AddInlines(text[lastEnd..m.Index], inlines, textBrush, style, currentUsername);
 
             if (m.Groups[1].Success)       // ***bold+italic***
-                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic);
+                ParseInlines(m.Groups[2].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold | TextStyle.Italic, currentUsername);
             else if (m.Groups[3].Success)  // **bold**
-                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold);
+                ParseInlines(m.Groups[4].Value,  inlines, textBrush, linkBrush, style | TextStyle.Bold, currentUsername);
             else if (m.Groups[5].Success)  // *italic*
-                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic);
+                ParseInlines(m.Groups[6].Value,  inlines, textBrush, linkBrush, style | TextStyle.Italic, currentUsername);
             else if (m.Groups[7].Success)  // __underline__
-                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline);
+                ParseInlines(m.Groups[8].Value,  inlines, textBrush, linkBrush, style | TextStyle.Underline, currentUsername);
             else if (m.Groups[9].Success)  // ~~strike~~
-                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike);
+                ParseInlines(m.Groups[10].Value, inlines, textBrush, linkBrush, style | TextStyle.Strike, currentUsername);
             else if (m.Groups[11].Success) // ```code``` (triple-backtick inline)
                 inlines.Add(MakeCodeRun(m.Groups[12].Value, textBrush));
             else if (m.Groups[13].Success) // `code` (single-backtick inline)
@@ -1448,20 +1495,41 @@ internal static class MarkdownRenderer
         }
 
         if (lastEnd < text.Length)
-            AddInlines(text[lastEnd..], inlines, textBrush, style);
+            AddInlines(text[lastEnd..], inlines, textBrush, style, currentUsername);
 
         if (!inlines.Any())
             inlines.Add(MakeRun(string.Empty, textBrush, style));
     }
 
     // Adds text to inlines, expanding \x01 placeholders (collapsed newlines) into LineBreaks.
-    private static void AddInlines(string text, InlineCollection inlines, Brush brush, TextStyle style)
+    // When currentUsername is non-empty, @mention tokens are rendered as styled pills.
+    private static void AddInlines(string text, InlineCollection inlines, Brush brush, TextStyle style, string currentUsername = "")
     {
         string[] parts = text.Split('\x01');
         for (int i = 0; i < parts.Length; i++)
         {
             if (i > 0) inlines.Add(new LineBreak());
-            if (parts[i].Length > 0) inlines.Add(MakeRun(parts[i], brush, style));
+            string part = parts[i];
+            if (part.Length == 0) continue;
+
+            if (!string.IsNullOrEmpty(currentUsername) && part.Contains('@'))
+            {
+                int lastIdx = 0;
+                foreach (System.Text.RegularExpressions.Match mm in MentionPattern.Matches(part))
+                {
+                    if (mm.Index > lastIdx)
+                        inlines.Add(MakeRun(part[lastIdx..mm.Index], brush, style));
+                    bool isSelf = string.Equals(mm.Groups[1].Value, currentUsername, StringComparison.OrdinalIgnoreCase);
+                    inlines.Add(MakeMentionInline(mm.Groups[1].Value, isSelf));
+                    lastIdx = mm.Index + mm.Length;
+                }
+                if (lastIdx < part.Length)
+                    inlines.Add(MakeRun(part[lastIdx..], brush, style));
+            }
+            else
+            {
+                inlines.Add(MakeRun(part, brush, style));
+            }
         }
     }
 
@@ -1492,6 +1560,30 @@ internal static class MarkdownRenderer
             Padding      = new Thickness(4, 1, 4, 1),
             Margin       = new Thickness(1, 0, 1, 0),
             Child        = tb,
+        }) { BaselineAlignment = BaselineAlignment.Center };
+    }
+
+    private static Inline MakeMentionInline(string username, bool isSelf)
+    {
+        var bg = isSelf
+            ? new SolidColorBrush(Color.FromArgb(0x50, 0xFF, 0xC7, 0x00))
+            : new SolidColorBrush(Color.FromArgb(0x40, 0x58, 0x65, 0xF2));
+        var fg = isSelf
+            ? new SolidColorBrush(Color.FromRgb(0xFF, 0xD0, 0x58))
+            : new SolidColorBrush(Color.FromRgb(0xC9, 0xCC, 0xFF));
+        var tb = new System.Windows.Controls.TextBlock
+        {
+            Text = $"@{username}",
+            Foreground = fg,
+            FontWeight = FontWeights.SemiBold,
+        };
+        return new InlineUIContainer(new System.Windows.Controls.Border
+        {
+            Background = bg,
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(3, 1, 3, 1),
+            Margin = new Thickness(1, 0, 1, 0),
+            Child = tb,
         }) { BaselineAlignment = BaselineAlignment.Center };
     }
 

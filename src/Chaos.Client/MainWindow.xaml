@@ -1135,8 +1135,8 @@
                                 <ToolTip Content="{Binding InboxButtonTooltip}" />
                             </Button.ToolTip>
                             <Grid>
-                                <!-- @ icon -->
-                                <TextBlock Text="@" FontSize="11" FontWeight="Bold"
+                                <!-- Envelope icon -->
+                                <TextBlock Text="✉" FontSize="13" FontWeight="Normal"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" HorizontalAlignment="Center" />
                                 <!-- Unread mention badge on the button -->
@@ -1353,6 +1353,58 @@
                                        MaxWidth="300" MaxHeight="120"
                                        Stretch="Uniform" HorizontalAlignment="Left" />
                             </DockPanel>
+                        </Border>
+
+                        <!-- @ Mention Autocomplete -->
+                        <Border CornerRadius="8" Margin="0,0,0,4"
+                                Background="{StaticResource BgDarkBrush}"
+                                BorderBrush="#40FFFFFF" BorderThickness="1"
+                                Visibility="{Binding ShowMentionSuggestions, Converter={StaticResource BoolToVis}}">
+                            <ListBox x:Name="MentionSuggestionList"
+                                     ItemsSource="{Binding MentionSuggestions}"
+                                     SelectedIndex="{Binding SelectedMentionSuggestionIndex, Mode=TwoWay}"
+                                     Focusable="False" MaxHeight="200"
+                                     Background="Transparent" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewMouseLeftButtonDown="MentionSuggestionList_PreviewMouseLeftButtonDown">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="Padding" Value="12,6" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="4">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="@" Foreground="{StaticResource AccentBlueBrush}"
+                                                       FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding}" Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontSize="13" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </Border>
 
                         <!-- Slash Command Autocomplete -->

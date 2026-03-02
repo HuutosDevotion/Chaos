@@ -200,6 +200,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
+    private bool _showMentionSuggestions;
+    private int _selectedMentionSuggestionIndex = -1;
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
@@ -212,6 +214,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
+    public ObservableCollection<string> MentionSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
     public ObservableCollection<MentionDto> Mentions { get; } = new();
 
@@ -243,6 +246,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _messageText = value;
             OnPropertyChanged();
             UpdateSlashSuggestions(value);
+            UpdateMentionSuggestions(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -265,6 +269,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _selectedSuggestionIndex;
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
+    }
+
+    public bool ShowMentionSuggestions
+    {
+        get => _showMentionSuggestions;
+        set { _showMentionSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedMentionSuggestionIndex
+    {
+        get => _selectedMentionSuggestionIndex;
+        set { _selectedMentionSuggestionIndex = value; OnPropertyChanged(); }
     }
 
     public object? ActiveModal
@@ -391,6 +407,57 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (next < 0) next = SlashSuggestions.Count - 1;
         else if (next >= SlashSuggestions.Count) next = 0;
         SelectedSuggestionIndex = next;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex MentionTrigger =
+        new(@"@(\w*)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private void UpdateMentionSuggestions(string text)
+    {
+        MentionSuggestions.Clear();
+        SelectedMentionSuggestionIndex = -1;
+        if (ShowSlashSuggestions || string.IsNullOrEmpty(text))
+        { ShowMentionSuggestions = false; return; }
+
+        var m = MentionTrigger.Match(text);
+        if (!m.Success) { ShowMentionSuggestions = false; return; }
+
+        string prefix = m.Groups[1].Value;
+        foreach (var u in ConnectedUsers)
+            if (u.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                MentionSuggestions.Add(u);
+
+        ShowMentionSuggestions = MentionSuggestions.Count > 0;
+    }
+
+    public void NavigateMentionSuggestions(int delta)
+    {
+        if (MentionSuggestions.Count == 0) return;
+        int next = SelectedMentionSuggestionIndex + delta;
+        if (next < 0) next = MentionSuggestions.Count - 1;
+        else if (next >= MentionSuggestions.Count) next = 0;
+        SelectedMentionSuggestionIndex = next;
+    }
+
+    public void SelectMentionSuggestion(string username)
+    {
+        var m = MentionTrigger.Match(MessageText);
+        if (m.Success) MessageText = MessageText[..m.Index] + $"@{username} ";
+        DismissMentionSuggestions();
+    }
+
+    public void DismissMentionSuggestions()
+    {
+        MentionSuggestions.Clear();
+        ShowMentionSuggestions = false;
+        SelectedMentionSuggestionIndex = -1;
+    }
+
+    public async void AutoClearMention(int messageId)
+    {
+        var mention = Mentions.FirstOrDefault(m => m.MessageId == messageId);
+        if (mention is not null)
+            await ClearMention(mention);
     }
 
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
