@@ -74,6 +74,43 @@ public partial class MainWindow : Window
         return sb.ToString();
     }
 
+    private string GetSelectedInputText()
+    {
+        var sel = MessageInput.Selection;
+        if (sel.IsEmpty) return string.Empty;
+
+        var sb = new StringBuilder();
+        bool firstParagraph = true;
+
+        foreach (var block in MessageInput.Document.Blocks.OfType<Paragraph>())
+        {
+            if (block.ElementEnd.CompareTo(sel.Start) <= 0) continue;
+            if (block.ElementStart.CompareTo(sel.End) >= 0) break;
+
+            if (!firstParagraph) sb.Append('\n');
+            firstParagraph = false;
+
+            foreach (var inline in block.Inlines)
+            {
+                if (inline.ElementEnd.CompareTo(sel.Start) <= 0) continue;
+                if (inline.ElementStart.CompareTo(sel.End) >= 0) break;
+
+                if (inline is Run run)
+                {
+                    var runStart = run.ContentStart.CompareTo(sel.Start) < 0 ? sel.Start : run.ContentStart;
+                    var runEnd = run.ContentEnd.CompareTo(sel.End) > 0 ? sel.End : run.ContentEnd;
+                    sb.Append(new TextRange(runStart, runEnd).Text);
+                }
+                else if (inline is InlineUIContainer { Child: Image { Tag: string code } })
+                {
+                    sb.Append(code);
+                }
+            }
+        }
+
+        return sb.ToString();
+    }
+
     private void SetInputText(string text)
     {
         _suppressTextSync = true;
@@ -369,6 +406,23 @@ public partial class MainWindow : Window
             {
                 PagePadding = new Thickness(0),
             };
+
+            // Override Copy/Cut to serialize emoji images as :shortcode: text
+            MessageInput.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, e) =>
+            {
+                var text = GetSelectedInputText();
+                if (string.IsNullOrEmpty(text)) return;
+                Clipboard.SetText(text);
+                e.Handled = true;
+            }));
+            MessageInput.CommandBindings.Add(new CommandBinding(ApplicationCommands.Cut, (_, e) =>
+            {
+                var text = GetSelectedInputText();
+                if (string.IsNullOrEmpty(text)) return;
+                Clipboard.SetText(text);
+                MessageInput.Selection.Text = string.Empty;
+                e.Handled = true;
+            }));
 
             MessageInput.TextChanged += (_, _) =>
             {
