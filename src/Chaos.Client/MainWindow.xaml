@@ -1533,7 +1533,7 @@
                      Focusable="False"
                      Background="Transparent"
                      BorderThickness="0"
-                     Padding="6,4,6,0"
+                     Padding="6,4,6,4"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      PreviewMouseLeftButtonDown="EmojiSuggestionList_PreviewMouseLeftButtonDown">
                 <ListBox.ItemContainerStyle>

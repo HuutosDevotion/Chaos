@@ -12,6 +12,10 @@ public class SubmenuHost : ContentControl
     private Grid? _overlay;
     private Canvas? _canvas;
     private Border? _contentBorder;
+    private FrameworkElement? _hookedTarget;
+
+    /// <summary>Fires before repositioning so callers can update Width/Offset.</summary>
+    public event Action? Repositioning;
 
     public static readonly DependencyProperty IsOpenProperty =
         DependencyProperty.Register(nameof(IsOpen), typeof(bool), typeof(SubmenuHost),
@@ -148,6 +152,12 @@ public class SubmenuHost : ContentControl
             _parentWindow.PreviewKeyDown += ParentWindow_PreviewKeyDown;
             _parentWindow.PreviewMouseDown += ParentWindow_PreviewMouseDown;
         }
+
+        if (PlacementTarget is FrameworkElement fe)
+        {
+            _hookedTarget = fe;
+            _hookedTarget.SizeChanged += PlacementTarget_SizeChanged;
+        }
     }
 
     private void UnhookWindowEvents()
@@ -159,12 +169,30 @@ public class SubmenuHost : ContentControl
             _parentWindow.PreviewMouseDown -= ParentWindow_PreviewMouseDown;
             _parentWindow = null;
         }
+
+        if (_hookedTarget != null)
+        {
+            _hookedTarget.SizeChanged -= PlacementTarget_SizeChanged;
+            _hookedTarget = null;
+        }
     }
 
     private void ParentWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (IsOpen)
+        {
+            Repositioning?.Invoke();
             PositionContent();
+        }
+    }
+
+    private void PlacementTarget_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (IsOpen)
+        {
+            Repositioning?.Invoke();
+            PositionContent();
+        }
     }
 
     private void ParentWindow_PreviewKeyDown(object sender, KeyEventArgs e)

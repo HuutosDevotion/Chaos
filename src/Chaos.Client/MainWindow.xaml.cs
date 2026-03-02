@@ -602,13 +602,20 @@ public partial class MainWindow : Window
 
             };
 
-            vm.EmojiAutocomplete.BeforeOpen = () =>
+            // Shared sizing logic for autocomplete + picker repositioning
+            void SizeAutocomplete()
             {
                 double inputWidth = TextInputBorder.ActualWidth;
                 double menuWidth = inputWidth > 40 ? inputWidth - 32 : inputWidth;
                 EmojiAutocompleteHost.SubmenuWidth = menuWidth;
                 EmojiAutocompleteHost.HorizontalOffset = (inputWidth - menuWidth) / 2;
-            };
+            }
+
+            vm.EmojiAutocomplete.BeforeOpen = SizeAutocomplete;
+            EmojiAutocompleteHost.Repositioning += SizeAutocomplete;
+
+            EmojiPickerHost.Repositioning += () =>
+                EmojiPickerHost.HorizontalOffset = TextInputBorder.ActualWidth - EmojiPickerHost.SubmenuWidth;
 
             vm.EmojiAutocomplete.PropertyChanged += (_, args) =>
             {
