@@ -47,6 +47,8 @@ public partial class MainWindow : Window
     // emoji InlineUIContainers as :shortcode: text.
 
     private bool _suppressTextSync;
+    private bool _applyingFormatPreview;
+    private InlineFormatPreview? _formatPreview;
     private static readonly Regex InputEmojiDetect = new(@":([A-Za-z0-9_]+(?:~\d+)?):", RegexOptions.Compiled);
 
     private string GetInputText()
@@ -424,11 +426,20 @@ public partial class MainWindow : Window
                 e.Handled = true;
             }));
 
+            _formatPreview = new InlineFormatPreview(
+                (Brush)FindResource("TextPrimaryBrush"),
+                (Brush)FindResource("TextMutedBrush"));
+
             MessageInput.TextChanged += (_, _) =>
             {
-                if (_suppressTextSync) return;
+                if (_suppressTextSync || _applyingFormatPreview) return;
                 SyncInputToViewModel();
                 DetectAndReplaceEmojis();
+
+                _applyingFormatPreview = true;
+                _suppressTextSync = true;
+                try { _formatPreview.Apply(MessageInput); }
+                finally { _suppressTextSync = false; _applyingFormatPreview = false; }
 
                 // Update emoji autocomplete immediately (in-memory search is fast)
                 if (DataContext is MainViewModel vm3)

@@ -1451,6 +1451,7 @@
                                                  Background="Transparent"
                                                  AcceptsReturn="True"
                                                  Padding="12,16"
+                                                 FontSize="{Binding Settings.FontSize}"
                                                  MaxHeight="120"
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
