@@ -321,7 +321,7 @@ public partial class MainWindow : Window
                     });
                 }
 
-                var container = new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.Center };
+                var container = new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.TextBottom };
 
                 // Insert new inlines
                 if (!string.IsNullOrEmpty(after))
@@ -2251,7 +2251,7 @@ internal static class MarkdownRenderer
             });
         }
 
-        return new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.Center };
+        return new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.TextBottom };
     }
 
     private static Hyperlink MakeLink(string label, string url, Brush brush)
