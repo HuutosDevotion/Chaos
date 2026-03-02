@@ -51,10 +51,10 @@ public class SettingsModalViewModelTests
     }
 
     [Fact]
-    public void Category_HasTwoPages()
+    public void Category_HasThreePages()
     {
         var (modal, _) = Make();
-        Assert.Equal(2, modal.Categories[0].Pages.Count);
+        Assert.Equal(3, modal.Categories[0].Pages.Count);
     }
 
     [Fact]
@@ -83,6 +83,20 @@ public class SettingsModalViewModelTests
     {
         var (modal, _) = Make();
         Assert.Equal("Voice", modal.Categories[0].Pages[1].Name);
+    }
+
+    [Fact]
+    public void ThirdPage_IsNotificationsSettingsViewModel()
+    {
+        var (modal, _) = Make();
+        Assert.IsType<NotificationsSettingsViewModel>(modal.Categories[0].Pages[2]);
+    }
+
+    [Fact]
+    public void NotificationsPage_HasCorrectName()
+    {
+        var (modal, _) = Make();
+        Assert.Equal("Notifications", modal.Categories[0].Pages[2].Name);
     }
 
     // ── page selection ─────────────────────────────────────────────────────────
@@ -249,6 +263,31 @@ public class VoiceSettingsViewModelTests
     public void IsSelected_DefaultsFalse()
     {
         var vm = new VoiceSettingsViewModel(new AppSettings(), _ => { });
+        Assert.False(vm.IsSelected);
+    }
+}
+
+public class NotificationsSettingsViewModelTests
+{
+    [Fact]
+    public void Name_IsNotifications()
+    {
+        var vm = new NotificationsSettingsViewModel(new AppSettings(), _ => { });
+        Assert.Equal("Notifications", vm.Name);
+    }
+
+    [Fact]
+    public void Settings_IsThePassedInAppSettings()
+    {
+        var settings = new AppSettings();
+        var vm = new NotificationsSettingsViewModel(settings, _ => { });
+        Assert.Same(settings, vm.Settings);
+    }
+
+    [Fact]
+    public void IsSelected_DefaultsFalse()
+    {
+        var vm = new NotificationsSettingsViewModel(new AppSettings(), _ => { });
         Assert.False(vm.IsSelected);
     }
 }

@@ -49,3 +49,14 @@ public class SlashCommandDto
     public string Description { get; set; } = string.Empty;
     public string Usage { get; set; } = string.Empty;
 }
+
+public class MentionDto
+{
+    public int MessageId { get; set; }
+    public int ChannelId { get; set; }
+    public string Author { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    // Filled in client-side from the channel list
+    public string ChannelName { get; set; } = string.Empty;
+}

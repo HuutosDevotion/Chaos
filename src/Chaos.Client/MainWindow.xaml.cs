@@ -176,12 +176,25 @@ public partial class MainWindow : Window
                 {
                     foreach (MessageViewModel msg in args.NewItems)
                         AppendMessageToDoc(msg);
+                    if (!_hasPendingScrollToMessage)
+                        chatScroll?.ScrollToBottom();
                 }
                 else
                 {
                     RebuildMessageDoc(vm);
+                    if (vm.PendingScrollToMessageId.HasValue)
+                    {
+                        int targetId = vm.PendingScrollToMessageId.Value;
+                        vm.PendingScrollToMessageId = null;
+                        _hasPendingScrollToMessage = true;
+                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                            () => ScrollToMessageId(targetId));
+                    }
+                    else
+                    {
+                        chatScroll?.ScrollToBottom();
+                    }
                 }
-                chatScroll?.ScrollToBottom();
             };
 
             vm.PropertyChanged += (_, args) =>
@@ -206,6 +219,16 @@ public partial class MainWindow : Window
                         SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
                 }
 
+                if (args.PropertyName == nameof(MainViewModel.PendingScrollToMessageId)
+                    && vm.PendingScrollToMessageId.HasValue)
+                {
+                    int targetId = vm.PendingScrollToMessageId.Value;
+                    vm.PendingScrollToMessageId = null;
+                    _hasPendingScrollToMessage = true;
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                        () => ScrollToMessageId(targetId));
+                }
+
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
                     {
@@ -214,6 +237,20 @@ public partial class MainWindow : Window
                     });
             };
         }
+    }
+
+    private void ScrollToMessageId(int messageId)
+    {
+        foreach (var block in MessageList.Document.Blocks)
+        {
+            if (block.Tag is int id && id == messageId)
+            {
+                block.BringIntoView();
+                _hasPendingScrollToMessage = false;
+                return;
+            }
+        }
+        _hasPendingScrollToMessage = false;
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject obj)
@@ -395,6 +432,8 @@ public partial class MainWindow : Window
 
 
     // ── Image Preview ─────────────────────────────────────────────────────────
+
+    private bool _hasPendingScrollToMessage;
 
     private bool _isImageZoomed;
     private bool _isPanning;
@@ -987,12 +1026,16 @@ public partial class MainWindow : Window
         var muted     = (Brush)FindResource("TextMutedBrush");
         double fontSize = (DataContext as MainViewModel)?.Settings.FontSize ?? 14;
 
+        bool firstBlockAdded = false;
+
         if (msg.ShowHeader)
         {
             var p = new Paragraph { Margin = new Thickness(16, msg.Padding.Top, 16, 0), LineHeight = double.NaN };
+            p.Tag = msg.Message.Id; // Tag first block with message ID for scroll-to
             p.Inlines.Add(new Run(msg.Author) { Foreground = primary, FontWeight = FontWeights.SemiBold, FontSize = fontSize + 2 });
             p.Inlines.Add(new Run($"  {msg.Timestamp:HH:mm}") { Foreground = muted, FontSize = 11 });
             doc.Blocks.Add(p);
+            firstBlockAdded = true;
         }
 
         if (!string.IsNullOrEmpty(msg.Content))
@@ -1009,11 +1052,14 @@ public partial class MainWindow : Window
                 var rendered = MarkdownRenderer.Render(msg.Content, secondary,
                                    (Brush)FindResource("AccentBlueBrush"));
                 double blockTop = top;
+                bool isFirst = true;
                 foreach (var block in rendered.Blocks.ToList())
                 {
                     rendered.Blocks.Remove(block);
                     block.Margin = new Thickness(16, blockTop, 16, 0);
                     if (block is Paragraph p) p.LineHeight = double.NaN;
+                    // Tag first content block with message ID if no header block was added
+                    if (isFirst && !firstBlockAdded) { block.Tag = msg.Message.Id; isFirst = false; }
                     doc.Blocks.Add(block);
                     blockTop = 1;
                 }

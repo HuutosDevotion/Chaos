@@ -14,6 +14,7 @@ public class AppSettings : INotifyPropertyChanged
     private double _uiScale = 1.0;
     private bool _groupMessages;
     private bool _showFormattingToolbar;
+    private bool _showInbox = true;
 
     public double FontSize
     {
@@ -55,6 +56,12 @@ public class AppSettings : INotifyPropertyChanged
     {
         get => _showFormattingToolbar;
         set { if (_showFormattingToolbar == value) return; _showFormattingToolbar = value; OnPropertyChanged(); }
+    }
+
+    public bool ShowInbox
+    {
+        get => _showInbox;
+        set { if (_showInbox == value) return; _showInbox = value; OnPropertyChanged(); }
     }
 
     // ── Voice ─────────────────────────────────────────────────────────────────

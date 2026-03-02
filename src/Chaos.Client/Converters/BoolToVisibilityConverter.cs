@@ -10,6 +10,8 @@ public class BoolToVisibilityConverter : IValueConverter
     {
         if (value is bool b)
             return b ? Visibility.Visible : Visibility.Collapsed;
+        if (value is int i)
+            return i > 0 ? Visibility.Visible : Visibility.Collapsed;
         return Visibility.Collapsed;
     }
 
@@ -27,6 +29,8 @@ public class InverseBoolToVisibilityConverter : IValueConverter
     {
         if (value is bool b)
             return b ? Visibility.Collapsed : Visibility.Visible;
+        if (value is int i)
+            return i > 0 ? Visibility.Collapsed : Visibility.Visible;
         return Visibility.Visible;
     }
 
