@@ -13,6 +13,7 @@ public class EmojiService
     private List<EmojiDto> _allEmojis = new();
     private Dictionary<string, EmojiDto> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, BitmapImage?> _imageCache = new();
+    private readonly ConcurrentDictionary<string, Task<BitmapImage?>> _loadingTasks = new();
     private string _baseUrl = string.Empty;
     private string _username = string.Empty;
     private IKeyValueStore? _store;
@@ -159,17 +160,22 @@ public class EmojiService
         if (_imageCache.TryGetValue(emoji.FileName, out var cached))
             return cached;
 
-        // Start async download
-        _ = LoadImageAsync(emoji);
+        // Start async load once — deduplicated via _loadingTasks
+        _ = GetOrStartLoadAsync(emoji);
         return null;
     }
 
-    public async Task<BitmapImage?> GetImageAsync(EmojiDto emoji)
+    public Task<BitmapImage?> GetImageAsync(EmojiDto emoji)
     {
         if (_imageCache.TryGetValue(emoji.FileName, out var cached))
-            return cached;
+            return Task.FromResult(cached);
 
-        return await LoadImageAsync(emoji);
+        return GetOrStartLoadAsync(emoji);
+    }
+
+    private Task<BitmapImage?> GetOrStartLoadAsync(EmojiDto emoji)
+    {
+        return _loadingTasks.GetOrAdd(emoji.FileName, _ => LoadImageAsync(emoji));
     }
 
     private async Task<BitmapImage?> LoadImageAsync(EmojiDto emoji)
@@ -200,26 +206,25 @@ public class EmojiService
                 }
             }
 
-            BitmapImage? bmp = null;
-            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-            {
-                bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.StreamSource = new MemoryStream(bytes);
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.DecodePixelWidth = 72;
-                bmp.EndInit();
-                bmp.Freeze();
-            });
+            // Create and freeze on background thread — Freeze() makes it
+            // cross-thread safe, so no need to marshal to the UI thread.
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.DecodePixelWidth = 72;
+            bmp.EndInit();
+            bmp.Freeze();
 
-            if (bmp is not null)
-                _imageCache[emoji.FileName] = bmp;
+            _imageCache[emoji.FileName] = bmp;
 
+            _loadingTasks.TryRemove(emoji.FileName, out _);
             return bmp;
         }
         catch
         {
             _imageCache[emoji.FileName] = null;
+            _loadingTasks.TryRemove(emoji.FileName, out _);
             return null;
         }
     }

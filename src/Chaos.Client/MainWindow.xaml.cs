@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     // emoji InlineUIContainers as :shortcode: text.
 
     private bool _suppressTextSync;
+    private System.Windows.Threading.DispatcherTimer? _emojiSuggestionTimer;
     private static readonly Regex InputEmojiDetect = new(@":([A-Za-z0-9_]+(?:~\d+)?):", RegexOptions.Compiled);
 
     private string GetInputText()
@@ -370,19 +371,30 @@ public partial class MainWindow : Window
                 PagePadding = new Thickness(0),
             };
 
+            _emojiSuggestionTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(150)
+            };
+            _emojiSuggestionTimer.Tick += (_, _) =>
+            {
+                _emojiSuggestionTimer.Stop();
+                if (DataContext is MainViewModel vm3)
+                {
+                    string text = GetInputText();
+                    int pos = GetInputCursorOffset();
+                    vm3.UpdateEmojiSuggestions(text, pos);
+                }
+            };
+
             MessageInput.TextChanged += (_, _) =>
             {
                 if (_suppressTextSync) return;
                 SyncInputToViewModel();
                 DetectAndReplaceEmojis();
 
-                // Emoji autocomplete
-                if (DataContext is MainViewModel vm2)
-                {
-                    string text = GetInputText();
-                    int pos = GetInputCursorOffset();
-                    vm2.UpdateEmojiSuggestions(text, pos);
-                }
+                // Debounce emoji autocomplete so it doesn't run on every keystroke
+                _emojiSuggestionTimer!.Stop();
+                _emojiSuggestionTimer.Start();
             };
 
             // Sync ViewModel → RichTextBox when MessageText is cleared (e.g. after send)
@@ -1013,7 +1025,7 @@ public partial class MainWindow : Window
         TooltipHelper.SetIsActive(UnderlineButton,     FormatDetection.IsCursorInSpan(text, pos, FormatDetection.UnderlineSpan, 2));
         TooltipHelper.SetIsActive(StrikethroughButton, FormatDetection.IsCursorInSpan(text, pos, FormatDetection.StrikeSpan, 2));
 
-        int lineStartPos = pos == 0 ? 0 : text.LastIndexOf('\n', pos - 1) + 1;
+        int lineStartPos = (pos == 0 || text.Length == 0) ? 0 : text.LastIndexOf('\n', Math.Min(pos, text.Length) - 1) + 1;
         bool inFencedCode = FormatDetection.IsLineInFencedBlock(text, lineStartPos);
         TooltipHelper.SetIsActive(CodeButton,  inFencedCode
             || FormatDetection.IsCursorInSpan(text, pos, FormatDetection.CodeSpan, 1)
