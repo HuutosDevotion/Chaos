@@ -132,6 +132,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
     public EmojiService EmojiService { get; } = new();
+    public EmojiPickerViewModel EmojiPicker { get; } = new();
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
     private readonly DispatcherTimer _remoteSpeakingTimer;

@@ -7,6 +7,7 @@
         xmlns:conv="clr-namespace:Chaos.Client.Converters"
         xmlns:shared="clr-namespace:Chaos.Shared;assembly=Chaos.Shared"
         xmlns:behaviors="clr-namespace:Chaos.Client.Behaviors"
+        xmlns:controls="clr-namespace:Chaos.Client.Controls"
         mc:Ignorable="d"
         Title="Chaos" Height="700" Width="1100"
         Background="{StaticResource BgMediumBrush}"
@@ -1262,41 +1263,6 @@
                                    Margin="4,2,0,4"
                                    Visibility="{Binding HasTypingUsers, Converter={StaticResource BoolToVis}}" />
 
-                        <!-- Emoji Picker Popup -->
-                        <Popup x:Name="EmojiPickerPopup"
-                               PlacementTarget="{Binding ElementName=EmojiPickerButton}"
-                               Placement="Top"
-                               StaysOpen="False"
-                               AllowsTransparency="True"
-                               PopupAnimation="Fade">
-                            <Border Background="{StaticResource BgDarkBrush}"
-                                    BorderBrush="#40FFFFFF" BorderThickness="1"
-                                    CornerRadius="8" Width="380" Height="400">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-
-                                    <!-- Search bar -->
-                                    <Border Grid.Row="0" Padding="8,8,8,4">
-                                        <TextBox x:Name="EmojiSearchBox"
-                                                 Style="{StaticResource DarkTextBox}"
-                                                 BorderThickness="0"
-                                                 Background="{StaticResource BgInputBrush}"
-                                                 Padding="8,6"
-                                                 TextChanged="EmojiSearch_TextChanged" />
-                                    </Border>
-
-                                    <!-- Emoji grid -->
-                                    <ScrollViewer Grid.Row="1"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
-                                        <StackPanel x:Name="EmojiGridPanel" Margin="8,0,8,8" />
-                                    </ScrollViewer>
-                                </Grid>
-                            </Border>
-                        </Popup>
 
                         <!-- Text input row -->
                         <Border Background="{StaticResource BgInputBrush}"
@@ -1550,5 +1516,37 @@
         </Grid>
 
         </Grid> <!-- /Content -->
+
+        <!-- Emoji Picker (SubmenuHost overlays entire window) -->
+        <controls:SubmenuHost x:Name="EmojiPickerHost"
+                              Grid.RowSpan="2" Panel.ZIndex="15"
+                              IsOpen="{Binding EmojiPicker.IsOpen, Mode=TwoWay}"
+                              PlacementTarget="{Binding ElementName=EmojiPickerButton}"
+                              Placement="Top"
+                              SubmenuWidth="380" SubmenuHeight="400">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Search bar -->
+                <Border Grid.Row="0" Padding="8,8,8,4">
+                    <TextBox x:Name="EmojiSearchBox"
+                             Style="{StaticResource DarkTextBox}"
+                             BorderThickness="0"
+                             Background="{StaticResource BgInputBrush}"
+                             Padding="8,6"
+                             TextChanged="EmojiSearch_TextChanged" />
+                </Border>
+
+                <!-- Emoji grid -->
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="EmojiGridPanel" Margin="8,0,8,8" />
+                </ScrollViewer>
+            </Grid>
+        </controls:SubmenuHost>
     </Grid>
 </Window>

@@ -1446,14 +1446,15 @@ public partial class MainWindow : Window
 
     private void EmojiPicker_Click(object sender, RoutedEventArgs e)
     {
-        if (EmojiPickerPopup.IsOpen)
+        if (DataContext is not MainViewModel vm) return;
+        if (vm.EmojiPicker.IsOpen)
         {
-            EmojiPickerPopup.IsOpen = false;
+            vm.EmojiPicker.Close();
             return;
         }
         EmojiSearchBox.Text = string.Empty;
         RestoreCachedEmojiGrid();
-        EmojiPickerPopup.IsOpen = true;
+        vm.EmojiPicker.Open();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => EmojiSearchBox.Focus());
     }
 
@@ -1625,7 +1626,7 @@ public partial class MainWindow : Window
         SyncInputToViewModel();
 
         vm.EmojiService.TrackUsage(emoji.Name);
-        EmojiPickerPopup.IsOpen = false;
+        vm.EmojiPicker.Close();
         MessageInput.Focus();
     }
 

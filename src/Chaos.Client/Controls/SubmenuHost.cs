@@ -230,7 +230,7 @@ public class SubmenuHost : ContentControl
         {
             try
             {
-                var transform = PlacementTarget.TransformToAncestor(_overlay);
+                var transform = PlacementTarget.TransformToVisual(_overlay);
                 var targetPos = transform.Transform(new Point(0, 0));
                 targetX = targetPos.X;
                 targetY = targetPos.Y;
