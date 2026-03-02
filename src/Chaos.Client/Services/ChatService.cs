@@ -23,6 +23,8 @@ public class ChatService : IAsyncDisposable
     public event Action<int>? ChannelDeleted;
     public event Action<ChannelDto>? ChannelRenamed;
     public event Action<int, string>? UserTyping; // channelId, username
+    public event Action<int>? UnreadCountChanged; // channelId
+    public event Action<MentionDto>? MentionReceived;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -60,6 +62,8 @@ public class ChatService : IAsyncDisposable
         _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
         _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
         _connection.On<int, string>("UserTyping", (channelId, username) => UserTyping?.Invoke(channelId, username));
+        _connection.On<int>("UnreadCountChanged", channelId => UnreadCountChanged?.Invoke(channelId));
+        _connection.On<MentionDto>("MentionReceived", dto => MentionReceived?.Invoke(dto));
 
         _connection.Closed += _ =>
         {
@@ -192,6 +196,25 @@ public class ChatService : IAsyncDisposable
     {
         if (_connection is not null)
             await _connection.InvokeAsync("RenameChannel", channelId, newName);
+    }
+
+    public async Task<List<MentionDto>> GetMentionsAsync()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<MentionDto>>("GetMentions");
+        return new();
+    }
+
+    public async Task ClearMentionAsync(int messageId)
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("ClearMention", messageId);
+    }
+
+    public async Task ClearAllMentionsAsync()
+    {
+        if (_connection is not null)
+            await _connection.InvokeAsync("ClearAllMentions");
     }
 
     public async ValueTask DisposeAsync()

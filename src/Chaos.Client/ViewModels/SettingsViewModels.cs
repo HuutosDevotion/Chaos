@@ -360,6 +360,17 @@ public class SettingsCategoryViewModel
     }
 }
 
+public class NotificationsSettingsViewModel : SettingsPageViewModel
+{
+    public AppSettings Settings { get; }
+
+    public NotificationsSettingsViewModel(AppSettings settings, Action<SettingsPageViewModel> select)
+        : base("Notifications", select)
+    {
+        Settings = settings;
+    }
+}
+
 public class SettingsModalViewModel : INotifyPropertyChanged
 {
     private SettingsPageViewModel? _selectedPage;
@@ -386,10 +397,11 @@ public class SettingsModalViewModel : INotifyPropertyChanged
 
         var appearance = new AppearanceSettingsViewModel(settings, select);
         var voice = new VoiceSettingsViewModel(settings, select);
+        var notifications = new NotificationsSettingsViewModel(settings, select);
 
         Categories = new List<SettingsCategoryViewModel>
         {
-            new("App Settings", new SettingsPageViewModel[] { appearance, voice })
+            new("App Settings", new SettingsPageViewModel[] { appearance, voice, notifications })
         };
 
         Close = new RelayCommand(_ => { voice.StopMicTest(); voice.StopThresholdMonitor(); close(); });

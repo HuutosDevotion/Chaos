@@ -20,6 +20,10 @@ public class ConnectedUser
 public class ChatHub : Hub
 {
     private static readonly ConcurrentDictionary<string, ConnectedUser> _users = new();
+
+    // Per-connection mention history (cleared on disconnect)
+    private static readonly ConcurrentDictionary<string, List<MentionDto>> _mentions = new();
+
     private readonly ChaosDbContext _db;
     private readonly CommandDispatcher _commandDispatcher;
 
@@ -37,6 +41,7 @@ public class ChatHub : Hub
             Username = username
         };
         _users.AddOrUpdate(Context.ConnectionId, user, (_, _) => user);
+        _mentions[Context.ConnectionId] = new List<MentionDto>();
         await Clients.All.SendAsync("UserConnected", username);
         await Clients.Caller.SendAsync("UsernameSet", username);
     }
@@ -163,6 +168,39 @@ public class ChatHub : Hub
         };
 
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);
+
+        // Process @ mentions — notify users whose @username appears in the message
+        if (!string.IsNullOrEmpty(content))
+        {
+            foreach (var target in _users.Values)
+            {
+                if (string.IsNullOrEmpty(target.Username)) continue;
+                if (target.ConnectionId == Context.ConnectionId) continue;
+                if (!content.Contains($"@{target.Username}", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var mention = new MentionDto
+                {
+                    MessageId = message.Id,
+                    ChannelId = channelId,
+                    Author = user.Username,
+                    Content = content,
+                    Timestamp = message.Timestamp
+                };
+
+                if (_mentions.TryGetValue(target.ConnectionId, out var mentionList))
+                    lock (mentionList) { mentionList.Add(mention); }
+
+                await Clients.Client(target.ConnectionId).SendAsync("MentionReceived", mention);
+            }
+        }
+
+        // Send unread notification to users not currently viewing this channel
+        foreach (var other in _users.Values)
+        {
+            if (other.ConnectionId == Context.ConnectionId) continue;
+            if (other.TextChannelId == channelId) continue; // already viewing this channel
+            await Clients.Client(other.ConnectionId).SendAsync("UnreadCountChanged", channelId);
+        }
     }
 
     public List<string> GetConnectedUsers()
@@ -184,6 +222,25 @@ public class ChatHub : Hub
                 Username = u.Username,
                 VoiceUserId = u.VoiceUserId
             }).ToList());
+    }
+
+    public List<MentionDto> GetMentions()
+    {
+        if (_mentions.TryGetValue(Context.ConnectionId, out var list))
+            lock (list) { return list.ToList(); }
+        return new List<MentionDto>();
+    }
+
+    public void ClearMention(int messageId)
+    {
+        if (_mentions.TryGetValue(Context.ConnectionId, out var list))
+            lock (list) { list.RemoveAll(m => m.MessageId == messageId); }
+    }
+
+    public void ClearAllMentions()
+    {
+        if (_mentions.TryGetValue(Context.ConnectionId, out var list))
+            lock (list) { list.Clear(); }
     }
 
     public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
@@ -230,6 +287,7 @@ public class ChatHub : Hub
 
             await Clients.All.SendAsync("UserDisconnected", user.Username);
         }
+        _mentions.TryRemove(Context.ConnectionId, out _);
         await base.OnDisconnectedAsync(exception);
     }
 }

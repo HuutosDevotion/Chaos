@@ -101,16 +101,26 @@ public class ChannelViewModel : INotifyPropertyChanged
     private string _name;
     private bool _isSelected;
     private bool _isActiveVoice;
+    private int _unreadCount;
+    private int _mentionCount;
+
     public ChannelViewModel(ChannelDto channel) { Channel = channel; _name = channel.Name; }
     public ChannelDto Channel { get; set; }
     public ObservableCollection<VoiceMemberInfo> VoiceMembers { get; } = new();
     public int Id => Channel.Id;
     public ChannelType Type => Channel.Type;
     public string Icon => Type == ChannelType.Voice ? "\U0001F50A" : "#";
+
     public bool IsSelected
     {
         get => _isSelected;
-        set { if (_isSelected == value) return; _isSelected = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected))); }
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+        }
     }
     public bool IsActiveVoice
     {
@@ -122,6 +132,34 @@ public class ChannelViewModel : INotifyPropertyChanged
         get => _name;
         set { if (_name == value) return; _name = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name))); }
     }
+
+    public int UnreadCount
+    {
+        get => _unreadCount;
+        set
+        {
+            if (_unreadCount == value) return;
+            _unreadCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+        }
+    }
+
+    public int MentionCount
+    {
+        get => _mentionCount;
+        set
+        {
+            if (_mentionCount == value) return;
+            _mentionCount = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MentionCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasMentions)));
+        }
+    }
+
+    public bool HasUnread => _unreadCount > 0 && !_isSelected;
+    public bool HasMentions => _mentionCount > 0;
+
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
@@ -162,17 +200,23 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private List<SlashCommandDto> _allCommands = new();
     private int _selectedSuggestionIndex = -1;
     private bool _showSlashSuggestions;
+    private bool _showMentionSuggestions;
+    private int _selectedMentionSuggestionIndex = -1;
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
     private string _typingText = string.Empty;
 
     private object? _activeModal;
+    private bool _isInboxOpen;
+    private int? _pendingScrollToMessageId;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
     public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
+    public ObservableCollection<string> MentionSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
+    public ObservableCollection<MentionDto> Mentions { get; } = new();
 
     public string ServerAddress
     {
@@ -202,6 +246,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             _messageText = value;
             OnPropertyChanged();
             UpdateSlashSuggestions(value);
+            UpdateMentionSuggestions(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -224,6 +269,18 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _selectedSuggestionIndex;
         set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
+    }
+
+    public bool ShowMentionSuggestions
+    {
+        get => _showMentionSuggestions;
+        set { _showMentionSuggestions = value; OnPropertyChanged(); }
+    }
+
+    public int SelectedMentionSuggestionIndex
+    {
+        get => _selectedMentionSuggestionIndex;
+        set { _selectedMentionSuggestionIndex = value; OnPropertyChanged(); }
     }
 
     public object? ActiveModal
@@ -352,6 +409,57 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SelectedSuggestionIndex = next;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex MentionTrigger =
+        new(@"@(\w*)$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private void UpdateMentionSuggestions(string text)
+    {
+        MentionSuggestions.Clear();
+        SelectedMentionSuggestionIndex = -1;
+        if (ShowSlashSuggestions || string.IsNullOrEmpty(text))
+        { ShowMentionSuggestions = false; return; }
+
+        var m = MentionTrigger.Match(text);
+        if (!m.Success) { ShowMentionSuggestions = false; return; }
+
+        string prefix = m.Groups[1].Value;
+        foreach (var u in ConnectedUsers)
+            if (u.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                MentionSuggestions.Add(u);
+
+        ShowMentionSuggestions = MentionSuggestions.Count > 0;
+    }
+
+    public void NavigateMentionSuggestions(int delta)
+    {
+        if (MentionSuggestions.Count == 0) return;
+        int next = SelectedMentionSuggestionIndex + delta;
+        if (next < 0) next = MentionSuggestions.Count - 1;
+        else if (next >= MentionSuggestions.Count) next = 0;
+        SelectedMentionSuggestionIndex = next;
+    }
+
+    public void SelectMentionSuggestion(string username)
+    {
+        var m = MentionTrigger.Match(MessageText);
+        if (m.Success) MessageText = MessageText[..m.Index] + $"@{username} ";
+        DismissMentionSuggestions();
+    }
+
+    public void DismissMentionSuggestions()
+    {
+        MentionSuggestions.Clear();
+        ShowMentionSuggestions = false;
+        SelectedMentionSuggestionIndex = -1;
+    }
+
+    public async void AutoClearMention(int messageId)
+    {
+        var mention = Mentions.FirstOrDefault(m => m.MessageId == messageId);
+        if (mention is not null)
+            await ClearMention(mention);
+    }
+
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
     public string MuteTooltipText => IsMuted ? "Unmute" : "Mute";
     public string DeafenButtonText => IsDeafened ? "\U0001F508" : "\U0001F50A";
@@ -389,6 +497,22 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string SelectedChannelName => _selectedTextChannel is not null ? $"# {_selectedTextChannel.Name}" : string.Empty;
     public string ConnectedUsersHeader => $"MEMBERS — {ConnectedUsers.Count}";
 
+    public bool IsInboxOpen
+    {
+        get => _isInboxOpen;
+        set { _isInboxOpen = value; OnPropertyChanged(); OnPropertyChanged(nameof(InboxButtonTooltip)); }
+    }
+
+    public string InboxButtonTooltip => _isInboxOpen ? "Show Members" : "Show Mention Inbox";
+
+    public int TotalMentionCount => Mentions.Count;
+
+    public int? PendingScrollToMessageId
+    {
+        get => _pendingScrollToMessageId;
+        set { _pendingScrollToMessageId = value; OnPropertyChanged(); }
+    }
+
     public ICommand ConnectCommand => new RelayCommand(async _ => await ConnectAsync(), _ => CanConnect);
     public ICommand CreateChannelCommand => new RelayCommand(_ => OpenCreateChannelModal(), _ => IsConnected);
     public ICommand RenameChannelCommand => new RelayCommand(p => OpenRenameChannelModal(p as ChannelViewModel), p => IsConnected && p is ChannelViewModel);
@@ -399,6 +523,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand ChannelClickCommand => new RelayCommand(async p => await OnChannelClicked(p as ChannelViewModel));
     public ICommand DisconnectVoiceCommand => new RelayCommand(async _ => await LeaveVoice());
     public ICommand OpenSettingsCommand => new RelayCommand(_ => OpenSettingsModal());
+    public ICommand ToggleInboxCommand => new RelayCommand(_ => IsInboxOpen = !IsInboxOpen, _ => Settings.ShowInbox);
+    public ICommand NavigateToMentionCommand => new RelayCommand(async p => await NavigateToMention(p as MentionDto));
+    public ICommand ClearMentionCommand => new RelayCommand(async p => await ClearMention(p as MentionDto));
+    public ICommand ClearAllMentionsCommand => new RelayCommand(async _ => await ClearAllMentions());
 
     public MainViewModel() : this(new LocalJsonKeyValueStore()) { }
 
@@ -408,14 +536,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         Settings = new AppSettings
         {
-            FontSize        = _settingsStore.Get("FontSize",        14.0),
-            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
-            UiScale         = _settingsStore.Get("UiScale",         1.0),
-            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
-            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
-            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
-            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
-            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+            FontSize              = _settingsStore.Get("FontSize",              14.0),
+            MessageSpacing        = _settingsStore.Get("MessageSpacing",        4.0),
+            UiScale               = _settingsStore.Get("UiScale",               1.0),
+            GroupMessages         = _settingsStore.Get("GroupMessages",         false),
+            InputDevice           = _settingsStore.Get("InputDevice",           "Default"),
+            OutputDevice          = _settingsStore.Get("OutputDevice",          "Default"),
+            InputVolume           = _settingsStore.Get("InputVolume",           1.0f),
+            OutputVolume          = _settingsStore.Get("OutputVolume",          1.0f),
+            ShowInbox             = _settingsStore.Get("ShowInbox",             true),
         };
 
         _username = _settingsStore.Get("Username", string.Empty);
@@ -464,6 +593,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
         _chatService.UserTyping += OnUserTyping;
+        _chatService.UnreadCountChanged += OnUnreadCountChanged;
+        _chatService.MentionReceived += OnMentionReceived;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
@@ -534,6 +665,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _voiceService.OutputVolume = Settings.OutputVolume;
             if (e.PropertyName == nameof(AppSettings.MicThreshold))
                 _voiceService.MicThreshold = Settings.MicThreshold;
+            if (e.PropertyName == nameof(AppSettings.ShowInbox) && !Settings.ShowInbox)
+                IsInboxOpen = false;
         };
     }
 
@@ -597,6 +730,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
+            var initialMentions = await _chatService.GetMentionsAsync();
 
             SafeDispatch(() =>
             {
@@ -620,6 +754,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 foreach (var u in connectedUsers)
                     ConnectedUsers.Add(u);
                 OnPropertyChanged(nameof(ConnectedUsersHeader));
+
+                Mentions.Clear();
+                foreach (var m in initialMentions)
+                {
+                    var ch = Channels.FirstOrDefault(c => c.Id == m.ChannelId);
+                    if (ch is not null) m.ChannelName = ch.Name;
+                    Mentions.Add(m);
+                }
+                OnPropertyChanged(nameof(TotalMentionCount));
             });
 
             IsConnected = true;
@@ -667,6 +810,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         var messages = await _chatService.GetMessages(channel.Id);
         SafeDispatch(() =>
         {
+            // Clear unread/mention badges for this channel
+            channel.UnreadCount = 0;
+            channel.MentionCount = 0;
+
             Messages.Clear();
             MessageViewModel? prev = null;
             foreach (var msg in messages)
@@ -756,12 +903,87 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnMessageReceived(MessageDto msg)
     {
         if (msg.ChannelId == _selectedTextChannel?.Id)
+        {
             SafeDispatch(() =>
             {
                 var vm = new MessageViewModel(msg, Settings, _chatService.BaseUrl);
                 vm.ShowHeader = ShouldShowHeader(vm, Messages.LastOrDefault());
                 Messages.Add(vm);
             });
+        }
+    }
+
+    private void OnUnreadCountChanged(int channelId)
+    {
+        // Only increment unread for channels we're NOT currently viewing
+        if (channelId == _selectedTextChannel?.Id) return;
+        SafeDispatch(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == channelId);
+            if (ch is not null) ch.UnreadCount++;
+        });
+    }
+
+    private void OnMentionReceived(MentionDto mention)
+    {
+        SafeDispatch(() =>
+        {
+            var ch = Channels.FirstOrDefault(c => c.Id == mention.ChannelId);
+            if (ch is not null)
+            {
+                mention.ChannelName = ch.Name;
+                ch.MentionCount++;
+            }
+            Mentions.Add(mention);
+            OnPropertyChanged(nameof(TotalMentionCount));
+        });
+    }
+
+    private async Task NavigateToMention(MentionDto? mention)
+    {
+        if (mention is null) return;
+
+        var channel = Channels.FirstOrDefault(c => c.Id == mention.ChannelId);
+        if (channel is null || channel.Type != ChannelType.Text) return;
+
+        // Close inbox so user can see the chat
+        IsInboxOpen = false;
+
+        // Set the pending scroll target before switching channel
+        PendingScrollToMessageId = mention.MessageId;
+
+        if (_selectedTextChannel?.Id != mention.ChannelId)
+            SelectedTextChannel = channel;
+        else
+            // Already on the channel — fire the scroll signal immediately
+            OnPropertyChanged(nameof(PendingScrollToMessageId));
+    }
+
+    private async Task ClearMention(MentionDto? mention)
+    {
+        if (mention is null) return;
+        SafeDispatch(() =>
+        {
+            Mentions.Remove(mention);
+            OnPropertyChanged(nameof(TotalMentionCount));
+
+            // Decrement channel badge
+            var ch = Channels.FirstOrDefault(c => c.Id == mention.ChannelId);
+            if (ch is not null && ch.MentionCount > 0) ch.MentionCount--;
+        });
+        await _chatService.ClearMentionAsync(mention.MessageId);
+    }
+
+    private async Task ClearAllMentions()
+    {
+        SafeDispatch(() =>
+        {
+            foreach (var ch in Channels)
+                ch.MentionCount = 0;
+            Mentions.Clear();
+            OnPropertyChanged(nameof(TotalMentionCount));
+        });
+        await _chatService.ClearAllMentionsAsync();
     }
 
     private void OnUserTyping(int channelId, string username)
@@ -1016,6 +1238,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
+        _settingsStore.Set("ShowInbox",      Settings.ShowInbox);
         _settingsStore.Set("Username",       Username);
         _settingsStore.Set("WindowLeft",      _windowLeft);
         _settingsStore.Set("WindowTop",       _windowTop);
