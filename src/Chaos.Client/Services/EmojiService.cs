@@ -32,10 +32,14 @@ public class EmojiService
         "Objects", "Symbols", "Flags"
     };
 
-    // Event raised when emoji data changes (for eager grid rebuild)
+    // Fires when emoji metadata is ready (names/categories available)
     public event Action? EmojisLoaded;
 
+    // Fires when all images are preloaded into RAM (grid can be built with all images)
+    public event Action? ImagesReady;
+
     public bool IsLoaded => _allEmojis.Count > 0;
+    public bool ImagesPreloaded { get; private set; }
 
     public async Task LoadAsync(ChatService chatService, string username, IKeyValueStore store)
     {
@@ -49,30 +53,53 @@ public class EmojiService
         // 1. Load embedded metadata first (instant, no network)
         LoadEmbedded();
 
-        // Notify that base emoji set is ready
+        // Notify that base emoji set is ready (for text shortcode resolution)
         if (_allEmojis.Count > 0)
             EmojisLoaded?.Invoke();
 
-        // 2. Fetch server emojis in background and merge any new/custom ones
-        try
+        // 2. Preload all images into RAM in the background
+        _ = Task.Run(async () =>
         {
-            var serverEmojis = await chatService.GetEmojisAsync();
-            int added = 0;
-            foreach (var emoji in serverEmojis)
+            await PreloadAllImagesAsync();
+
+            // 3. Fetch server emojis and merge any new/custom ones
+            try
             {
-                if (!_byName.ContainsKey(emoji.Name))
+                var serverEmojis = await chatService.GetEmojisAsync();
+                int added = 0;
+                foreach (var emoji in serverEmojis)
                 {
-                    _allEmojis.Add(emoji);
-                    _byName[emoji.Name] = emoji;
-                    added++;
+                    if (!_byName.ContainsKey(emoji.Name))
+                    {
+                        _allEmojis.Add(emoji);
+                        _byName[emoji.Name] = emoji;
+                        added++;
+                        await GetOrStartLoadAsync(emoji);
+                    }
                 }
             }
-            if (added > 0)
-                EmojisLoaded?.Invoke();
-        }
-        catch
+            catch
+            {
+                // Server fetch failed — embedded set is still usable
+            }
+
+            ImagesPreloaded = true;
+            ImagesReady?.Invoke();
+        });
+    }
+
+    /// <summary>
+    /// Preload all emoji images into the in-memory cache on background threads.
+    /// </summary>
+    private async Task PreloadAllImagesAsync()
+    {
+        var emojis = _allEmojis.ToList();
+
+        const int batchSize = 100;
+        for (int i = 0; i < emojis.Count; i += batchSize)
         {
-            // Server fetch failed — embedded set is still usable
+            var batch = emojis.Skip(i).Take(batchSize);
+            await Task.WhenAll(batch.Select(e => GetOrStartLoadAsync(e)));
         }
     }
 
@@ -121,7 +148,6 @@ public class EmojiService
 
     public EmojiDto? Resolve(string shortcode)
     {
-        // shortcode may or may not have colons
         string name = shortcode.Trim(':');
         return _byName.GetValueOrDefault(name);
     }
@@ -157,12 +183,8 @@ public class EmojiService
 
     public BitmapImage? GetCachedImage(EmojiDto emoji)
     {
-        if (_imageCache.TryGetValue(emoji.FileName, out var cached))
-            return cached;
-
-        // Start async load once — deduplicated via _loadingTasks
-        _ = GetOrStartLoadAsync(emoji);
-        return null;
+        _imageCache.TryGetValue(emoji.FileName, out var cached);
+        return cached;
     }
 
     public Task<BitmapImage?> GetImageAsync(EmojiDto emoji)
@@ -185,14 +207,12 @@ public class EmojiService
             byte[] bytes;
             string cachePath = Path.Combine(_cacheDir, emoji.FileName);
 
-            // Try disk cache first
             if (File.Exists(cachePath))
             {
                 bytes = await File.ReadAllBytesAsync(cachePath);
             }
             else
             {
-                // Download and save to disk cache
                 string url = $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
                 bytes = await _http.GetByteArrayAsync(url);
 
@@ -200,14 +220,9 @@ public class EmojiService
                 {
                     await File.WriteAllBytesAsync(cachePath, bytes);
                 }
-                catch
-                {
-                    // Disk write failed — still use the downloaded bytes
-                }
+                catch { }
             }
 
-            // Create and freeze on background thread — Freeze() makes it
-            // cross-thread safe, so no need to marshal to the UI thread.
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.StreamSource = new MemoryStream(bytes);
@@ -226,28 +241,6 @@ public class EmojiService
             _imageCache[emoji.FileName] = null;
             _loadingTasks.TryRemove(emoji.FileName, out _);
             return null;
-        }
-    }
-
-    /// <summary>
-    /// Load images for a collection of Image controls in batches to avoid flooding the UI thread.
-    /// </summary>
-    public async Task LoadImagesBatchedAsync(List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> items, int batchSize = 50)
-    {
-        for (int i = 0; i < items.Count; i += batchSize)
-        {
-            var batch = items.Skip(i).Take(batchSize);
-            var tasks = batch.Select(async item =>
-            {
-                var bmp = await GetImageAsync(item.Emoji);
-                if (bmp is not null)
-                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => item.ImageControl.Source = bmp);
-            });
-            await Task.WhenAll(tasks);
-
-            // Small delay between batches so the UI thread can breathe
-            if (i + batchSize < items.Count)
-                await Task.Delay(10);
         }
     }
 

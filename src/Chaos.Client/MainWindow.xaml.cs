@@ -380,9 +380,17 @@ public partial class MainWindow : Window
                 _emojiSuggestionTimer.Stop();
                 if (DataContext is MainViewModel vm3)
                 {
-                    string text = GetInputText();
-                    int pos = GetInputCursorOffset();
-                    vm3.UpdateEmojiSuggestions(text, pos);
+                    // Use GetTextInRun to get only the text in the current Run
+                    // at the caret. This avoids serialized emoji images (:shortcode:)
+                    // from being included, which caused false autocomplete triggers.
+                    var caret = MessageInput.CaretPosition;
+                    string textBeforeCaret = caret.GetTextInRun(LogicalDirection.Backward);
+                    if (string.IsNullOrEmpty(textBeforeCaret))
+                    {
+                        vm3.DismissEmojiSuggestions();
+                        return;
+                    }
+                    vm3.UpdateEmojiSuggestions(textBeforeCaret, textBeforeCaret.Length);
                 }
             };
 
@@ -658,19 +666,33 @@ public partial class MainWindow : Window
 
     private void ApplyEmojiSuggestion(MainViewModel vm, EmojiSuggestionItem item)
     {
-        // Find the last ':' before cursor and replace from there to cursor with the full :shortcode:
-        string text = GetInputText();
-        int cursor = GetInputCursorOffset();
-        int colonIdx = text.LastIndexOf(':', cursor - 1);
+        // Work directly with the Run at the caret to avoid offset misalignment
+        // caused by InlineUIContainers (emoji images) in the document.
+        var caret = MessageInput.CaretPosition;
+        string textBefore = caret.GetTextInRun(LogicalDirection.Backward);
+        int colonIdx = textBefore.LastIndexOf(':');
         if (colonIdx >= 0)
         {
             string replacement = $"{item.CommandName} ";
-            SetInputText(text[..colonIdx] + replacement + text[cursor..]);
-            SetInputCursorOffset(colonIdx + replacement.Length);
+            int charsToDelete = textBefore.Length - colonIdx;
+
+            // Delete from the ':' to the caret
+            var deleteStart = caret.GetPositionAtOffset(-charsToDelete, LogicalDirection.Backward);
+            if (deleteStart is not null)
+            {
+                _suppressTextSync = true;
+                try
+                {
+                    new TextRange(deleteStart, caret).Text = replacement;
+                    // Caret is automatically placed after the inserted text
+                }
+                finally
+                {
+                    _suppressTextSync = false;
+                }
+            }
         }
 
-        // SetInputText suppresses TextChanged, so trigger emoji detection
-        // and ViewModel sync manually.
         DetectAndReplaceEmojis();
         SyncInputToViewModel();
 
@@ -1467,8 +1489,6 @@ public partial class MainWindow : Window
         EmojiGridPanel.Children.Clear();
         if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
 
-        var pendingImages = new List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)>();
-
         if (filter is not null)
         {
             // Search mode: flat grid of matching emojis
@@ -1487,33 +1507,27 @@ public partial class MainWindow : Window
             }
             var wrap = new System.Windows.Controls.WrapPanel();
             foreach (var emoji in results)
-                wrap.Children.Add(CreateEmojiButton(emoji, vm, pendingImages));
+                wrap.Children.Add(CreateEmojiButton(emoji, vm));
             EmojiGridPanel.Children.Add(wrap);
-            if (pendingImages.Count > 0)
-                _ = vm.EmojiService.LoadImagesBatchedAsync(pendingImages);
             return;
         }
 
         // Category mode with optional frequently used
         var frequent = vm.EmojiService.GetFrequentlyUsed();
         if (frequent.Count > 0)
-            AddCategorySection("Frequently Used", frequent, vm, pendingImages);
+            AddCategorySection("Frequently Used", frequent, vm);
 
         foreach (var (category, emojis) in vm.EmojiService.GetGroupedByCategory())
-            AddCategorySection(category, emojis, vm, pendingImages);
+            AddCategorySection(category, emojis, vm);
 
         // Cache the built grid children for fast re-display
         _cachedEmojiGridChildren = new List<UIElement>();
         foreach (UIElement child in EmojiGridPanel.Children)
             _cachedEmojiGridChildren.Add(child);
         _emojiGridBuilt = true;
-
-        if (pendingImages.Count > 0)
-            _ = vm.EmojiService.LoadImagesBatchedAsync(pendingImages);
     }
 
-    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm,
-        List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> pendingImages)
+    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm)
     {
         bool collapsed = _collapsedCategories.Contains(category);
 
@@ -1547,30 +1561,19 @@ public partial class MainWindow : Window
 
         var wrap = new System.Windows.Controls.WrapPanel();
         foreach (var emoji in emojis)
-            wrap.Children.Add(CreateEmojiButton(emoji, vm, pendingImages));
+            wrap.Children.Add(CreateEmojiButton(emoji, vm));
         EmojiGridPanel.Children.Add(wrap);
     }
 
-    private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm,
-        List<(EmojiDto Emoji, System.Windows.Controls.Image ImageControl)> pendingImages)
+    private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm)
     {
         var img = new System.Windows.Controls.Image
         {
             Width = 28,
             Height = 28,
             Stretch = Stretch.Uniform,
+            Source = vm.EmojiService.GetCachedImage(emoji),
         };
-
-        // Load image from memory cache or queue for batched loading
-        var cached = vm.EmojiService.GetCachedImage(emoji);
-        if (cached is not null)
-        {
-            img.Source = cached;
-        }
-        else
-        {
-            pendingImages.Add((emoji, img));
-        }
 
         var btn = new System.Windows.Controls.Button
         {
@@ -1596,16 +1599,27 @@ public partial class MainWindow : Window
 
     private void OnEmojiClicked(Shared.EmojiDto emoji, MainViewModel vm)
     {
-        // Insert :shortcode: at cursor position
+        // Insert directly at the caret's TextPointer to avoid offset misalignment
+        // caused by InlineUIContainers (emoji images) in the document.
         string code = $":{emoji.Name}: ";
-        string text = GetInputText();
-        int pos = GetInputCursorOffset();
-        SetInputText(text.Insert(pos, code));
-        SetInputCursorOffset(pos + code.Length);
+        var caret = MessageInput.CaretPosition;
 
-        // SetInputText suppresses TextChanged, so DetectAndReplaceEmojis never ran.
-        // Trigger it manually to convert the :shortcode: text into an inline image
-        // and sync the result back to the ViewModel (needed for Enter-to-send).
+        _suppressTextSync = true;
+        try
+        {
+            // Insert text at caret — if caret is at an element boundary, get an insertion position
+            var insertPos = caret.GetInsertionPosition(LogicalDirection.Forward);
+            insertPos.InsertTextInRun(code);
+            // Move caret past the inserted text
+            var newPos = insertPos.GetPositionAtOffset(code.Length, LogicalDirection.Forward);
+            if (newPos is not null)
+                MessageInput.CaretPosition = newPos;
+        }
+        finally
+        {
+            _suppressTextSync = false;
+        }
+
         DetectAndReplaceEmojis();
         SyncInputToViewModel();
 
