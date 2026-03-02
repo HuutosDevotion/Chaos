@@ -41,28 +41,41 @@ public class EmojiService
     public bool IsLoaded => _allEmojis.Count > 0;
     public bool ImagesPreloaded { get; private set; }
 
-    public async Task LoadAsync(ChatService chatService, string username, IKeyValueStore store)
+    /// <summary>
+    /// Phase 1: called at app start. Loads embedded metadata and preloads images from disk cache.
+    /// No network required.
+    /// </summary>
+    public void Initialize(string username, IKeyValueStore store)
     {
-        _baseUrl = chatService.BaseUrl;
         _username = username;
         _store = store;
 
-        // Ensure disk cache directory exists
         Directory.CreateDirectory(_cacheDir);
 
-        // 1. Load embedded metadata first (instant, no network)
         LoadEmbedded();
 
-        // Notify that base emoji set is ready (for text shortcode resolution)
         if (_allEmojis.Count > 0)
             EmojisLoaded?.Invoke();
 
-        // 2. Preload all images into RAM in the background
+        // Preload from disk cache in background (no network calls)
         _ = Task.Run(async () =>
         {
-            await PreloadAllImagesAsync();
+            await PreloadFromDiskAsync();
+            ImagesPreloaded = true;
+            ImagesReady?.Invoke();
+        });
+    }
 
-            // 3. Fetch server emojis and merge any new/custom ones
+    /// <summary>
+    /// Phase 2: called after connecting. Fetches server emojis, merges any new/custom ones,
+    /// and downloads missing images.
+    /// </summary>
+    public async Task SyncWithServerAsync(ChatService chatService)
+    {
+        _baseUrl = chatService.BaseUrl;
+
+        await Task.Run(async () =>
+        {
             try
             {
                 var serverEmojis = await chatService.GetEmojisAsync();
@@ -77,21 +90,21 @@ public class EmojiService
                         await GetOrStartLoadAsync(emoji);
                     }
                 }
+
+                if (added > 0)
+                    ImagesReady?.Invoke();
             }
             catch
             {
-                // Server fetch failed — embedded set is still usable
+                // Server fetch failed — local set is still usable
             }
-
-            ImagesPreloaded = true;
-            ImagesReady?.Invoke();
         });
     }
 
     /// <summary>
-    /// Preload all emoji images into the in-memory cache on background threads.
+    /// Preload images from disk cache only (no network). Skips emojis without a cached file.
     /// </summary>
-    private async Task PreloadAllImagesAsync()
+    private async Task PreloadFromDiskAsync()
     {
         var emojis = _allEmojis.ToList();
 
@@ -99,7 +112,44 @@ public class EmojiService
         for (int i = 0; i < emojis.Count; i += batchSize)
         {
             var batch = emojis.Skip(i).Take(batchSize);
-            await Task.WhenAll(batch.Select(e => GetOrStartLoadAsync(e)));
+            await Task.WhenAll(batch.Select(e => LoadFromDiskAsync(e)));
+        }
+    }
+
+    private Task LoadFromDiskAsync(EmojiDto emoji)
+    {
+        return _loadingTasks.GetOrAdd(emoji.FileName, _ => LoadDiskOnlyAsync(emoji));
+    }
+
+    private async Task<BitmapImage?> LoadDiskOnlyAsync(EmojiDto emoji)
+    {
+        try
+        {
+            string cachePath = Path.Combine(_cacheDir, emoji.FileName);
+            if (!File.Exists(cachePath))
+            {
+                _loadingTasks.TryRemove(emoji.FileName, out _);
+                return null;
+            }
+
+            byte[] bytes = await File.ReadAllBytesAsync(cachePath);
+
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.DecodePixelWidth = 72;
+            bmp.EndInit();
+            bmp.Freeze();
+
+            _imageCache[emoji.FileName] = bmp;
+            _loadingTasks.TryRemove(emoji.FileName, out _);
+            return bmp;
+        }
+        catch
+        {
+            _loadingTasks.TryRemove(emoji.FileName, out _);
+            return null;
         }
     }
 

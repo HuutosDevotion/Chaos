@@ -549,6 +549,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (e.PropertyName == nameof(AppSettings.MicThreshold))
                 _voiceService.MicThreshold = Settings.MicThreshold;
         };
+
+        // Load emoji metadata + disk-cached images at startup (no network needed)
+        EmojiService.Initialize(_username, _settingsStore);
     }
 
     private static void SafeDispatch(Action action)
@@ -611,7 +614,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
             _allCommands = await _chatService.GetAvailableCommandsAsync();
-            await EmojiService.LoadAsync(_chatService, Username, _settingsStore);
+            await EmojiService.SyncWithServerAsync(_chatService);
 
             SafeDispatch(() =>
             {
