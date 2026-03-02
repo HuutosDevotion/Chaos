@@ -1034,11 +1034,14 @@ public partial class MainWindow : Window
     private void AppendMessageToDoc(MessageViewModel msg)
     {
         var doc       = MessageList.Document;
-        var primary   = (Brush)FindResource("TextPrimaryBrush");
-        var secondary = (Brush)FindResource("TextSecondaryBrush");
-        var muted     = (Brush)FindResource("TextMutedBrush");
-        var vm        = DataContext as MainViewModel;
+        var primary    = (Brush)FindResource("TextPrimaryBrush");
+        var secondary  = (Brush)FindResource("TextSecondaryBrush");
+        var muted      = (Brush)FindResource("TextMutedBrush");
+        var accentBlue = (Brush)FindResource("AccentBlueBrush");
+        var vm         = DataContext as MainViewModel;
         double fontSize = vm?.Settings.FontSize ?? 14;
+
+        var currentUser = vm?.Username ?? string.Empty;
 
         if (msg.ShowHeader)
         {
@@ -1052,7 +1055,25 @@ public partial class MainWindow : Window
         {
             double top = msg.ShowHeader ? 2.0 : msg.Padding.Top;
             var p = new Paragraph { Margin = new Thickness(0, top, 0, 0), Padding = new Thickness(16, 0, 16, 0), LineHeight = double.NaN };
-            p.Inlines.Add(new Run(msg.Content) { Foreground = secondary });
+
+            if (!string.IsNullOrEmpty(currentUser))
+            {
+                // Split on @currentUser and highlight just the mention token
+                var parts = Regex.Split(msg.Content, $@"(@{Regex.Escape(currentUser)})(?!\w)", RegexOptions.IgnoreCase);
+                foreach (var part in parts)
+                {
+                    if (string.IsNullOrEmpty(part)) continue;
+                    if (Regex.IsMatch(part, $@"^@{Regex.Escape(currentUser)}$", RegexOptions.IgnoreCase))
+                        p.Inlines.Add(new Run(part) { Foreground = accentBlue, FontWeight = FontWeights.SemiBold });
+                    else
+                        p.Inlines.Add(new Run(part) { Foreground = secondary });
+                }
+            }
+            else
+            {
+                p.Inlines.Add(new Run(msg.Content) { Foreground = secondary });
+            }
+
             doc.Blocks.Add(p);
         }
 
