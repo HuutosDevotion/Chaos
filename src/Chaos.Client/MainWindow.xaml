@@ -1265,7 +1265,7 @@
 
 
                         <!-- Text input row -->
-                        <Border Background="{StaticResource BgInputBrush}"
+                        <Border x:Name="TextInputBorder" Background="{StaticResource BgInputBrush}"
                                 CornerRadius="8">
                             <StackPanel>
                                 <!-- Formatting toolbar -->
@@ -1521,9 +1521,10 @@
         <controls:SubmenuHost x:Name="EmojiPickerHost"
                               Grid.RowSpan="2" Panel.ZIndex="15"
                               IsOpen="{Binding EmojiPicker.IsOpen, Mode=TwoWay}"
-                              PlacementTarget="{Binding ElementName=EmojiPickerButton}"
+                              PlacementTarget="{Binding ElementName=TextInputBorder}"
                               Placement="Top"
-                              SubmenuWidth="380" SubmenuHeight="400">
+                              SubmenuWidth="435" SubmenuHeight="435"
+                              VerticalOffset="-4">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -1541,8 +1542,11 @@
 
                 <!-- Sidebar + emoji grid -->
                 <DockPanel Grid.Row="1">
-                    <Border DockPanel.Dock="Left" BorderBrush="#3A3C42" BorderThickness="0,0,1,0" Padding="4">
-                        <StackPanel x:Name="CategorySidebar" Width="36" />
+                    <Border DockPanel.Dock="Left" Background="{StaticResource BgDarkestBrush}"
+                            BorderBrush="#3A3C42" BorderThickness="0,0,1,0" Padding="4">
+                        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="CategorySidebar" Width="36" />
+                        </ScrollViewer>
                     </Border>
                     <ScrollViewer x:Name="EmojiScrollViewer"
                                   VerticalScrollBarVisibility="Auto"
@@ -1552,7 +1556,9 @@
                 </DockPanel>
 
                 <!-- Preview panel -->
-                <Border Grid.Row="2" BorderBrush="#3A3C42" BorderThickness="0,1,0,0"
+                <Border Grid.Row="2" Background="{StaticResource BgDarkestBrush}"
+                        BorderBrush="#3A3C42" BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,8,8"
                         Padding="12,8" MinHeight="42">
                     <StackPanel x:Name="EmojiPreviewPanel" Orientation="Horizontal"
                                 VerticalAlignment="Center">

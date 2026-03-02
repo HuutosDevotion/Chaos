@@ -1463,6 +1463,7 @@ public partial class MainWindow : Window
         EmojiSearchBox.Text = string.Empty;
         RestoreCachedEmojiGrid();
         BuildCategorySidebar(vm);
+        EmojiPickerHost.HorizontalOffset = TextInputBorder.ActualWidth - EmojiPickerHost.SubmenuWidth;
         vm.EmojiPicker.Open();
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () => EmojiSearchBox.Focus());
     }
@@ -1586,23 +1587,22 @@ public partial class MainWindow : Window
     {
         bool collapsed = _collapsedCategories.Contains(category);
 
-        var caretText = new System.Windows.Controls.TextBlock
-        {
-            Text = collapsed ? "\u203A" : "\u25BE",
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 0, 0, 0),
-        };
-        DockPanel.SetDock(caretText, Dock.Right);
-
         var nameText = new System.Windows.Controls.TextBlock
         {
             Text = category,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        var panel = new DockPanel();
-        panel.Children.Add(caretText);
+        var caretText = new System.Windows.Controls.TextBlock
+        {
+            Text = collapsed ? "\u276E" : "\u276F",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(6, 0, 0, 0),
+        };
+
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(nameText);
+        panel.Children.Add(caretText);
 
         var header = new System.Windows.Controls.Button
         {
@@ -1634,8 +1634,8 @@ public partial class MainWindow : Window
     {
         var img = new System.Windows.Controls.Image
         {
-            Width = 28,
-            Height = 28,
+            Width = 32,
+            Height = 32,
             Stretch = Stretch.Uniform,
             Source = vm.EmojiService.GetCachedImage(emoji),
         };

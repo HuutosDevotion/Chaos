@@ -440,7 +440,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type controls:SubmenuHost}">
-                        <Grid x:Name="PART_Overlay" Background="Transparent" Visibility="Collapsed">
+                        <Grid x:Name="PART_Overlay" Visibility="Collapsed">
                             <Canvas x:Name="PART_Canvas" ClipToBounds="True">
                                 <Border x:Name="PART_ContentBorder"
                                         Background="{StaticResource BgDarkBrush}"
@@ -497,8 +497,8 @@
 
         <!-- Emoji Picker: grid button with rounded hover -->
         <Style x:Key="EmojiGridButton" TargetType="Button">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="36" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="4" />
@@ -552,7 +552,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="0,8,4,4" />

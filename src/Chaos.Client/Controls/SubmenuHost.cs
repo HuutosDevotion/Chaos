@@ -99,26 +99,15 @@ public class SubmenuHost : ContentControl
         base.OnApplyTemplate();
 
         // Unhook old handlers
-        if (_overlay != null)
-            _overlay.MouseLeftButtonDown -= Overlay_MouseLeftButtonDown;
         if (_contentBorder != null)
-        {
-            _contentBorder.MouseLeftButtonDown -= ContentBorder_MouseLeftButtonDown;
             _contentBorder.SizeChanged -= ContentBorder_SizeChanged;
-        }
 
         _overlay = GetTemplateChild("PART_Overlay") as Grid;
         _canvas = GetTemplateChild("PART_Canvas") as Canvas;
         _contentBorder = GetTemplateChild("PART_ContentBorder") as Border;
 
-        if (_overlay != null)
-            _overlay.MouseLeftButtonDown += Overlay_MouseLeftButtonDown;
-
         if (_contentBorder != null)
-        {
-            _contentBorder.MouseLeftButtonDown += ContentBorder_MouseLeftButtonDown;
             _contentBorder.SizeChanged += ContentBorder_SizeChanged;
-        }
 
         // Apply initial state
         if (_overlay != null)
@@ -157,6 +146,7 @@ public class SubmenuHost : ContentControl
         {
             _parentWindow.SizeChanged += ParentWindow_SizeChanged;
             _parentWindow.PreviewKeyDown += ParentWindow_PreviewKeyDown;
+            _parentWindow.PreviewMouseDown += ParentWindow_PreviewMouseDown;
         }
     }
 
@@ -166,6 +156,7 @@ public class SubmenuHost : ContentControl
         {
             _parentWindow.SizeChanged -= ParentWindow_SizeChanged;
             _parentWindow.PreviewKeyDown -= ParentWindow_PreviewKeyDown;
+            _parentWindow.PreviewMouseDown -= ParentWindow_PreviewMouseDown;
             _parentWindow = null;
         }
     }
@@ -185,16 +176,19 @@ public class SubmenuHost : ContentControl
         }
     }
 
-    private void Overlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void ParentWindow_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        IsOpen = false;
-        e.Handled = true;
-    }
+        if (_contentBorder == null || !IsOpen) return;
 
-    private void ContentBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Prevent click-through to overlay
-        e.Handled = true;
+        // Check if click is inside the content border
+        var pos = e.GetPosition(_contentBorder);
+        if (pos.X >= 0 && pos.Y >= 0 &&
+            pos.X <= _contentBorder.ActualWidth &&
+            pos.Y <= _contentBorder.ActualHeight)
+            return;
+
+        // Click was outside — close, but don't handle the event so it reaches its target
+        IsOpen = false;
     }
 
     private void ContentBorder_SizeChanged(object sender, SizeChangedEventArgs e)
