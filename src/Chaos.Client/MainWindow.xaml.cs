@@ -1609,24 +1609,30 @@ public partial class MainWindow : Window
             Content = panel,
             Style = (Style)FindResource("EmojiCategoryHeader"),
         };
+        WrapPanel? wrapRef = null;
         header.Click += (_, _) =>
         {
             if (_collapsedCategories.Contains(category))
+            {
                 _collapsedCategories.Remove(category);
+                caretText.Text = "\u276F";
+                if (wrapRef != null) wrapRef.Visibility = Visibility.Visible;
+            }
             else
+            {
                 _collapsedCategories.Add(category);
-            _emojiGridBuilt = false;
-            _cachedEmojiGridChildren = null;
-            PopulateEmojiGrid(null);
+                caretText.Text = "\u276E";
+                if (wrapRef != null) wrapRef.Visibility = Visibility.Collapsed;
+            }
         };
         _categoryHeaders[category] = header;
         EmojiGridPanel.Children.Add(header);
 
-        if (collapsed) return;
-
         var wrap = new System.Windows.Controls.WrapPanel();
+        if (collapsed) wrap.Visibility = Visibility.Collapsed;
         foreach (var emoji in emojis)
             wrap.Children.Add(CreateEmojiButton(emoji, vm));
+        wrapRef = wrap;
         EmojiGridPanel.Children.Add(wrap);
     }
 
