@@ -1002,6 +1002,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 ConnectedUsers.Insert(i, username);
                 OnPropertyChanged(nameof(ConnectedUsersHeader));
             }
+
+            // Keep autocomplete list up to date
+            if (!_allKnownUsers.Any(u => string.Equals(u, username, StringComparison.OrdinalIgnoreCase)))
+            {
+                int j = 0;
+                while (j < _allKnownUsers.Count && string.Compare(_allKnownUsers[j], username, StringComparison.OrdinalIgnoreCase) < 0)
+                    j++;
+                _allKnownUsers.Insert(j, username);
+            }
         });
     }
 

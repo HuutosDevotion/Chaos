@@ -177,4 +177,59 @@ public class ConnectedUsersTests
             await clientB.StopAsync();
         }
     }
+
+    // ── GetAllKnownUsers ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetAllKnownUsers_IncludesConnectedUser()
+    {
+        var client = _fixture.CreateHubConnection();
+        try
+        {
+            await client.StartAsync();
+            var username = $"Known_{Guid.NewGuid():N}";
+            await client.InvokeAsync("SetUsername", username);
+
+            var users = await client.InvokeAsync<List<string>>("GetAllKnownUsers");
+
+            Assert.Contains(username, users);
+        }
+        finally
+        {
+            await client.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task GetAllKnownUsers_AfterNewUserJoins_IncludesLateJoiner()
+    {
+        // Regression: autocomplete list must include users who connected after
+        // the initial fetch. The server recomputes the list on each call.
+        var clientA = _fixture.CreateHubConnection();
+        var clientB = _fixture.CreateHubConnection();
+        try
+        {
+            await clientA.StartAsync();
+            var usernameA = $"Early_{Guid.NewGuid():N}";
+            await clientA.InvokeAsync("SetUsername", usernameA);
+
+            // Snapshot before B exists
+            var before = await clientA.InvokeAsync<List<string>>("GetAllKnownUsers");
+
+            await clientB.StartAsync();
+            var usernameB = $"Late_{Guid.NewGuid():N}";
+            await clientB.InvokeAsync("SetUsername", usernameB);
+
+            // Re-query — B must now appear
+            var after = await clientA.InvokeAsync<List<string>>("GetAllKnownUsers");
+
+            Assert.DoesNotContain(usernameB, before);
+            Assert.Contains(usernameB, after);
+        }
+        finally
+        {
+            await clientA.StopAsync();
+            await clientB.StopAsync();
+        }
+    }
 }
