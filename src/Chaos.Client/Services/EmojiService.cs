@@ -27,9 +27,9 @@ public class EmojiService
     // Ordered category list for picker display
     private static readonly string[] CategoryOrder =
     {
-        "Smileys & Emotion", "People & Body", "Animals & Nature",
+        "Custom", "Smileys & Emotion", "People & Body", "Animals & Nature",
         "Food & Drink", "Travel & Places", "Activities",
-        "Objects", "Symbols", "Flags", "Custom"
+        "Objects", "Symbols", "Flags"
     };
 
     // Fires when emoji metadata is ready (names/categories available)
