@@ -277,7 +277,7 @@ public class EmojiUploaderViewModel : SubmenuViewModel
 
         try
         {
-            byte[] croppedBytes = CropWithImageSharp();
+            byte[] croppedBytes = await Task.Run(CropWithImageSharp);
 
             if (croppedBytes.Length > 256 * 1024)
             {
@@ -285,15 +285,17 @@ public class EmojiUploaderViewModel : SubmenuViewModel
                 return;
             }
 
+            // Close modal immediately so UI is responsive during network upload
             string ext = _isGif ? ".gif" : ".png";
-            var error = await _uploadCallback(croppedBytes, ext, EmojiName.Trim());
-            if (error is not null)
-            {
-                ErrorMessage = error;
-                return;
-            }
-
+            string emojiName = EmojiName.Trim();
             Close();
+
+            // Fire network upload in background — no UI dependency
+            _ = Task.Run(async () =>
+            {
+                try { await _uploadCallback(croppedBytes, ext, emojiName); }
+                catch { }
+            });
         }
         catch (Exception ex)
         {

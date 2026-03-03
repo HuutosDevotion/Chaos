@@ -612,23 +612,12 @@ public partial class MainWindow : Window
                 chatScroll?.ScrollToBottom();
             };
 
-            // Eagerly build the emoji grid in the background after emojis load
+            // Build emoji grid async in background — yields between categories to keep UI responsive
             vm.EmojiService.EmojisLoaded += () =>
-            {
-                _emojiGridBuilt = false;
-                _cachedEmojiGridChildren = null;
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
-                    PopulateEmojiGrid(null));
-            };
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RebuildEmojiGridAsync);
 
-            // Rebuild grid when images finish preloading so it's ready with real images
             vm.EmojiService.ImagesReady += () =>
-            {
-                _emojiGridBuilt = false;
-                _cachedEmojiGridChildren = null;
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
-                    PopulateEmojiGrid(null));
-            };
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, RebuildEmojiGridAsync);
 
             vm.PropertyChanged += (_, args) =>
             {
@@ -1574,6 +1563,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, FrameworkElement> _categoryHeaders = new();
     private bool _emojiGridBuilt;
     private List<UIElement>? _cachedEmojiGridChildren;
+    private int _emojiGridBuildVersion;
 
     private async void AddCustomEmoji_Click(object sender, RoutedEventArgs e)
     {
@@ -1617,7 +1607,17 @@ public partial class MainWindow : Window
             EmojiScrollViewer.ScrollToTop();
             return;
         }
-        PopulateEmojiGrid(null);
+
+        // Async build still in progress — show loading indicator
+        EmojiGridPanel.Children.Clear();
+        EmojiGridPanel.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "Loading emojis\u2026",
+            Foreground = (Brush)FindResource("TextMutedBrush"),
+            FontSize = 13,
+            Margin = new Thickness(8, 16, 8, 8),
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
     }
 
     private void BuildCategorySidebar(MainViewModel vm)
@@ -1678,6 +1678,41 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void RebuildEmojiGridAsync()
+    {
+        if (DataContext is not MainViewModel vm || !vm.EmojiService.IsLoaded) return;
+        int version = ++_emojiGridBuildVersion;
+
+        var children = new List<UIElement>();
+        var headers = new Dictionary<string, FrameworkElement>();
+
+        var frequent = vm.EmojiService.GetFrequentlyUsed();
+        if (frequent.Count > 0)
+            AddCategorySection("Frequently Used", frequent, vm, children, headers);
+
+        foreach (var (category, emojis) in vm.EmojiService.GetGroupedByCategory())
+        {
+            AddCategorySection(category, emojis, vm, children, headers);
+            // Yield at Background priority (4) so Input-priority (5) events like clicks
+            // are processed between category chunks
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            if (version != _emojiGridBuildVersion) return; // superseded by newer build
+        }
+
+        _categoryHeaders.Clear();
+        foreach (var kv in headers)
+            _categoryHeaders[kv.Key] = kv.Value;
+        _cachedEmojiGridChildren = children;
+        _emojiGridBuilt = true;
+
+        // If picker is open and not in search mode, swap in the freshly built grid
+        if (vm.EmojiPicker.IsOpen && string.IsNullOrEmpty(EmojiSearchBox.Text.Trim()))
+        {
+            RestoreCachedEmojiGrid();
+            BuildCategorySidebar(vm);
+        }
+    }
+
     private void PopulateEmojiGrid(string? filter)
     {
         EmojiGridPanel.Children.Clear();
@@ -1707,22 +1742,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Category mode with optional frequently used
+        // Category mode — build into list then apply
+        var children = new List<UIElement>();
         var frequent = vm.EmojiService.GetFrequentlyUsed();
         if (frequent.Count > 0)
-            AddCategorySection("Frequently Used", frequent, vm);
+            AddCategorySection("Frequently Used", frequent, vm, children, _categoryHeaders);
 
         foreach (var (category, emojis) in vm.EmojiService.GetGroupedByCategory())
-            AddCategorySection(category, emojis, vm);
+            AddCategorySection(category, emojis, vm, children, _categoryHeaders);
 
-        // Cache the built grid children for fast re-display
-        _cachedEmojiGridChildren = new List<UIElement>();
-        foreach (UIElement child in EmojiGridPanel.Children)
-            _cachedEmojiGridChildren.Add(child);
+        foreach (var child in children)
+            EmojiGridPanel.Children.Add(child);
+
+        _cachedEmojiGridChildren = children;
         _emojiGridBuilt = true;
     }
 
-    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm)
+    private void AddCategorySection(string category, List<Shared.EmojiDto> emojis, MainViewModel vm,
+        List<UIElement> children, Dictionary<string, FrameworkElement> headers)
     {
         bool collapsed = _collapsedCategories.Contains(category);
 
@@ -1764,15 +1801,15 @@ public partial class MainWindow : Window
                 if (wrapRef != null) wrapRef.Visibility = Visibility.Collapsed;
             }
         };
-        _categoryHeaders[category] = header;
-        EmojiGridPanel.Children.Add(header);
+        headers[category] = header;
+        children.Add(header);
 
         var wrap = new System.Windows.Controls.WrapPanel();
         if (collapsed) wrap.Visibility = Visibility.Collapsed;
         foreach (var emoji in emojis)
             wrap.Children.Add(CreateEmojiButton(emoji, vm));
         wrapRef = wrap;
-        EmojiGridPanel.Children.Add(wrap);
+        children.Add(wrap);
     }
 
     private System.Windows.Controls.Button CreateEmojiButton(Shared.EmojiDto emoji, MainViewModel vm)
