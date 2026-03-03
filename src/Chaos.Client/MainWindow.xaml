@@ -285,7 +285,7 @@
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            VerticalAlignment="Center" />
                                 <Button Content="✕" Style="{StaticResource DarkButton}"
-                                        Command="{Binding Close}"
+                                        Command="{Binding CloseCommand}"
                                         HorizontalAlignment="Right" VerticalAlignment="Center"
                                         Padding="10,6" FontSize="13" />
                             </Grid>

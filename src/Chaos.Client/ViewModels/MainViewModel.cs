@@ -171,7 +171,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private DateTime _lastTypingSent = DateTime.MinValue;
     private string _typingText = string.Empty;
 
-    private object? _activeModal;
+    private SubmenuViewModel? _activeModal;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
@@ -232,7 +232,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
 
 
-    public object? ActiveModal
+    public SubmenuViewModel? ActiveModal
     {
         get => _activeModal;
         private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); OnPropertyChanged(nameof(IsImagePreviewOpen)); }
@@ -241,8 +241,33 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool IsImagePreviewOpen => _activeModal is ImagePreviewModalViewModel;
     public bool IsAnyModalOpen => _activeModal is not null;
 
-    public void CloseModal() => ActiveModal = null;
-    public void OpenModal(object modal) => ActiveModal = modal;
+    public void CloseModal()
+    {
+        if (_activeModal is not null)
+        {
+            _activeModal.PropertyChanged -= OnModalPropertyChanged;
+            _activeModal.Close();
+        }
+        ActiveModal = null;
+    }
+
+    public void OpenModal(SubmenuViewModel modal)
+    {
+        if (_activeModal is not null)
+            _activeModal.PropertyChanged -= OnModalPropertyChanged;
+        modal.Open();
+        modal.PropertyChanged += OnModalPropertyChanged;
+        ActiveModal = modal;
+    }
+
+    private void OnModalPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SubmenuViewModel.IsOpen) && sender is SubmenuViewModel vm && !vm.IsOpen)
+        {
+            vm.PropertyChanged -= OnModalPropertyChanged;
+            ActiveModal = null;
+        }
+    }
 
     public string ConnectionStatus
     {
@@ -422,14 +447,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         Settings = new AppSettings
         {
-            FontSize        = _settingsStore.Get("FontSize",        14.0),
-            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
-            UiScale         = _settingsStore.Get("UiScale",         1.0),
-            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
-            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
-            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
-            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
-            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+            FontSize              = _settingsStore.Get("FontSize",              14.0),
+            MessageSpacing        = _settingsStore.Get("MessageSpacing",        4.0),
+            UiScale               = _settingsStore.Get("UiScale",              1.0),
+            GroupMessages         = _settingsStore.Get("GroupMessages",         false),
+            ShowFormattingToolbar = _settingsStore.Get("ShowFormattingToolbar", false),
+            InputDevice           = _settingsStore.Get("InputDevice",           "Default"),
+            OutputDevice          = _settingsStore.Get("OutputDevice",          "Default"),
+            InputVolume           = _settingsStore.Get("InputVolume",           1.0f),
+            OutputVolume          = _settingsStore.Get("OutputVolume",          1.0f),
         };
 
         _username = _settingsStore.Get("Username", string.Empty);
@@ -902,10 +928,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OpenCreateChannelModal()
     {
-        ActiveModal = new CreateChannelModalViewModel(
+        OpenModal(new CreateChannelModalViewModel(
             confirm: async (name, type) =>
             {
-                ActiveModal = null;
                 var dto = await _chatService.CreateChannelAsync(name, type);
                 if (dto?.Type == ChannelType.Text)
                 {
@@ -913,41 +938,36 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     if (channel is not null)
                         SelectedTextChannel = channel;
                 }
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenRenameChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        ActiveModal = new RenameChannelModalViewModel(
+        OpenModal(new RenameChannelModalViewModel(
             initialName: channel.Name,
             confirm: async name =>
             {
-                ActiveModal = null;
                 await _chatService.RenameChannelAsync(channel.Id, name);
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenDeleteChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        ActiveModal = new DeleteChannelModalViewModel(
+        OpenModal(new DeleteChannelModalViewModel(
             channelName: channel.Name,
             confirm: async () =>
             {
-                ActiveModal = null;
                 await _chatService.DeleteChannelAsync(channel.Id);
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenSettingsModal() =>
-        ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
+        OpenModal(new SettingsModalViewModel(Settings));
 
     public void OpenImagePreviewModal(string imageUrl) =>
-        ActiveModal = new ImagePreviewModalViewModel(imageUrl);
+        OpenModal(new ImagePreviewModalViewModel(imageUrl));
 
     private void OnChannelCreated(ChannelDto dto)
     {
@@ -1037,8 +1057,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("FontSize",       Settings.FontSize);
         _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
         _settingsStore.Set("UiScale",        Settings.UiScale);
-        _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
-        _settingsStore.Set("InputDevice",    Settings.InputDevice);
+        _settingsStore.Set("GroupMessages",         Settings.GroupMessages);
+        _settingsStore.Set("ShowFormattingToolbar", Settings.ShowFormattingToolbar);
+        _settingsStore.Set("InputDevice",           Settings.InputDevice);
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);

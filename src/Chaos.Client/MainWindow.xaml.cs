@@ -554,7 +554,8 @@ public partial class MainWindow : Window
             MessageList.PreviewMouseLeftButtonDown += (_, e) =>
             {
                 var hit = VisualTreeHelper.HitTest(MessageList, e.GetPosition(MessageList));
-                if (hit?.VisualHit is Image img && img.Tag is string url)
+                if (hit?.VisualHit is Image img && img.Tag is string url
+                    && !url.StartsWith(":"))
                 {
                     vm.OpenImagePreviewModal(url);
                     e.Handled = true;
@@ -1517,12 +1518,6 @@ public partial class MainWindow : Window
                 string text = GetInputText();
                 SetInputText(text.Remove(start, len).Insert(start, md));
                 SetInputCursorOffset(start + md.Length);
-                vm.CloseModal();
-                MessageInput.Focus();
-            },
-            cancel: () =>
-            {
-                vm.CloseModal();
                 MessageInput.Focus();
             }));
     }
@@ -1563,7 +1558,10 @@ public partial class MainWindow : Window
         {
             MessagePreview.Visibility = Visibility.Collapsed;
             MessageInput.Visibility   = Visibility.Visible;
-            FormattingToolbar.ClearValue(UIElement.VisibilityProperty); // restore style-driven visibility
+            // Re-apply the binding (direct Visibility set above destroys the XAML binding)
+            FormattingToolbar.SetBinding(VisibilityProperty,
+                new System.Windows.Data.Binding("Settings.ShowFormattingToolbar")
+                { Converter = (System.Windows.Data.IValueConverter)FindResource("BoolToVis") });
             MessageInput.Focus();
             PreviewToggleButton.Tag = "Preview rendered message";
             TooltipHelper.SetIsActive(PreviewToggleButton, false);

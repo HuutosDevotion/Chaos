@@ -360,7 +360,7 @@ public class SettingsCategoryViewModel
     }
 }
 
-public class SettingsModalViewModel : INotifyPropertyChanged
+public class SettingsModalViewModel : SubmenuViewModel
 {
     private SettingsPageViewModel? _selectedPage;
 
@@ -378,9 +378,9 @@ public class SettingsModalViewModel : INotifyPropertyChanged
         }
     }
 
-    public ICommand Close { get; }
+    public ICommand CloseCommand { get; }
 
-    public SettingsModalViewModel(AppSettings settings, Action close)
+    public SettingsModalViewModel(AppSettings settings)
     {
         Action<SettingsPageViewModel> select = p => SelectedPage = p;
 
@@ -392,11 +392,7 @@ public class SettingsModalViewModel : INotifyPropertyChanged
             new("App Settings", new SettingsPageViewModel[] { appearance, voice })
         };
 
-        Close = new RelayCommand(_ => { voice.StopMicTest(); voice.StopThresholdMonitor(); close(); });
+        CloseCommand = new RelayCommand(_ => { voice.StopMicTest(); voice.StopThresholdMonitor(); Close(); });
         SelectedPage = appearance;
     }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    protected void OnPropertyChanged([CallerMemberName] string? n = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 }
