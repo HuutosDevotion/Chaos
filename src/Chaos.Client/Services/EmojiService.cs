@@ -29,7 +29,7 @@ public class EmojiService
     {
         "Smileys & Emotion", "People & Body", "Animals & Nature",
         "Food & Drink", "Travel & Places", "Activities",
-        "Objects", "Symbols", "Flags"
+        "Objects", "Symbols", "Flags", "Custom"
     };
 
     // Fires when emoji metadata is ready (names/categories available)
@@ -125,7 +125,8 @@ public class EmojiService
     {
         try
         {
-            string cachePath = Path.Combine(_cacheDir, emoji.FileName);
+            string safePath = emoji.FileName.Replace('/', Path.DirectorySeparatorChar);
+            string cachePath = Path.Combine(_cacheDir, safePath);
             if (!File.Exists(cachePath))
             {
                 _loadingTasks.TryRemove(emoji.FileName, out _);
@@ -258,7 +259,8 @@ public class EmojiService
         try
         {
             byte[] bytes;
-            string cachePath = Path.Combine(_cacheDir, emoji.FileName);
+            string safePath = emoji.FileName.Replace('/', Path.DirectorySeparatorChar);
+            string cachePath = Path.Combine(_cacheDir, safePath);
 
             if (File.Exists(cachePath))
             {
@@ -266,7 +268,9 @@ public class EmojiService
             }
             else
             {
-                string url = $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
+                string url = emoji.FileName.StartsWith("custom/")
+                    ? $"{_baseUrl}/emojis/{emoji.FileName}"
+                    : $"{_baseUrl}/emojis/72x72/{emoji.FileName}";
                 using var resp = await _http.GetAsync(url);
                 if (!resp.IsSuccessStatusCode)
                 {
@@ -278,6 +282,8 @@ public class EmojiService
 
                 try
                 {
+                    var cacheParent = Path.GetDirectoryName(cachePath);
+                    if (cacheParent is not null) Directory.CreateDirectory(cacheParent);
                     await File.WriteAllBytesAsync(cachePath, bytes);
                 }
                 catch { }
@@ -302,6 +308,17 @@ public class EmojiService
             _loadingTasks.TryRemove(emoji.FileName, out _);
             return null;
         }
+    }
+
+    public async Task AddEmojiAsync(EmojiDto emoji)
+    {
+        if (_byName.ContainsKey(emoji.Name)) return;
+
+        _allEmojis.Add(emoji);
+        _byName[emoji.Name] = emoji;
+
+        await GetOrStartLoadAsync(emoji);
+        ImagesReady?.Invoke();
     }
 
     // Frequently used tracking

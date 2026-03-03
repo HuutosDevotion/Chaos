@@ -49,6 +49,7 @@ builder.Services.AddCors(options =>
 
 // wwwroot must exist before Build() so UseStaticFiles() gets a PhysicalFileProvider, not NullFileProvider
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads"));
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "emojis", "custom"));
 
 var app = builder.Build();
 
@@ -84,6 +85,30 @@ app.MapPost("/api/upload", async (HttpContext ctx, IWebHostEnvironment env) =>
     await file.CopyToAsync(stream);
 
     return Results.Ok(new { url = $"/uploads/{name}" });
+}).DisableAntiforgery();
+
+app.MapPost("/api/emoji/upload", async (HttpContext ctx, IWebHostEnvironment env) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0)
+        return Results.BadRequest("No file provided");
+
+    var ext = Path.GetExtension(file.FileName).ToLower();
+    if (ext is not ".png" and not ".gif")
+        return Results.BadRequest("Only .png and .gif allowed");
+
+    if (file.Length > 256 * 1024)
+        return Results.BadRequest("File exceeds 256KB limit");
+
+    var dir = Path.Combine(env.ContentRootPath, "wwwroot", "emojis", "custom");
+    Directory.CreateDirectory(dir);
+
+    var fileName = $"{Guid.NewGuid()}{ext}";
+    await using var stream = File.Create(Path.Combine(dir, fileName));
+    await file.CopyToAsync(stream);
+
+    return Results.Ok(new { fileName = $"custom/{fileName}" });
 }).DisableAntiforgery();
 
 // Print connection info

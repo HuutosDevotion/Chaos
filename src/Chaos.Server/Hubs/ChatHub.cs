@@ -197,6 +197,25 @@ public class ChatHub : Hub
             }).ToList());
     }
 
+    public async Task<EmojiDto> UploadCustomEmoji(string name, string fileName)
+    {
+        name = name.Trim();
+        if (string.IsNullOrEmpty(name))
+            throw new HubException("Emoji name cannot be empty.");
+
+        var exists = await _db.Emojis.AnyAsync(e => e.Name == name);
+        if (exists)
+            throw new HubException($"An emoji named '{name}' already exists.");
+
+        var emoji = new Emoji { Name = name, Category = "Custom", FileName = fileName };
+        _db.Emojis.Add(emoji);
+        await _db.SaveChangesAsync();
+
+        var dto = new EmojiDto { Id = emoji.Id, Name = emoji.Name, Category = emoji.Category, FileName = emoji.FileName };
+        await Clients.All.SendAsync("EmojiAdded", dto);
+        return dto;
+    }
+
     public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
     {
         name = name.Trim();

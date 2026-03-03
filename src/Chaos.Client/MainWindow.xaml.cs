@@ -1575,6 +1575,22 @@ public partial class MainWindow : Window
     private bool _emojiGridBuilt;
     private List<UIElement>? _cachedEmojiGridChildren;
 
+    private async void AddCustomEmoji_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        vm.EmojiPicker.Close();
+
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Emoji Image",
+            Filter = "Images (*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp)|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp"
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        var data = await File.ReadAllBytesAsync(dlg.FileName);
+        vm.OpenEmojiUploaderModal(data, Path.GetFileName(dlg.FileName));
+    }
+
     private void EmojiPicker_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel vm) return;

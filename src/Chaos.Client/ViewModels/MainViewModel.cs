@@ -504,6 +504,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
         _chatService.UserTyping += OnUserTyping;
+        _chatService.EmojiAdded += OnEmojiAdded;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
@@ -968,6 +969,32 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public void OpenImagePreviewModal(string imageUrl) =>
         OpenModal(new ImagePreviewModalViewModel(imageUrl));
+
+    private void OnEmojiAdded(EmojiDto dto)
+    {
+        _ = Task.Run(async () => await EmojiService.AddEmojiAsync(dto));
+    }
+
+    public void OpenEmojiUploaderModal(byte[] imageData, string filename)
+    {
+        OpenModal(new EmojiUploaderViewModel(imageData, filename,
+            async (croppedBytes, extension, emojiName) =>
+            {
+                var fileName = await _chatService.UploadCustomEmojiImageAsync(croppedBytes, extension);
+                if (fileName is null)
+                    return "Failed to upload image to server.";
+
+                try
+                {
+                    await _chatService.RegisterCustomEmojiAsync(emojiName, fileName);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }));
+    }
 
     private void OnChannelCreated(ChannelDto dto)
     {

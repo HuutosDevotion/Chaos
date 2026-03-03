@@ -142,12 +142,13 @@ public class EmojiServiceTests : IDisposable
     // ── GetCategories ────────────────────────────────────────────────────────
 
     [Fact]
-    public void GetCategories_Returns9Categories()
+    public void GetCategories_Returns10Categories()
     {
         var categories = _service.GetCategories();
-        Assert.Equal(9, categories.Length);
+        Assert.Equal(10, categories.Length);
         Assert.Contains("Smileys & Emotion", categories);
         Assert.Contains("Flags", categories);
+        Assert.Contains("Custom", categories);
     }
 
     // ── GetGroupedByCategory ─────────────────────────────────────────────────

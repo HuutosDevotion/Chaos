@@ -71,6 +71,10 @@
         <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">
             <controls:SettingsModalView />
         </DataTemplate>
+
+        <DataTemplate DataType="{x:Type vm:EmojiUploaderViewModel}">
+            <controls:EmojiUploaderView />
+        </DataTemplate>
     </Window.Resources>
 
     <Grid x:Name="RootGrid">
@@ -1077,9 +1081,26 @@
                 <!-- Search bar -->
                 <Border Grid.Row="0" Padding="12,10,12,8"
                         BorderBrush="#3A3C42" BorderThickness="0,0,0,1">
-                    <TextBox x:Name="EmojiSearchBox"
-                             Style="{StaticResource EmojiSearchTextBox}"
-                             TextChanged="EmojiSearch_TextChanged" />
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}"
+                                Click="AddCustomEmoji_Click" Focusable="False"
+                                ToolTip="Upload custom emoji"
+                                Margin="4,0,0,0" Padding="4" VerticalAlignment="Center">
+                            <Viewbox Width="16" Height="16">
+                                <Canvas Width="14" Height="14">
+                                    <Line X1="7" Y1="2" X2="7" Y2="12"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    <Line X1="2" Y1="7" X2="12" Y2="7"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Canvas>
+                            </Viewbox>
+                        </Button>
+                        <TextBox x:Name="EmojiSearchBox"
+                                 Style="{StaticResource EmojiSearchTextBox}"
+                                 TextChanged="EmojiSearch_TextChanged" />
+                    </DockPanel>
                 </Border>
 
                 <!-- Sidebar + emoji grid -->
