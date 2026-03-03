@@ -431,7 +431,7 @@ internal sealed class InlineFormatPreview
         {
             para.BorderBrush = _mutedBrush;
             para.BorderThickness = new Thickness(3, 0, 0, 0);
-            para.Padding = new Thickness(4, 0, 0, 0);
+            para.Padding = new Thickness(0);
         }
 
         return didSplit;
