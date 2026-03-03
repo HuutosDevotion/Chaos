@@ -51,6 +51,47 @@ public partial class MainWindow : Window
     private InlineFormatPreview? _formatPreview;
     private static readonly Regex InputEmojiDetect = new(@":([A-Za-z0-9_]+(?:~\d+)?):", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Checks whether the caret is inside an unclosed ``` fenced code block
+    /// by walking the paragraph's inlines and counting fence delimiter lines
+    /// (segments separated by LineBreak). Odd count = inside a code block.
+    /// </summary>
+    private bool IsCaretInFencedBlock()
+    {
+        var para = MessageInput.CaretPosition.Paragraph;
+        if (para is null) return false;
+
+        var caret = MessageInput.CaretPosition;
+        int fenceCount = 0;
+        var lineText = new StringBuilder();
+
+        foreach (var inline in para.Inlines)
+        {
+            // Stop counting once we've passed the caret position.
+            if (inline.ElementStart.CompareTo(caret) >= 0)
+                break;
+
+            if (inline is LineBreak)
+            {
+                string line = lineText.ToString().Trim();
+                if (line.StartsWith("```") && (line.Length == 3 || line[3..].All(char.IsLetterOrDigit)))
+                    fenceCount++;
+                lineText.Clear();
+            }
+            else if (inline is Run run)
+            {
+                lineText.Append(run.Text);
+            }
+        }
+
+        // Check the final line segment (before the caret).
+        string lastLine = lineText.ToString().Trim();
+        if (lastLine.StartsWith("```") && (lastLine.Length == 3 || lastLine[3..].All(char.IsLetterOrDigit)))
+            fenceCount++;
+
+        return fenceCount % 2 == 1;
+    }
+
     private string GetInputText()
     {
         var doc = MessageInput.Document;
@@ -870,6 +911,14 @@ public partial class MainWindow : Window
                 if (TryHandleListEnter())
                     e.Handled = true;
                 return; // handled by list logic, or let TextBox insert newline naturally
+            }
+            // Inside an unclosed ``` block, Enter inserts a LineBreak (not a Paragraph).
+            if (IsCaretInFencedBlock())
+            {
+                var newPos = MessageInput.CaretPosition.InsertLineBreak();
+                MessageInput.CaretPosition = newPos;
+                e.Handled = true;
+                return;
             }
             if (vm2.SendMessageCommand.CanExecute(null))
                 vm2.SendMessageCommand.Execute(null);
