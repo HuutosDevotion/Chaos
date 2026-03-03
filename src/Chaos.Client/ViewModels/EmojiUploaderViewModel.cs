@@ -15,7 +15,6 @@ public class EmojiUploaderViewModel : SubmenuViewModel
 {
     public const int ExportSize = 128;
     public const int CropSize = 256;
-    public const int CanvasSize = 500;
 
     private readonly byte[] _sourceBytes;
     private readonly bool _isGif;
@@ -25,18 +24,46 @@ public class EmojiUploaderViewModel : SubmenuViewModel
     private double _offsetX;
     private double _offsetY;
     private double _zoom = 1.0;
+    private double _canvasWidth = 500;
+    private double _canvasHeight = 500;
     private string _emojiName = string.Empty;
     private BitmapSource? _previewImage;
     private bool _isUploading;
     private string _errorMessage = string.Empty;
 
     /// <summary>
-    /// Minimum zoom: the larger image dimension fills the crop box.
+    /// Minimum zoom: the larger DIP dimension fills the crop box.
     /// Wide images zoom out until full width fits; tall images until full height fits.
+    /// Uses Width/Height (DIPs) not PixelWidth/PixelHeight, because WPF Stretch="None"
+    /// renders at DIP dimensions which differ from pixels when image DPI != 96.
     /// </summary>
     private double MinZoom => _sourceImage is not null
-        ? CropSize / (double)Math.Max(_sourceImage.PixelWidth, _sourceImage.PixelHeight)
+        ? CropSize / Math.Max(_sourceImage.Width, _sourceImage.Height)
         : 0.1;
+
+    public double CanvasWidth
+    {
+        get => _canvasWidth;
+        set
+        {
+            _canvasWidth = value;
+            _offsetX = ClampX(_offsetX);
+            OnPropertyChanged(nameof(OffsetX));
+            UpdatePreview();
+        }
+    }
+
+    public double CanvasHeight
+    {
+        get => _canvasHeight;
+        set
+        {
+            _canvasHeight = value;
+            _offsetY = ClampY(_offsetY);
+            OnPropertyChanged(nameof(OffsetY));
+            UpdatePreview();
+        }
+    }
 
     public BitmapSource? SourceImage
     {
@@ -98,8 +125,8 @@ public class EmojiUploaderViewModel : SubmenuViewModel
     private double ClampX(double x)
     {
         if (_sourceImage is null) return x;
-        double cropLeft = (CanvasSize - CropSize) / 2.0;
-        double imgW = _sourceImage.PixelWidth * _zoom;
+        double cropLeft = (_canvasWidth - CropSize) / 2.0;
+        double imgW = _sourceImage.Width * _zoom;
         double a = cropLeft;                    // image left = crop left
         double b = cropLeft + CropSize - imgW;  // image right = crop right
         return Math.Clamp(x, Math.Min(a, b), Math.Max(a, b));
@@ -111,8 +138,8 @@ public class EmojiUploaderViewModel : SubmenuViewModel
     private double ClampY(double y)
     {
         if (_sourceImage is null) return y;
-        double cropTop = (CanvasSize - CropSize) / 2.0;
-        double imgH = _sourceImage.PixelHeight * _zoom;
+        double cropTop = (_canvasHeight - CropSize) / 2.0;
+        double imgH = _sourceImage.Height * _zoom;
         double a = cropTop;                     // image top = crop top
         double b = cropTop + CropSize - imgH;   // image bottom = crop bottom
         return Math.Clamp(y, Math.Min(a, b), Math.Max(a, b));
@@ -173,8 +200,8 @@ public class EmojiUploaderViewModel : SubmenuViewModel
             _zoom = Math.Clamp(_zoom, MinZoom, 10.0);
 
             // Center the image in the canvas
-            _offsetX = (CanvasSize - _sourceImage.PixelWidth * _zoom) / 2;
-            _offsetY = (CanvasSize - _sourceImage.PixelHeight * _zoom) / 2;
+            _offsetX = (_canvasWidth - _sourceImage.Width * _zoom) / 2;
+            _offsetY = (_canvasHeight - _sourceImage.Height * _zoom) / 2;
         }
 
         UpdatePreview();
@@ -212,15 +239,15 @@ public class EmojiUploaderViewModel : SubmenuViewModel
 
         try
         {
-            double cropLeft = (CanvasSize - CropSize) / 2.0;
-            double cropTop = (CanvasSize - CropSize) / 2.0;
+            double cropLeft = (_canvasWidth - CropSize) / 2.0;
+            double cropTop = (_canvasHeight - CropSize) / 2.0;
 
             // Image position within the ExportSize output space
             double outputScale = (double)ExportSize / CropSize;
             double imgX = (_offsetX - cropLeft) * outputScale;
             double imgY = (_offsetY - cropTop) * outputScale;
-            double imgW = _sourceImage.PixelWidth * _zoom * outputScale;
-            double imgH = _sourceImage.PixelHeight * _zoom * outputScale;
+            double imgW = _sourceImage.Width * _zoom * outputScale;
+            double imgH = _sourceImage.Height * _zoom * outputScale;
 
             var dv = new DrawingVisual();
             using (var dc = dv.RenderOpen())
@@ -282,15 +309,18 @@ public class EmojiUploaderViewModel : SubmenuViewModel
     /// </summary>
     private byte[] CropWithImageSharp()
     {
-        double cropLeft = (CanvasSize - CropSize) / 2.0;
-        double cropTop = (CanvasSize - CropSize) / 2.0;
+        double cropLeft = (_canvasWidth - CropSize) / 2.0;
+        double cropTop = (_canvasHeight - CropSize) / 2.0;
 
         using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(_sourceBytes);
 
-        // Step 1: resize source so that display pixels map 1:1 to export pixels
+        // Step 1: resize source so that display DIPs map 1:1 to export pixels
+        // Use WPF DIP dimensions (not pixel dimensions) since zoom/offsets are in DIP space
+        double dipW = _sourceImage!.Width;
+        double dipH = _sourceImage!.Height;
         double outputScale = _zoom * ExportSize / CropSize;
-        int newW = Math.Max(1, (int)Math.Round(image.Width * outputScale));
-        int newH = Math.Max(1, (int)Math.Round(image.Height * outputScale));
+        int newW = Math.Max(1, (int)Math.Round(dipW * outputScale));
+        int newH = Math.Max(1, (int)Math.Round(dipH * outputScale));
         image.Mutate(ctx => ctx.Resize(newW, newH));
 
         // Step 2: where the crop box starts relative to the resized image
