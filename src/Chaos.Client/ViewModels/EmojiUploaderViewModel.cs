@@ -44,25 +44,28 @@ public class EmojiUploaderViewModel : SubmenuViewModel
     public double CanvasWidth
     {
         get => _canvasWidth;
-        set
-        {
-            _canvasWidth = value;
-            _offsetX = ClampX(_offsetX);
-            OnPropertyChanged(nameof(OffsetX));
-            UpdatePreview();
-        }
+        set { _canvasWidth = value; }
     }
 
     public double CanvasHeight
     {
         get => _canvasHeight;
-        set
-        {
-            _canvasHeight = value;
-            _offsetY = ClampY(_offsetY);
-            OnPropertyChanged(nameof(OffsetY));
-            UpdatePreview();
-        }
+        set { _canvasHeight = value; }
+    }
+
+    /// <summary>
+    /// Called after canvas dimensions are set to center the image and update clamps.
+    /// </summary>
+    public void CenterImage()
+    {
+        if (_sourceImage is null) return;
+        _offsetX = (_canvasWidth - _sourceImage.Width * _zoom) / 2;
+        _offsetY = (_canvasHeight - _sourceImage.Height * _zoom) / 2;
+        _offsetX = ClampX(_offsetX);
+        _offsetY = ClampY(_offsetY);
+        OnPropertyChanged(nameof(OffsetX));
+        OnPropertyChanged(nameof(OffsetY));
+        UpdatePreview();
     }
 
     public BitmapSource? SourceImage

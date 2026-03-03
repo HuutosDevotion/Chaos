@@ -35,13 +35,19 @@ public partial class EmojiUploaderView : UserControl
             ContentGrid.Clip = geo;
         };
 
-        // Feed actual canvas size to ViewModel for correct offset/clamp math
+        // Feed actual canvas size to ViewModel and re-center on first layout
+        bool _canvasInitialized = false;
         EditorCanvas.SizeChanged += (_, e) =>
         {
             if (DataContext is EmojiUploaderViewModel vm)
             {
                 vm.CanvasWidth = e.NewSize.Width;
                 vm.CanvasHeight = e.NewSize.Height;
+                if (!_canvasInitialized)
+                {
+                    _canvasInitialized = true;
+                    vm.CenterImage();
+                }
             }
         };
     }

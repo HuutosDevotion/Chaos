@@ -97,26 +97,6 @@
                            Stroke="White" StrokeThickness="1.5"
                            IsHitTestVisible="False" />
 
-                <!-- Header text ON TOP of overlay -->
-                <Grid VerticalAlignment="Top" Height="54" IsHitTestVisible="False">
-                    <Button Command="{Binding Cancel}" Cursor="Hand"
-                            HorizontalAlignment="Left" VerticalAlignment="Center"
-                            Margin="14,0,0,0" Width="30" Height="30" IsHitTestVisible="True">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="Transparent" CornerRadius="4">
-                                    <TextBlock Text="&#x2715;" FontSize="14"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <TextBlock Text="Add Emoji" FontSize="15" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Grid>
-
                 <!-- Hint text ON TOP of overlay -->
                 <TextBlock Text="Drag to reposition or scroll to zoom"
                            Foreground="#80FFFFFF" FontSize="11"
@@ -130,6 +110,27 @@
                            MouseLeftButtonUp="EditorCanvas_MouseLeftButtonUp"
                            MouseWheel="EditorCanvas_MouseWheel"
                            Cursor="SizeAll" />
+
+                <!-- Header title (no hit testing) -->
+                <TextBlock Text="Add Emoji" FontSize="15" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Top"
+                           Margin="0,16,0,0" IsHitTestVisible="False" />
+
+                <!-- X close button — standalone so it receives clicks above hit-test surface -->
+                <Button Command="{Binding Cancel}" Cursor="Hand"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="14,12,0,0" Width="30" Height="30">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="Transparent" CornerRadius="4">
+                                <TextBlock Text="&#x2715;" FontSize="14"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
             </Grid>
 
             <!-- Right panel -->
@@ -159,7 +160,7 @@
                             <Border Background="{StaticResource BgDarkestBrush}" CornerRadius="6"
                                     Padding="12" VerticalAlignment="Top">
                                 <Image x:Name="Preview32" Source="{Binding PreviewImage}"
-                                       Width="64" Height="64" Stretch="Fill"
+                                       Width="32" Height="32" Stretch="Fill"
                                        RenderOptions.BitmapScalingMode="HighQuality" />
                             </Border>
                         </StackPanel>
