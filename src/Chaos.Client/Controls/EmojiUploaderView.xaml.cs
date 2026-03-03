@@ -1,20 +1,22 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Chaos.Client.ViewModels;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Chaos.Client.Controls;
 
 public partial class EmojiUploaderView : UserControl
 {
     private bool _isDragging;
-    private Point _dragStart;
+    private System.Windows.Point _dragStart;
     private double _startOffsetX, _startOffsetY;
 
-    private BitmapFrame[]? _sourceFrames;
+    private BitmapSource[]? _sourceFrames;
     private int _sourceFrameIndex;
     private DispatcherTimer? _frameTimer;
 
@@ -32,35 +34,48 @@ public partial class EmojiUploaderView : UserControl
 
         try
         {
-            var decoder = new GifBitmapDecoder(
-                new MemoryStream(vm.SourceBytes),
-                BitmapCreateOptions.PreservePixelFormat,
-                BitmapCacheOption.OnLoad);
+            using var image = SixLabors.ImageSharp.Image.Load<Rgba32>(vm.SourceBytes);
+            if (image.Frames.Count <= 1) return;
 
-            if (decoder.Frames.Count <= 1) return;
-
-            _sourceFrames = decoder.Frames.ToArray();
-            _sourceFrameIndex = 0;
-
-            // Read frame delay from GIF metadata (in 10ms units), default to 100ms
+            var frames = new BitmapSource[image.Frames.Count];
             int delayMs = 100;
-            var metadata = decoder.Frames[0].Metadata as BitmapMetadata;
-            if (metadata != null)
+
+            for (int i = 0; i < image.Frames.Count; i++)
             {
-                try
+                using var frame = image.Frames.CloneFrame(i);
+                frames[i] = ConvertToBitmapSource(frame);
+
+                if (i == 0)
                 {
-                    var delay = metadata.GetQuery("/grctlext/Delay");
-                    if (delay is ushort d && d > 0)
-                        delayMs = d * 10;
+                    var gifMeta = frame.Frames[0].Metadata.GetGifMetadata();
+                    if (gifMeta.FrameDelay > 0)
+                        delayMs = gifMeta.FrameDelay * 10;
                 }
-                catch { }
             }
+
+            _sourceFrames = frames;
+            _sourceFrameIndex = 0;
 
             _frameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
             _frameTimer.Tick += OnFrameTick;
             _frameTimer.Start();
         }
         catch { }
+    }
+
+    private static BitmapSource ConvertToBitmapSource(Image<Rgba32> image)
+    {
+        int w = image.Width, h = image.Height;
+        var pixels = new byte[w * h * 4];
+        image.CopyPixelDataTo(pixels);
+
+        // RGBA → BGRA swap for WPF
+        for (int i = 0; i < pixels.Length; i += 4)
+            (pixels[i], pixels[i + 2]) = (pixels[i + 2], pixels[i]);
+
+        var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, pixels, w * 4);
+        bmp.Freeze();
+        return bmp;
     }
 
     private void OnFrameTick(object? sender, EventArgs e)
