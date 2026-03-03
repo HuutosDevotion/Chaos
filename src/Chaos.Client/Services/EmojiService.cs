@@ -166,7 +166,8 @@ public class EmojiService
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream is null) return;
 
-            var emojis = JsonSerializer.Deserialize<List<EmojiDto>>(stream);
+            var emojis = JsonSerializer.Deserialize<List<EmojiDto>>(stream,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (emojis is null || emojis.Count == 0) return;
 
             _allEmojis = emojis;

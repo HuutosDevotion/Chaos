@@ -1426,7 +1426,7 @@
                                     <Button x:Name="EmojiPickerButton" DockPanel.Dock="Right"
                                             Style="{StaticResource ToolbarButton}"
                                             Click="EmojiPicker_Click" Focusable="False"
-                                            VerticalAlignment="Top" Margin="0,12,8,0">
+                                            VerticalAlignment="Top" Margin="0,14,8,0">
                                         <!-- Smiley face icon -->
                                         <Viewbox Width="20" Height="20">
                                             <Canvas Width="20" Height="20">
@@ -1452,7 +1452,7 @@
                                                  AcceptsReturn="True"
                                                  Padding="12,16"
                                                  FontSize="{Binding Settings.FontSize}"
-                                                 MaxHeight="120"
+                                                 MaxHeight="480"
                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                  PreviewKeyDown="MessageInput_PreviewKeyDown" />
