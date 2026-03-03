@@ -635,14 +635,6 @@ public partial class MainWindow : Window
                     });
                 }
 
-                if (args.PropertyName == nameof(MainViewModel.SelectedSuggestionIndex))
-                {
-                    int idx = vm.SelectedSuggestionIndex;
-                    if (idx >= 0 && idx < vm.SlashSuggestions.Count)
-                        SuggestionList.ScrollIntoView(vm.SlashSuggestions[idx]);
-                }
-
-
                 if (args.PropertyName == nameof(MainViewModel.ActiveModal) && vm.ActiveModal is not null)
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, () =>
                     {
@@ -659,10 +651,14 @@ public partial class MainWindow : Window
                 double menuWidth = inputWidth > 40 ? inputWidth - 32 : inputWidth;
                 EmojiAutocompleteHost.SubmenuWidth = menuWidth;
                 EmojiAutocompleteHost.HorizontalOffset = (inputWidth - menuWidth) / 2;
+                SlashAutocompleteHost.SubmenuWidth = menuWidth;
+                SlashAutocompleteHost.HorizontalOffset = (inputWidth - menuWidth) / 2;
             }
 
             vm.EmojiAutocomplete.BeforeOpen = SizeAutocomplete;
+            vm.SlashAutocomplete.BeforeOpen = SizeAutocomplete;
             EmojiAutocompleteHost.Repositioning += SizeAutocomplete;
+            SlashAutocompleteHost.Repositioning += SizeAutocomplete;
 
             EmojiPickerHost.Repositioning += () =>
                 EmojiPickerHost.HorizontalOffset = TextInputBorder.ActualWidth - EmojiPickerHost.SubmenuWidth;
@@ -674,6 +670,16 @@ public partial class MainWindow : Window
                     int idx = vm.EmojiAutocomplete.SelectedIndex;
                     if (idx >= 0 && idx < vm.EmojiAutocomplete.Suggestions.Count)
                         EmojiSuggestionList.ScrollIntoView(vm.EmojiAutocomplete.Suggestions[idx]);
+                }
+            };
+
+            vm.SlashAutocomplete.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(SlashAutocompleteViewModel.SelectedIndex))
+                {
+                    int idx = vm.SlashAutocomplete.SelectedIndex;
+                    if (idx >= 0 && idx < vm.SlashAutocomplete.Suggestions.Count)
+                        SlashSuggestionList.ScrollIntoView(vm.SlashAutocomplete.Suggestions[idx]);
                 }
             };
         }
@@ -818,37 +824,38 @@ public partial class MainWindow : Window
             }
         }
 
-        if (DataContext is MainViewModel vm1 && vm1.ShowSlashSuggestions)
+        if (DataContext is MainViewModel vm1 && vm1.SlashAutocomplete.IsOpen)
         {
+            var sc = vm1.SlashAutocomplete;
             if (e.Key == Key.Down)
             {
-                vm1.NavigateSuggestions(1);
+                sc.Navigate(1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Up)
             {
-                vm1.NavigateSuggestions(-1);
+                sc.Navigate(-1);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Tab)
             {
-                int idx = vm1.SelectedSuggestionIndex >= 0 ? vm1.SelectedSuggestionIndex : 0;
-                if (idx < vm1.SlashSuggestions.Count)
-                    ApplySuggestion(vm1, vm1.SlashSuggestions[idx]);
+                int idx = sc.SelectedIndex >= 0 ? sc.SelectedIndex : 0;
+                if (idx < sc.Suggestions.Count)
+                    ApplySuggestion(vm1, sc.Suggestions[idx]);
                 e.Handled = true;
                 return;
             }
             if (e.Key == Key.Escape)
             {
-                vm1.DismissSuggestions();
+                sc.Dismiss();
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.Enter && vm1.SelectedSuggestionIndex >= 0)
+            if (e.Key == Key.Enter && sc.SelectedIndex >= 0)
             {
-                ApplySuggestion(vm1, vm1.SlashSuggestions[vm1.SelectedSuggestionIndex]);
+                ApplySuggestion(vm1, sc.Suggestions[sc.SelectedIndex]);
                 e.Handled = true;
                 return;
             }
@@ -932,7 +939,7 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void SuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void SlashSuggestionList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is FrameworkElement el &&
             el.DataContext is SlashCommandDto cmd &&
@@ -945,7 +952,7 @@ public partial class MainWindow : Window
 
     private void ApplySuggestion(MainViewModel vm, SlashCommandDto cmd)
     {
-        vm.SelectSuggestion(cmd);
+        vm.MessageText = $"/{cmd.Name} ";
         SetInputCursorOffset(GetInputText().Length);
         MessageInput.Focus();
     }

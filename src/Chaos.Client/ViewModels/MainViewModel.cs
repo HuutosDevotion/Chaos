@@ -134,6 +134,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public EmojiService EmojiService { get; } = new();
     public EmojiPickerViewModel EmojiPicker { get; } = new();
     public EmojiAutocompleteViewModel EmojiAutocomplete { get; } = new();
+    public SlashAutocompleteViewModel SlashAutocomplete { get; } = new();
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
     private readonly DispatcherTimer _remoteSpeakingTimer;
@@ -163,9 +164,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private byte[]? _pendingImageData;
     private string _pendingImageFilename = string.Empty;
     private BitmapSource? _pendingImagePreview;
-    private List<SlashCommandDto> _allCommands = new();
-    private int _selectedSuggestionIndex = -1;
-    private bool _showSlashSuggestions;
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
@@ -175,7 +173,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
-    public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
 
     public string ServerAddress
@@ -205,7 +202,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             _messageText = value;
             OnPropertyChanged();
-            UpdateSlashSuggestions(value);
+            SlashAutocomplete.Update(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -216,18 +213,6 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 }
             }
         }
-    }
-
-    public bool ShowSlashSuggestions
-    {
-        get => _showSlashSuggestions;
-        set { _showSlashSuggestions = value; OnPropertyChanged(); }
-    }
-
-    public int SelectedSuggestionIndex
-    {
-        get => _selectedSuggestionIndex;
-        set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
     }
 
 
@@ -351,41 +336,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
 
-    private void UpdateSlashSuggestions(string text)
-    {
-        SlashSuggestions.Clear();
-        SelectedSuggestionIndex = -1;
-
-        foreach (var cmd in SlashCommandFilter.Filter(_allCommands, text))
-            SlashSuggestions.Add(cmd);
-
-        ShowSlashSuggestions = SlashSuggestions.Count > 0;
-    }
-
-    public void SelectSuggestion(SlashCommandDto cmd)
-    {
-        MessageText = $"/{cmd.Name} ";
-        SelectedSuggestionIndex = -1;
-    }
-
-    public void DismissSuggestions()
-    {
-        ShowSlashSuggestions = false;
-        SelectedSuggestionIndex = -1;
-    }
-
-    public void NavigateSuggestions(int direction)
-    {
-        if (SlashSuggestions.Count == 0) return;
-        int next = SelectedSuggestionIndex + direction;
-        if (next < 0) next = SlashSuggestions.Count - 1;
-        else if (next >= SlashSuggestions.Count) next = 0;
-        SelectedSuggestionIndex = next;
-    }
-
     // Emoji suggestion support
     public void UpdateEmojiSuggestions(string text, int cursorPos)
-        => EmojiAutocomplete.Update(text, cursorPos, EmojiService, ShowSlashSuggestions, SafeDispatch);
+        => EmojiAutocomplete.Update(text, cursorPos, EmojiService, SlashAutocomplete.IsOpen, SafeDispatch);
 
     public void DismissEmojiSuggestions() => EmojiAutocomplete.Dismiss();
 
@@ -640,7 +593,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var channels = await _chatService.GetChannels();
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
-            _allCommands = await _chatService.GetAvailableCommandsAsync();
+            SlashAutocomplete.SetCommands(await _chatService.GetAvailableCommandsAsync());
             await EmojiService.SyncWithServerAsync(_chatService);
 
             SafeDispatch(() =>
