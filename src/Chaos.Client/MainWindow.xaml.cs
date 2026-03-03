@@ -363,9 +363,10 @@ public partial class MainWindow : Window
                 var container = new InlineUIContainer(img) { BaselineAlignment = BaselineAlignment.TextBottom };
 
                 // Insert new inlines
+                Run? afterRun = null;
                 if (!string.IsNullOrEmpty(after))
                 {
-                    var afterRun = new Run(after) { Foreground = run.Foreground };
+                    afterRun = new Run(after) { Foreground = run.Foreground };
                     parent.Inlines.InsertAfter(run, afterRun);
                 }
                 parent.Inlines.InsertAfter(run, container);
@@ -379,8 +380,8 @@ public partial class MainWindow : Window
                     parent.Inlines.Remove(run);
                 }
 
-                // Move cursor to after the emoji
-                MessageInput.CaretPosition = container.ElementEnd;
+                // Move cursor past the emoji and any trailing text (e.g. space)
+                MessageInput.CaretPosition = afterRun?.ContentEnd ?? container.ElementEnd;
             }
             finally
             {
