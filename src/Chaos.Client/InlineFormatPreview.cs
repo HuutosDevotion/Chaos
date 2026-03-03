@@ -26,20 +26,62 @@ internal sealed class InlineFormatPreview
 
     public void Apply(RichTextBox rtb)
     {
-        // Save caret as a character offset within its paragraph.
-        // GetOffsetToPosition counts structural symbols which change when Runs split,
-        // so we count actual text characters instead.
+        // Save caret BEFORE any merging that might move it.
         var caretPara = rtb.CaretPosition.Paragraph;
         int caretCharOffset = caretPara != null
-            ? new TextRange(caretPara.ContentStart, rtb.CaretPosition).Text.Length
+            ? GetCharOffsetInParagraph(caretPara, rtb.CaretPosition)
             : -1;
+        bool needCaretRestore = false;
 
         foreach (var para in rtb.Document.Blocks.OfType<Paragraph>().ToList())
-            ApplyToParagraph(para);
+        {
+            // Merge stale split Runs from previous passes.
+            MergeAdjacentRuns(para);
 
-        // Restore caret to the same character offset.
-        if (caretPara != null && caretCharOffset >= 0)
+            bool didSplit = ApplyToParagraph(para);
+
+            if (didSplit && para == caretPara)
+                needCaretRestore = true;
+        }
+
+        if (needCaretRestore && caretPara != null && caretCharOffset >= 0)
             rtb.CaretPosition = GetPositionAtCharOffset(caretPara, caretCharOffset);
+    }
+
+    private static bool IsFenceDelimiter(string text)
+    {
+        if (!text.StartsWith("```")) return false;
+        string rest = text[3..];
+        return rest.Length == 0 || rest.All(char.IsLetterOrDigit);
+    }
+
+    /// <summary>
+    /// Merges consecutive Runs back into a single Run per segment.
+    /// Cleans up stale splits from previous formatting passes so we start fresh.
+    /// </summary>
+    private static void MergeAdjacentRuns(Paragraph para)
+    {
+        var inlines = para.Inlines.ToList();
+        Run? current = null;
+        foreach (var inline in inlines)
+        {
+            if (inline is Run run)
+            {
+                if (current != null)
+                {
+                    current.Text += run.Text;
+                    para.Inlines.Remove(run);
+                }
+                else
+                {
+                    current = run;
+                }
+            }
+            else
+            {
+                current = null;
+            }
+        }
     }
 
     // ── Types ───────────────────────────────────────────────────────────────
@@ -60,7 +102,8 @@ internal sealed class InlineFormatPreview
 
     // ── Core ────────────────────────────────────────────────────────────────
 
-    private void ApplyToParagraph(Paragraph para)
+    /// <summary>Returns true if Runs were split (caret may need restoring).</summary>
+    private bool ApplyToParagraph(Paragraph para)
     {
         // Reset all Run formatting to defaults.
         foreach (var run in para.Inlines.OfType<Run>())
@@ -74,9 +117,53 @@ internal sealed class InlineFormatPreview
 
         var segments = BuildTextSegments(para);
 
+        // ── Fenced code blocks across segments (LineBreak-separated lines) ──
+        // Detect ``` fence delimiters at the segment level, since Shift+Enter
+        // creates LineBreak inlines within a single paragraph.
+        var fenceSegIndices = new List<int>();
+        for (int si = 0; si < segments.Count; si++)
+        {
+            if (IsFenceDelimiter(segments[si].Text.Trim()))
+                fenceSegIndices.Add(si);
+        }
+
+        var fencedContent = new HashSet<int>();
+        var fenceDelimSegs = new HashSet<int>();
+        for (int f = 0; f + 1 < fenceSegIndices.Count; f += 2)
+        {
+            int open = fenceSegIndices[f];
+            int close = fenceSegIndices[f + 1];
+            fenceDelimSegs.Add(open);
+            fenceDelimSegs.Add(close);
+            for (int j = open + 1; j < close; j++)
+                fencedContent.Add(j);
+        }
+        if (fenceSegIndices.Count % 2 == 1)
+            fenceDelimSegs.Add(fenceSegIndices[^1]);
+
+        // ── Apply styles per segment ────────────────────────────────────────
+        bool didSplit = false;
+
         for (int si = 0; si < segments.Count; si++)
         {
             var seg = segments[si];
+
+            if (fenceDelimSegs.Contains(si))
+            {
+                // Mute the ``` delimiter line.
+                foreach (var ri in seg.Runs)
+                    ri.Run.Foreground = _mutedBrush;
+                continue;
+            }
+
+            if (fencedContent.Contains(si))
+            {
+                // Code font for fenced content, no inline formatting.
+                foreach (var ri in seg.Runs)
+                    ri.Run.FontFamily = ConsolasFont;
+                continue;
+            }
+
             if (string.IsNullOrEmpty(seg.Text)) continue;
 
             var spans = Parse(seg.Text);
@@ -93,9 +180,9 @@ internal sealed class InlineFormatPreview
                 boundaries.Add(s.ClosePos + s.CloseLen);
             }
 
-            // Split Runs at boundaries so each Run falls entirely
-            // within one style region.
-            SplitRunsAtBoundaries(para, seg, boundaries);
+            // Split the single merged Run at boundaries so each piece falls
+            // entirely within one style region.
+            didSplit |= SplitRunAtBoundaries(para, seg, boundaries);
 
             // Rebuild segment with the now-split Runs.
             var freshSegments = BuildTextSegments(para);
@@ -135,7 +222,6 @@ internal sealed class InlineFormatPreview
                 if (muted)
                 {
                     ri.Run.Foreground = _mutedBrush;
-                    // Delimiters only get dimmed — no content styles.
                     continue;
                 }
 
@@ -152,14 +238,18 @@ internal sealed class InlineFormatPreview
                 }
             }
         }
+        return didSplit;
     }
 
     /// <summary>
-    /// Splits Runs in the paragraph at the given text-offset boundaries (relative to the segment).
-    /// Builds all pieces first, then replaces the original Run in one swap to avoid caret movement.
+    /// Splits the (already-merged) Run at the given boundaries.
+    /// Keeps the original Run as the first piece and inserts new Runs after it
+    /// so the caret stays in the original Run when possible.
+    /// Returns true if any Runs were actually split.
     /// </summary>
-    private static void SplitRunsAtBoundaries(Paragraph para, TextSegment seg, SortedSet<int> boundaries)
+    private static bool SplitRunAtBoundaries(Paragraph para, TextSegment seg, SortedSet<int> boundaries)
     {
+        bool anySplit = false;
         foreach (var ri in seg.Runs.ToList())
         {
             var run = ri.Run;
@@ -173,22 +263,18 @@ internal sealed class InlineFormatPreview
                 .ToList();
 
             if (splitPoints.Count == 0) continue;
+            anySplit = true;
 
-            // Build all pieces without mutating the original Run.
-            var pieces = new List<string>();
-            int prev = 0;
-            foreach (int sp in splitPoints)
-            {
-                pieces.Add(run.Text[prev..sp]);
-                prev = sp;
-            }
-            pieces.Add(run.Text[prev..]);
+            // Keep the original Run as the first piece.
+            // Insert remaining pieces after it.
+            string originalText = run.Text;
+            run.Text = originalText[..splitPoints[0]];
 
-            // Insert pieces after the original, then remove the original.
             var anchor = run;
-            foreach (string piece in pieces)
+            int prev = splitPoints[0];
+            for (int i = 1; i < splitPoints.Count; i++)
             {
-                var newRun = new Run(piece)
+                var newRun = new Run(originalText[prev..splitPoints[i]])
                 {
                     Foreground = run.Foreground,
                     FontWeight = run.FontWeight,
@@ -197,9 +283,23 @@ internal sealed class InlineFormatPreview
                 };
                 para.Inlines.InsertAfter(anchor, newRun);
                 anchor = newRun;
+                prev = splitPoints[i];
             }
-            para.Inlines.Remove(run);
+
+            // Final piece
+            if (prev < originalText.Length)
+            {
+                var lastRun = new Run(originalText[prev..])
+                {
+                    Foreground = run.Foreground,
+                    FontWeight = run.FontWeight,
+                    FontStyle = run.FontStyle,
+                    FontFamily = run.FontFamily,
+                };
+                para.Inlines.InsertAfter(anchor, lastRun);
+            }
         }
+        return anySplit;
     }
 
     // ── Stack-based parser ──────────────────────────────────────────────────
@@ -298,6 +398,7 @@ internal sealed class InlineFormatPreview
 
     private static void FindCodeSpans(string text, List<FmtSpan> spans, bool[] codeMask)
     {
+        // Triple backtick inline spans
         for (int i = 0; i <= text.Length - 3;)
         {
             if (text[i] == '`' && text[i + 1] == '`' && text[i + 2] == '`')
@@ -309,11 +410,18 @@ internal sealed class InlineFormatPreview
                     MarkRange(codeMask, i, close + 3 - i);
                     i = close + 3;
                 }
-                else i++;
+                else
+                {
+                    // No closing ``` — mask these backticks so the single-backtick
+                    // pass doesn't pair them individually.
+                    MarkRange(codeMask, i, 3);
+                    i += 3;
+                }
             }
             else i++;
         }
 
+        // Single backtick inline spans
         for (int i = 0; i < text.Length;)
         {
             if (text[i] == '`' && !codeMask[i])
@@ -376,9 +484,36 @@ internal sealed class InlineFormatPreview
     }
 
     /// <summary>
+    /// Counts text characters from the paragraph start to the given position.
+    /// Walks inlines manually so the count is stable across Run splits
+    /// (counts content chars, not structural symbols).
+    /// </summary>
+    private static int GetCharOffsetInParagraph(Paragraph para, TextPointer position)
+    {
+        int offset = 0;
+        foreach (var inline in para.Inlines)
+        {
+            if (inline is Run run)
+            {
+                if (position.CompareTo(run.ContentStart) < 0)
+                    return offset;
+                if (position.CompareTo(run.ContentEnd) <= 0)
+                    return offset + run.ContentStart.GetOffsetToPosition(position);
+                offset += run.Text.Length;
+            }
+            else if (inline is InlineUIContainer)
+            {
+                if (position.CompareTo(inline.ElementEnd) <= 0)
+                    return offset;
+                offset++;
+            }
+        }
+        return offset;
+    }
+
+    /// <summary>
     /// Walks the paragraph's inlines counting text characters (and 1 per InlineUIContainer)
-    /// to find the TextPointer at the given character offset.  This is stable across Run splits
-    /// because it counts content chars, not structural symbols.
+    /// to find the TextPointer at the given character offset.
     /// </summary>
     private static TextPointer GetPositionAtCharOffset(Paragraph para, int charOffset)
     {
