@@ -25,6 +25,15 @@ public partial class EmojiUploaderView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Unloaded += (_, _) => StopAnimation();
+
+        // Clip content to rounded corners — WPF's ClipToBounds doesn't respect CornerRadius
+        ContentGrid.SizeChanged += (_, e) =>
+        {
+            var geo = new RectangleGeometry(
+                new Rect(0, 0, e.NewSize.Width, e.NewSize.Height), 11, 11);
+            geo.Freeze();
+            ContentGrid.Clip = geo;
+        };
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
