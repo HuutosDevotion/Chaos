@@ -1,3 +1,4 @@
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -46,6 +47,43 @@ internal sealed class InlineFormatPreview
 
         if (needCaretRestore && caretPara != null && caretCharOffset >= 0)
             rtb.CaretPosition = GetPositionAtCharOffset(caretPara, caretCharOffset);
+    }
+
+    /// <summary>
+    /// Returns true if the given caret position is inside an unclosed ``` fenced
+    /// code block, by counting fence delimiter lines (segments separated by LineBreak)
+    /// before the caret. Odd count = inside a code block.
+    /// </summary>
+    public static bool IsCaretInFencedBlock(RichTextBox rtb)
+    {
+        var para = rtb.CaretPosition.Paragraph;
+        if (para is null) return false;
+
+        var caret = rtb.CaretPosition;
+        int fenceCount = 0;
+        var lineText = new StringBuilder();
+
+        foreach (var inline in para.Inlines)
+        {
+            if (inline.ElementStart.CompareTo(caret) >= 0)
+                break;
+
+            if (inline is LineBreak)
+            {
+                if (IsFenceDelimiter(lineText.ToString().Trim()))
+                    fenceCount++;
+                lineText.Clear();
+            }
+            else if (inline is Run run)
+            {
+                lineText.Append(run.Text);
+            }
+        }
+
+        if (IsFenceDelimiter(lineText.ToString().Trim()))
+            fenceCount++;
+
+        return fenceCount % 2 == 1;
     }
 
     private static bool IsFenceDelimiter(string text)
