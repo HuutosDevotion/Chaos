@@ -1376,6 +1376,44 @@ public partial class MainWindow : Window
         if (lineEnd < 0) lineEnd = text.Length;
         string line = text[lineStart..lineEnd];
 
+        // ── Quote block ──────────────────────────────────────────
+        if (line.StartsWith("> "))
+        {
+            bool empty = line.Length == 2;
+            if (empty)
+            {
+                SetInputText(text.Remove(lineStart, 2));
+                SetInputCursorOffset(lineStart);
+            }
+            else
+            {
+                string insert = "\n> ";
+                SetInputText(text.Insert(pos, insert));
+                SetInputCursorOffset(pos + insert.Length);
+            }
+            // SetInputText suppresses TextChanged, so Apply didn't run.
+            // Trigger it manually so the "> " prefix is hidden immediately.
+            if (_formatPreview is not null)
+            {
+                _applyingFormatPreview = true;
+                _suppressTextSync = true;
+                try { _formatPreview.Apply(MessageInput); }
+                finally { _suppressTextSync = false; _applyingFormatPreview = false; }
+            }
+            if (empty)
+            {
+                // Apply's caret restore moves the cursor back to Paragraph 1
+                // because SetInputCursorOffset lands on the Paragraph boundary
+                // (which WPF associates with the previous paragraph). Reposition
+                // the caret directly inside the now-empty paragraph.
+                int paraIndex = text[..lineStart].Count(c => c == '\n');
+                var targetPara = MessageInput.Document.Blocks.OfType<Paragraph>().ElementAtOrDefault(paraIndex);
+                if (targetPara is not null)
+                    MessageInput.CaretPosition = targetPara.ContentStart;
+            }
+            return true;
+        }
+
         // ── Bullet list ──────────────────────────────────────────
         if (line.StartsWith("- "))
         {

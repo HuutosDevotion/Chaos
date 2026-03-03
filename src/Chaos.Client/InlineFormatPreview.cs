@@ -27,7 +27,41 @@ internal sealed class InlineFormatPreview
 
     public void Apply(RichTextBox rtb)
     {
-        // Save caret BEFORE any merging that might move it.
+        // Anchor the caret to the Run it sits in before any structural
+        // changes.  The Run object survives paragraph splits (moved, not
+        // cloned) so we can restore the caret relative to it afterwards.
+        Run? anchorRun = null;
+        int anchorOffset = 0;
+        var cPos = rtb.CaretPosition;
+        foreach (var para in rtb.Document.Blocks.OfType<Paragraph>())
+        {
+            if (anchorRun != null) break;
+            foreach (var inline in para.Inlines)
+            {
+                if (inline is Run run
+                    && cPos.CompareTo(run.ContentStart) >= 0
+                    && cPos.CompareTo(run.ContentEnd) <= 0)
+                {
+                    anchorRun = run;
+                    anchorOffset = run.ContentStart.GetOffsetToPosition(cPos);
+                    break;
+                }
+            }
+        }
+
+        // Split paragraphs that mix quoted and non-quoted lines so each
+        // group gets its own paragraph-level border.
+        SplitMixedQuoteParagraphs(rtb.Document);
+
+        // Restore caret into the (possibly moved) anchor Run.
+        if (anchorRun?.Parent is Paragraph)
+        {
+            var restored = anchorRun.ContentStart.GetPositionAtOffset(anchorOffset, LogicalDirection.Forward);
+            if (restored != null)
+                rtb.CaretPosition = restored;
+        }
+
+        // Save caret for the formatting pass (structure is now stable).
         var caretPara = rtb.CaretPosition.Paragraph;
         int caretCharOffset = caretPara != null
             ? GetCharOffsetInParagraph(caretPara, rtb.CaretPosition)
@@ -47,6 +81,93 @@ internal sealed class InlineFormatPreview
 
         if (needCaretRestore && caretPara != null && caretCharOffset >= 0)
             rtb.CaretPosition = GetPositionAtCharOffset(caretPara, caretCharOffset);
+    }
+
+    /// <summary>
+    /// When a single Paragraph contains both quoted ("> …") and non-quoted lines
+    /// joined by LineBreak, splits it into separate Paragraphs at each transition
+    /// so each group can receive its own paragraph-level border independently.
+    /// </summary>
+    private static void SplitMixedQuoteParagraphs(FlowDocument doc)
+    {
+        foreach (var para in doc.Blocks.OfType<Paragraph>().ToList())
+        {
+            // Build lines (groups of inlines between LineBreaks).
+            var lines = new List<List<Inline>> { new() };
+            var lineBreaks = new List<LineBreak>();
+            foreach (var inline in para.Inlines.ToList())
+            {
+                if (inline is LineBreak lb)
+                {
+                    lineBreaks.Add(lb);
+                    lines.Add(new());
+                }
+                else
+                    lines[^1].Add(inline);
+            }
+            if (lines.Count <= 1) continue;
+
+            // Mark fenced code regions so they're never treated as quotes.
+            var fenced = new bool[lines.Count];
+            var fenceIndices = new List<int>();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string text = string.Concat(lines[i].OfType<Run>().Select(r => r.Text)).Trim();
+                if (IsFenceDelimiter(text))
+                    fenceIndices.Add(i);
+            }
+            for (int f = 0; f + 1 < fenceIndices.Count; f += 2)
+                for (int j = fenceIndices[f]; j <= fenceIndices[f + 1]; j++)
+                    fenced[j] = true;
+            if (fenceIndices.Count % 2 == 1)
+                fenced[fenceIndices[^1]] = true;
+
+            // Classify each line as quoted or not.
+            bool[] quoted = new bool[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (fenced[i]) continue;
+                string text = string.Concat(lines[i].OfType<Run>().Select(r => r.Text));
+                quoted[i] = text.StartsWith("> ");
+            }
+
+            // Find transitions.
+            var splits = new List<int>();
+            for (int i = 1; i < quoted.Length; i++)
+                if (quoted[i] != quoted[i - 1])
+                    splits.Add(i);
+            if (splits.Count == 0) continue;
+
+            // Split in reverse order so earlier indices stay stable.
+            for (int s = splits.Count - 1; s >= 0; s--)
+            {
+                int splitAt = splits[s];
+
+                var newPara = new Paragraph { Margin = para.Margin };
+                for (int li = splitAt; li < lines.Count; li++)
+                {
+                    if (li > splitAt)
+                    {
+                        var innerLB = lineBreaks[li - 1];
+                        para.Inlines.Remove(innerLB);
+                        newPara.Inlines.Add(innerLB);
+                    }
+                    foreach (var inline in lines[li])
+                    {
+                        para.Inlines.Remove(inline);
+                        newPara.Inlines.Add(inline);
+                    }
+                }
+                // Remove the transition LineBreak (replaced by paragraph break).
+                para.Inlines.Remove(lineBreaks[splitAt - 1]);
+                doc.Blocks.InsertAfter(para, newPara);
+
+                // Shrink data structures for remaining iterations.
+                lines = lines.GetRange(0, splitAt);
+                lineBreaks = lineBreaks.GetRange(0, splitAt - 1);
+                quoted = quoted[..splitAt];
+            }
+        }
     }
 
     /// <summary>
@@ -143,7 +264,7 @@ internal sealed class InlineFormatPreview
     /// <summary>Returns true if Runs were split (caret may need restoring).</summary>
     private bool ApplyToParagraph(Paragraph para)
     {
-        // Reset all Run formatting to defaults.
+        // Reset all Run formatting and paragraph-level quote styling to defaults.
         foreach (var run in para.Inlines.OfType<Run>())
         {
             run.FontWeight = FontWeights.Normal;
@@ -152,6 +273,8 @@ internal sealed class InlineFormatPreview
             run.Foreground = _defaultForeground;
             run.FontFamily = para.FontFamily;
         }
+        para.BorderThickness = new Thickness(0);
+        para.Padding = new Thickness(0);
 
         var segments = BuildTextSegments(para);
 
@@ -179,6 +302,18 @@ internal sealed class InlineFormatPreview
         if (fenceSegIndices.Count % 2 == 1)
             fenceDelimSegs.Add(fenceSegIndices[^1]);
 
+        // ── Blockquote segments (lines starting with "> ") ─────────────────
+        // After SplitMixedQuoteParagraphs, each paragraph is homogeneous
+        // (all-quoted or all-unquoted), so the paragraph border is safe.
+        var quoteSegs = new HashSet<int>();
+        for (int si = 0; si < segments.Count; si++)
+        {
+            if (fenceDelimSegs.Contains(si) || fencedContent.Contains(si)) continue;
+            if (string.IsNullOrEmpty(segments[si].Text)) continue;
+            if (segments[si].Text.StartsWith("> "))
+                quoteSegs.Add(si);
+        }
+
         // ── Apply styles per segment ────────────────────────────────────────
         bool didSplit = false;
 
@@ -204,8 +339,9 @@ internal sealed class InlineFormatPreview
 
             if (string.IsNullOrEmpty(seg.Text)) continue;
 
+            bool isQuote = quoteSegs.Contains(si);
+
             var spans = Parse(seg.Text);
-            if (spans.Count == 0) continue;
 
             // Collect all boundary positions where styles change.
             var boundaries = new SortedSet<int>();
@@ -217,6 +353,12 @@ internal sealed class InlineFormatPreview
                 boundaries.Add(s.ClosePos);
                 boundaries.Add(s.ClosePos + s.CloseLen);
             }
+
+            // For quote segments, always split out the "> " prefix.
+            if (isQuote)
+                boundaries.Add(2);
+
+            if (boundaries.Count == 0) continue;
 
             // Split the single merged Run at boundaries so each piece falls
             // entirely within one style region.
@@ -233,6 +375,13 @@ internal sealed class InlineFormatPreview
                 int runStart = ri.SegmentOffset;
                 int runEnd = runStart + ri.Run.Text.Length;
                 if (runEnd <= runStart) continue;
+
+                // Hide the "> " quote prefix.
+                if (isQuote && runStart == 0 && runEnd <= 2)
+                {
+                    ri.Run.Foreground = Brushes.Transparent;
+                    continue;
+                }
 
                 bool muted = false;
                 bool bold = false, italic = false, strike = false, underline = false, code = false;
@@ -276,6 +425,15 @@ internal sealed class InlineFormatPreview
                 }
             }
         }
+
+        // ── Paragraph-level quote bar ────────────────────────────────────────
+        if (quoteSegs.Count > 0)
+        {
+            para.BorderBrush = _mutedBrush;
+            para.BorderThickness = new Thickness(3, 0, 0, 0);
+            para.Padding = new Thickness(4, 0, 0, 0);
+        }
+
         return didSplit;
     }
 

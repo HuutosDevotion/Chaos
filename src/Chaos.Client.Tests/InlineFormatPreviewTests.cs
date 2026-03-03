@@ -315,4 +315,102 @@ public class InlineFormatPreviewTests
 
         Assert.False(InlineFormatPreview.IsCaretInFencedBlock(rtb));
     });
+
+    // ── Blockquote ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Quote_PrefixIsTransparent() => AssertOnSta(() =>
+    {
+        var (rtb, para) = CreateRtb("> quoted text");
+        CreatePreview().Apply(rtb);
+        var runs = GetRuns(para);
+        var prefixRun = runs.First(r => r.Text == "> ");
+        Assert.Equal(Brushes.Transparent, prefixRun.Foreground);
+    });
+
+    [Fact]
+    public void Quote_ParagraphHasLeftBorder() => AssertOnSta(() =>
+    {
+        var (rtb, para) = CreateRtb("> text");
+        CreatePreview().Apply(rtb);
+        Assert.Equal(3, para.BorderThickness.Left);
+    });
+
+    [Fact]
+    public void Quote_PlainTextNoBorder() => AssertOnSta(() =>
+    {
+        var (rtb, para) = CreateRtb("hello");
+        CreatePreview().Apply(rtb);
+        Assert.Equal(0, para.BorderThickness.Left);
+    });
+
+    [Fact]
+    public void Quote_ContentBoldFormatted() => AssertOnSta(() =>
+    {
+        var (rtb, para) = CreateRtb("> **bold**");
+        CreatePreview().Apply(rtb);
+        var runs = GetRuns(para);
+        var boldRun = runs.First(r => r.Text == "bold");
+        Assert.Equal(FontWeights.Bold, boldRun.FontWeight);
+    });
+
+    [Fact]
+    public void Quote_ContentItalicFormatted() => AssertOnSta(() =>
+    {
+        var (rtb, para) = CreateRtb("> *italic*");
+        CreatePreview().Apply(rtb);
+        var runs = GetRuns(para);
+        var italicRun = runs.First(r => r.Text == "italic");
+        Assert.Equal(FontStyles.Italic, italicRun.FontStyle);
+    });
+
+    [Fact]
+    public void Quote_MultiLineAllQuoted() => AssertOnSta(() =>
+    {
+        var rtb = new RichTextBox();
+        var para = new Paragraph();
+        para.Inlines.Add(new Run("> line1"));
+        para.Inlines.Add(new LineBreak());
+        para.Inlines.Add(new Run("> line2"));
+        rtb.Document.Blocks.Clear();
+        rtb.Document.Blocks.Add(para);
+        rtb.CaretPosition = para.ContentEnd;
+
+        CreatePreview().Apply(rtb);
+
+        var runs = GetRuns(para);
+        var prefixRuns = runs.Where(r => r.Text == "> ").ToArray();
+        Assert.Equal(2, prefixRuns.Length);
+        Assert.All(prefixRuns, r => Assert.Equal(Brushes.Transparent, r.Foreground));
+        Assert.Equal(3, para.BorderThickness.Left);
+    });
+
+    // ── Mixed paragraph (unquoted + quoted) ─────────────────────────────────
+
+    [Fact]
+    public void Quote_MixedParagraph_SplitsIntoParagraphs() => AssertOnSta(() =>
+    {
+        var rtb = new RichTextBox();
+        var para = new Paragraph();
+        para.Inlines.Add(new Run("plain text"));
+        para.Inlines.Add(new LineBreak());
+        para.Inlines.Add(new Run("> quoted"));
+        rtb.Document.Blocks.Clear();
+        rtb.Document.Blocks.Add(para);
+        rtb.CaretPosition = para.ContentEnd;
+
+        CreatePreview().Apply(rtb);
+
+        var blocks = rtb.Document.Blocks.ToList();
+        Assert.Equal(2, blocks.Count);
+        // First paragraph: unquoted, no border
+        var p1 = (Paragraph)blocks[0];
+        Assert.Equal(0, p1.BorderThickness.Left);
+        Assert.Equal("plain text", string.Concat(GetRuns(p1).Select(r => r.Text)));
+        // Second paragraph: quoted, has border and transparent prefix
+        var p2 = (Paragraph)blocks[1];
+        Assert.Equal(3, p2.BorderThickness.Left);
+        var prefixRun = GetRuns(p2).First(r => r.Text == "> ");
+        Assert.Equal(Brushes.Transparent, prefixRun.Foreground);
+    });
 }
