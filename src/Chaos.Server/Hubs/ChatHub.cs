@@ -203,15 +203,20 @@ public class ChatHub : Hub
         if (string.IsNullOrEmpty(name))
             throw new HubException("Emoji name cannot be empty.");
 
-        var exists = await _db.Emojis.AnyAsync(e => e.Name == name);
-        if (exists)
-            throw new HubException($"An emoji named '{name}' already exists.");
-
-        var emoji = new Emoji { Name = name, Category = "Custom", FileName = fileName };
-        _db.Emojis.Add(emoji);
+        var existing = await _db.Emojis.FirstOrDefaultAsync(e => e.Name == name);
+        if (existing is not null)
+        {
+            existing.FileName = fileName;
+            existing.Category = "Custom";
+        }
+        else
+        {
+            existing = new Emoji { Name = name, Category = "Custom", FileName = fileName };
+            _db.Emojis.Add(existing);
+        }
         await _db.SaveChangesAsync();
 
-        var dto = new EmojiDto { Id = emoji.Id, Name = emoji.Name, Category = emoji.Category, FileName = emoji.FileName };
+        var dto = new EmojiDto { Id = existing.Id, Name = existing.Name, Category = existing.Category, FileName = existing.FileName };
         await Clients.All.SendAsync("EmojiAdded", dto);
         return dto;
     }

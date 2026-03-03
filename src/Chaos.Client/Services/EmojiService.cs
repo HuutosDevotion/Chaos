@@ -312,12 +312,21 @@ public class EmojiService
 
     public async Task AddEmojiAsync(EmojiDto emoji)
     {
-        if (_byName.ContainsKey(emoji.Name)) return;
+        if (_byName.TryGetValue(emoji.Name, out var existing))
+        {
+            // Overwrite: clear old image cache, update entry in place
+            _imageCache.TryRemove(existing.FileName, out _);
+            _loadingTasks.TryRemove(existing.FileName, out _);
+            existing.FileName = emoji.FileName;
+            existing.Category = emoji.Category;
+        }
+        else
+        {
+            _allEmojis.Add(emoji);
+            _byName[emoji.Name] = emoji;
+        }
 
-        _allEmojis.Add(emoji);
-        _byName[emoji.Name] = emoji;
-
-        await GetOrStartLoadAsync(emoji);
+        await GetOrStartLoadAsync(_byName[emoji.Name]);
         ImagesReady?.Invoke();
     }
 
