@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Chaos.Server.Commands;
 using Chaos.Server.Data;
 using Chaos.Server.Hubs;
+using Chaos.Server.Models;
 using Chaos.Server.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,6 +49,7 @@ builder.Services.AddCors(options =>
 
 // wwwroot must exist before Build() so UseStaticFiles() gets a PhysicalFileProvider, not NullFileProvider
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads"));
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "emojis", "custom"));
 
 var app = builder.Build();
 
@@ -56,6 +58,10 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ChaosDbContext>();
     db.Database.EnsureCreated();
+    // Add columns for existing databases (safe to re-run; EnsureCreated won't alter existing tables)
+    try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Messages ADD COLUMN ImageWidth INTEGER"); } catch { }
+    try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Messages ADD COLUMN ImageHeight INTEGER"); } catch { }
+    await EmojiSeeder.SeedAsync(db, builder.Environment.ContentRootPath);
 }
 
 app.UseCors();
@@ -82,6 +88,30 @@ app.MapPost("/api/upload", async (HttpContext ctx, IWebHostEnvironment env) =>
     await file.CopyToAsync(stream);
 
     return Results.Ok(new { url = $"/uploads/{name}" });
+}).DisableAntiforgery();
+
+app.MapPost("/api/emoji/upload", async (HttpContext ctx, IWebHostEnvironment env) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+    var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0)
+        return Results.BadRequest("No file provided");
+
+    var ext = Path.GetExtension(file.FileName).ToLower();
+    if (ext is not ".png" and not ".gif")
+        return Results.BadRequest("Only .png and .gif allowed");
+
+    if (file.Length > 256 * 1024)
+        return Results.BadRequest("File exceeds 256KB limit");
+
+    var dir = Path.Combine(env.ContentRootPath, "wwwroot", "emojis", "custom");
+    Directory.CreateDirectory(dir);
+
+    var fileName = $"{Guid.NewGuid()}{ext}";
+    await using var stream = File.Create(Path.Combine(dir, fileName));
+    await file.CopyToAsync(stream);
+
+    return Results.Ok(new { fileName = $"custom/{fileName}" });
 }).DisableAntiforgery();
 
 // Print connection info

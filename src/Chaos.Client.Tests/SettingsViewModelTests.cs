@@ -9,11 +9,9 @@ namespace Chaos.Client.Tests;
 /// </summary>
 public class SettingsModalViewModelTests
 {
-    private static (SettingsModalViewModel modal, List<bool> closes) Make()
+    private static SettingsModalViewModel Make()
     {
-        var closes = new List<bool>();
-        var modal = new SettingsModalViewModel(new AppSettings(), () => closes.Add(true));
-        return (modal, closes);
+        return new SettingsModalViewModel(new AppSettings());
     }
 
     // ── initial state ──────────────────────────────────────────────────────────
@@ -21,14 +19,14 @@ public class SettingsModalViewModelTests
     [Fact]
     public void Constructor_SelectedPage_IsAppearancePage()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.IsType<AppearanceSettingsViewModel>(modal.SelectedPage);
     }
 
     [Fact]
     public void Constructor_AppearancePage_IsMarkedSelected()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var page = modal.Categories[0].Pages[0];
         Assert.True(page.IsSelected);
     }
@@ -36,7 +34,7 @@ public class SettingsModalViewModelTests
     [Fact]
     public void Constructor_VoicePage_IsNotMarkedSelected()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var page = modal.Categories[0].Pages[1];
         Assert.False(page.IsSelected);
     }
@@ -46,42 +44,42 @@ public class SettingsModalViewModelTests
     [Fact]
     public void Categories_HasOneCategory()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.Single(modal.Categories);
     }
 
     [Fact]
     public void Category_HasTwoPages()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.Equal(2, modal.Categories[0].Pages.Count);
     }
 
     [Fact]
     public void FirstPage_IsAppearanceSettingsViewModel()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.IsType<AppearanceSettingsViewModel>(modal.Categories[0].Pages[0]);
     }
 
     [Fact]
     public void SecondPage_IsVoiceSettingsViewModel()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.IsType<VoiceSettingsViewModel>(modal.Categories[0].Pages[1]);
     }
 
     [Fact]
     public void AppearancePage_HasCorrectName()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.Equal("Appearance", modal.Categories[0].Pages[0].Name);
     }
 
     [Fact]
     public void VoicePage_HasCorrectName()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         Assert.Equal("Voice", modal.Categories[0].Pages[1].Name);
     }
 
@@ -90,7 +88,7 @@ public class SettingsModalViewModelTests
     [Fact]
     public void SelectVoicePage_ChangesSelectedPageToVoice()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var voicePage = modal.Categories[0].Pages[1];
 
         voicePage.Select.Execute(null);
@@ -101,7 +99,7 @@ public class SettingsModalViewModelTests
     [Fact]
     public void SelectVoicePage_DeselectedPreviousPage()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var appearancePage = modal.Categories[0].Pages[0];
         var voicePage = modal.Categories[0].Pages[1];
 
@@ -113,7 +111,7 @@ public class SettingsModalViewModelTests
     [Fact]
     public void SelectVoicePage_MarksVoicePageSelected()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var voicePage = modal.Categories[0].Pages[1];
 
         voicePage.Select.Execute(null);
@@ -124,7 +122,7 @@ public class SettingsModalViewModelTests
     [Fact]
     public void SelectPage_RaisesSelectedPagePropertyChanged()
     {
-        var (modal, _) = Make();
+        var modal = Make();
         var raised = new List<string?>();
         modal.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
         var voicePage = modal.Categories[0].Pages[1];
@@ -137,20 +135,21 @@ public class SettingsModalViewModelTests
     // ── close command ──────────────────────────────────────────────────────────
 
     [Fact]
-    public void Close_InvokesCloseCallback()
+    public void CloseCommand_SetsIsOpenFalse()
     {
-        var (modal, closes) = Make();
+        var modal = Make();
+        modal.Open();
 
-        modal.Close.Execute(null);
+        modal.CloseCommand.Execute(null);
 
-        Assert.Single(closes);
+        Assert.False(modal.IsOpen);
     }
 
     [Fact]
-    public void Close_CanAlwaysExecute()
+    public void CloseCommand_CanAlwaysExecute()
     {
-        var (modal, _) = Make();
-        Assert.True(modal.Close.CanExecute(null));
+        var modal = Make();
+        Assert.True(modal.CloseCommand.CanExecute(null));
     }
 }
 

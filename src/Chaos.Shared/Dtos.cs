@@ -21,6 +21,8 @@ public class MessageDto
     public string Content { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
     public string? ImageUrl { get; set; }
+    public int? ImageWidth { get; set; }
+    public int? ImageHeight { get; set; }
     public bool HasImage => !string.IsNullOrEmpty(ImageUrl);
 }
 
@@ -48,4 +50,12 @@ public class SlashCommandDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Usage { get; set; } = string.Empty;
+}
+
+public class EmojiDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
 }

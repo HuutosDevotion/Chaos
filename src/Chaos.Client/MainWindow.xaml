@@ -7,6 +7,7 @@
         xmlns:conv="clr-namespace:Chaos.Client.Converters"
         xmlns:shared="clr-namespace:Chaos.Shared;assembly=Chaos.Shared"
         xmlns:behaviors="clr-namespace:Chaos.Client.Behaviors"
+        xmlns:controls="clr-namespace:Chaos.Client.Controls"
         mc:Ignorable="d"
         Title="Chaos" Height="700" Width="1100"
         Background="{StaticResource BgMediumBrush}"
@@ -52,445 +53,27 @@
         </Style>
 
         <DataTemplate DataType="{x:Type vm:CreateChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Margin="24">
-                    <TextBlock Text="CREATE CHANNEL" FontSize="13" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,20" />
-                    <TextBlock Text="CHANNEL NAME" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,6" />
-                    <TextBox Style="{StaticResource DarkTextBox}"
-                             Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}"
-                             Margin="0,0,0,16" />
-                    <TextBlock Text="CHANNEL TYPE" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,8" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-                        <RadioButton Content="Text"
-                                     IsChecked="{Binding IsVoiceType, Converter={StaticResource InverseBool}}"
-                                     Foreground="{StaticResource TextPrimaryBrush}"
-                                     Margin="0,0,16,0" />
-                        <RadioButton Content="Voice"
-                                     IsChecked="{Binding IsVoiceType}"
-                                     Foreground="{StaticResource TextPrimaryBrush}" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Cancel" Style="{StaticResource DarkButton}"
-                                Command="{Binding Cancel}"
-                                Padding="16,8" Margin="0,0,8,0" />
-                        <Button Content="Create" Style="{StaticResource AccentButton}"
-                                Command="{Binding Confirm}"
-                                IsDefault="True" Padding="16,8" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <controls:CreateChannelModalView />
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type vm:RenameChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Margin="24">
-                    <TextBlock Text="RENAME CHANNEL" FontSize="13" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,20" />
-                    <TextBlock Text="CHANNEL NAME" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,6" />
-                    <TextBox Style="{StaticResource DarkTextBox}"
-                             Text="{Binding ChannelName, UpdateSourceTrigger=PropertyChanged}"
-                             Margin="0,0,0,24" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Cancel" Style="{StaticResource DarkButton}"
-                                Command="{Binding Cancel}"
-                                Padding="16,8" Margin="0,0,8,0" />
-                        <Button Content="Rename" Style="{StaticResource AccentButton}"
-                                Command="{Binding Confirm}"
-                                IsDefault="True" Padding="16,8" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <controls:RenameChannelModalView />
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type vm:DeleteChannelModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="360"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Margin="24">
-                    <TextBlock Text="DELETE CHANNEL" FontSize="13" FontWeight="Bold"
-                               Foreground="{StaticResource AccentRedBrush}"
-                               Margin="0,0,0,12" />
-                    <TextBlock Text="{Binding Message}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="14" TextWrapping="Wrap"
-                               Margin="0,0,0,24" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Cancel" Style="{StaticResource DarkButton}"
-                                Command="{Binding Cancel}"
-                                Padding="16,8" Margin="0,0,8,0" />
-                        <Button Content="Delete" Style="{StaticResource DangerButton}"
-                                Command="{Binding Confirm}"
-                                Padding="16,8" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <controls:DeleteChannelModalView />
         </DataTemplate>
-
-        <!-- ── Insert hyperlink modal ─────────────────────────────────────── -->
 
         <DataTemplate DataType="{x:Type vm:HyperlinkModalViewModel}">
-            <Border Background="{StaticResource BgDarkBrush}" CornerRadius="8" Width="400"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Margin="24">
-                    <TextBlock Text="INSERT LINK" FontSize="13" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,20" />
-
-                    <TextBlock Text="URL" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,6" />
-                    <TextBox Style="{StaticResource DarkTextBox}"
-                             Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}"
-                             Margin="0,0,0,16"
-                             FocusManager.FocusedElement="{Binding RelativeSource={RelativeSource Self}}" />
-
-                    <TextBlock Text="DISPLAY TEXT" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               Margin="0,0,0,6" />
-                    <TextBlock Text="Leave blank to insert the URL as-is"
-                               FontSize="11" Foreground="{StaticResource TextMutedBrush}"
-                               Margin="0,0,0,6" />
-                    <TextBox Style="{StaticResource DarkTextBox}"
-                             Text="{Binding DisplayText, UpdateSourceTrigger=PropertyChanged}"
-                             Margin="0,0,0,24" />
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Cancel" Style="{StaticResource DarkButton}"
-                                Command="{Binding Cancel}"
-                                Padding="16,8" Margin="0,0,8,0" />
-                        <Button Content="Insert" Style="{StaticResource AccentButton}"
-                                Command="{Binding Confirm}"
-                                IsDefault="True" Padding="16,8" />
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <controls:HyperlinkModalView />
         </DataTemplate>
-
-        <!-- ── Settings modal ──────────────────────────────────────────────── -->
 
         <DataTemplate DataType="{x:Type vm:SettingsModalViewModel}">
-            <Border Background="{StaticResource BgMediumBrush}" CornerRadius="8"
-                    MinWidth="600" MinHeight="400">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="200" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Sidebar -->
-                    <Border Grid.Column="0" Background="{StaticResource BgDarkBrush}"
-                            CornerRadius="8,0,0,8">
-                        <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
-                                Padding="16,14,16,12">
-                            <TextBlock Text="Settings" FontSize="15" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                        </Border>
-
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
-                                      Margin="8,8,8,8">
-                            <ItemsControl ItemsSource="{Binding Categories}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <!-- DataContext = SettingsCategoryViewModel -->
-                                        <StackPanel Margin="0,0,0,4">
-                                            <TextBlock Text="{Binding Name}"
-                                                       FontSize="11" FontWeight="Bold"
-                                                       Foreground="{StaticResource TextMutedBrush}"
-                                                       Margin="8,6,8,4" />
-                                            <!-- Pass SettingsModalViewModel down via Tag -->
-                                            <ItemsControl ItemsSource="{Binding Pages}"
-                                                          Tag="{Binding DataContext, RelativeSource={RelativeSource FindAncestor, AncestorType=ItemsControl}}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <!-- DataContext = SettingsPageViewModel -->
-                                                        <!-- Command="{Binding Select}" calls select(this) in the page VM -->
-                                                        <Button Content="{Binding Name}"
-                                                                HorizontalContentAlignment="Left"
-                                                                Padding="8,6" Margin="0,1"
-                                                                Cursor="Hand"
-                                                                Command="{Binding Select}">
-                                                            <Button.Style>
-                                                                <Style TargetType="Button">
-                                                                    <Setter Property="Background" Value="Transparent" />
-                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
-                                                                    <Setter Property="BorderThickness" Value="0" />
-                                                                    <Setter Property="Template">
-                                                                        <Setter.Value>
-                                                                            <ControlTemplate TargetType="Button">
-                                                                                <Border x:Name="Bd" CornerRadius="4"
-                                                                                        Padding="{TemplateBinding Padding}"
-                                                                                        Background="{TemplateBinding Background}">
-                                                                                    <ContentPresenter />
-                                                                                </Border>
-                                                                                <ControlTemplate.Triggers>
-                                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                                        <Setter TargetName="Bd" Property="Background" Value="#404249" />
-                                                                                    </DataTrigger>
-                                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                                        <Setter TargetName="Bd" Property="Background" Value="#35373C" />
-                                                                                    </Trigger>
-                                                                                </ControlTemplate.Triggers>
-                                                                            </ControlTemplate>
-                                                                        </Setter.Value>
-                                                                    </Setter>
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </Button.Style>
-                                                        </Button>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                        </Grid>
-                    </Border>
-
-                    <!-- Content area -->
-                    <Grid Grid.Column="1">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <!-- Sticky header: page name + close button -->
-                        <Border Grid.Row="0" BorderBrush="#222326" BorderThickness="0,0,0,1"
-                                Padding="24,14,12,12">
-                            <Grid>
-                                <TextBlock Text="{Binding SelectedPage.Name}"
-                                           FontSize="18" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center" />
-                                <Button Content="✕" Style="{StaticResource DarkButton}"
-                                        Command="{Binding Close}"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                                        Padding="10,6" FontSize="13" />
-                            </Grid>
-                        </Border>
-
-                        <!-- Scrollable page content -->
-                        <ContentControl Grid.Row="1"
-                                        Content="{Binding SelectedPage}"
-                                        HorizontalContentAlignment="Stretch"
-                                        VerticalContentAlignment="Stretch" />
-                    </Grid>
-                </Grid>
-            </Border>
+            <controls:SettingsModalView />
         </DataTemplate>
 
-        <!-- Shared message item template — used by both the main chat list and the Appearance preview -->
-
-        <DataTemplate DataType="{x:Type vm:AppearanceSettingsViewModel}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="32,24,32,24">
-                    <TextBlock Text="Appearance" FontSize="20" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               Margin="0,0,0,16" />
-
-                    <!-- Live preview -->
-                    <Border Background="{StaticResource BgDarkBrush}"
-                            BorderBrush="#222326" BorderThickness="1"
-                            CornerRadius="6" Margin="0,0,0,24"
-                            ClipToBounds="True" Height="160">
-                        <RichTextBox conv:RichTextBoxHelper.Document="{Binding PreviewDocument}"
-                                     FontSize="{Binding Settings.FontSize}"
-                                     IsReadOnly="True"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     Padding="0"
-                                     IsHitTestVisible="False"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                            <RichTextBox.LayoutTransform>
-                                <ScaleTransform ScaleX="{Binding Settings.UiScale}"
-                                                ScaleY="{Binding Settings.UiScale}" />
-                            </RichTextBox.LayoutTransform>
-                        </RichTextBox>
-                    </Border>
-
-                    <TextBlock Text="FONT SIZE" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <DockPanel Margin="0,0,0,20">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Settings.FontSize, StringFormat='{}{0:0}px'}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="12" Width="42" TextAlignment="Right"
-                                   VerticalAlignment="Center" />
-                        <Slider Minimum="10" Maximum="24"
-                                Value="{Binding Settings.FontSize, Mode=TwoWay}"
-                                SmallChange="1" LargeChange="2"
-                                IsSnapToTickEnabled="True" TickFrequency="1" />
-                    </DockPanel>
-
-                    <TextBlock Text="MESSAGE SPACING" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <DockPanel Margin="0,0,0,20">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Settings.MessageSpacing, StringFormat='{}{0:0}'}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="12" Width="42" TextAlignment="Right"
-                                   VerticalAlignment="Center" />
-                        <Slider Minimum="0" Maximum="16"
-                                Value="{Binding Settings.MessageSpacing, Mode=TwoWay}"
-                                SmallChange="1" LargeChange="2"
-                                IsSnapToTickEnabled="True" TickFrequency="1" />
-                    </DockPanel>
-
-                    <TextBlock Text="UI SCALE" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <DockPanel Margin="0,0,0,24">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Settings.UiScale, StringFormat='{}{0:P0}'}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="12" Width="42" TextAlignment="Right"
-                                   VerticalAlignment="Center" />
-                        <Slider Minimum="0.75" Maximum="1.5"
-                                Value="{Binding Settings.UiScale, Mode=TwoWay}"
-                                SmallChange="0.05" LargeChange="0.1"
-                                IsSnapToTickEnabled="True" TickFrequency="0.05" />
-                    </DockPanel>
-
-                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
-
-                    <DockPanel Margin="0,0,0,16">
-                        <ToggleButton DockPanel.Dock="Right"
-                                      IsChecked="{Binding Settings.GroupMessages, Mode=TwoWay}"
-                                      Style="{StaticResource DarkToggleSwitch}" />
-                        <StackPanel>
-                            <TextBlock Text="Group Messages"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="Consecutive messages from the same user are grouped together"
-                                       Foreground="{StaticResource TextMutedBrush}"
-                                       FontSize="12" TextWrapping="Wrap" Margin="0,2,16,0" />
-                        </StackPanel>
-                    </DockPanel>
-
-                    <DockPanel Margin="0,0,0,4">
-                        <ToggleButton DockPanel.Dock="Right"
-                                      IsChecked="{Binding Settings.ShowFormattingToolbar, Mode=TwoWay}"
-                                      Style="{StaticResource DarkToggleSwitch}" />
-                        <StackPanel>
-                            <TextBlock Text="Show Formatting Toolbar"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       FontSize="14" FontWeight="SemiBold" />
-                            <TextBlock Text="Display the text formatting toolbar above the message input"
-                                       Foreground="{StaticResource TextMutedBrush}"
-                                       FontSize="12" TextWrapping="Wrap" Margin="0,2,16,0" />
-                        </StackPanel>
-                    </DockPanel>
-                </StackPanel>
-            </ScrollViewer>
-        </DataTemplate>
-
-        <DataTemplate DataType="{x:Type vm:VoiceSettingsViewModel}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="32,24,32,24">
-                    <TextBlock Text="Voice" FontSize="20" FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               Margin="0,0,0,24" />
-
-                    <TextBlock Text="MICROPHONE" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <ComboBox ItemsSource="{Binding InputDevices}"
-                              SelectedItem="{Binding Settings.InputDevice, Mode=TwoWay}"
-                              Style="{StaticResource DarkComboBox}"
-                              Margin="0,0,0,8" />
-
-                    <Button Content="{Binding MicTestButtonText}"
-                            Command="{Binding TestMicCommand}"
-                            Style="{StaticResource DarkButton}"
-                            HorizontalAlignment="Left"
-                            Padding="12,6" Margin="0,0,0,8" />
-                    <Grid Margin="0,0,0,16"
-                          Visibility="{Binding IsMicTesting, Converter={StaticResource BoolToVis}}">
-                        <ProgressBar Height="6" Minimum="0" Maximum="1"
-                                     Value="{Binding MicTestLevel, Mode=OneWay}"
-                                     Background="#3A3C42"
-                                     Foreground="{StaticResource AccentGreenBrush}"
-                                     BorderThickness="0" />
-                    </Grid>
-
-                    <TextBlock Text="INPUT VOLUME" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <DockPanel Margin="0,0,0,24">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Settings.InputVolume, Converter={StaticResource VolumeToPercent}}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="12" Width="42" TextAlignment="Right"
-                                   VerticalAlignment="Center" />
-                        <Slider Minimum="0" Maximum="1"
-                                Value="{Binding Settings.InputVolume, Mode=TwoWay}"
-                                SmallChange="0.05" LargeChange="0.1" />
-                    </DockPanel>
-
-                    <TextBlock Text="MIC THRESHOLD" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <Grid Margin="0,0,0,4">
-                            <!-- Always-on voice level bar behind the slider -->
-                            <ProgressBar Height="6" Minimum="0" Maximum="0.20"
-                                         Value="{Binding ThresholdLevel, Mode=OneWay}"
-                                         Background="#3A3C42"
-                                         Foreground="{StaticResource AccentGreenBrush}"
-                                         BorderThickness="0"
-                                         VerticalAlignment="Center"
-                                         IsHitTestVisible="False" />
-                            <!-- Threshold slider overlaid on top -->
-                            <Slider Minimum="0" Maximum="0.20"
-                                    Value="{Binding Settings.MicThreshold, Mode=TwoWay}"
-                                    SmallChange="0.005" LargeChange="0.02"
-                                    Background="Transparent"
-                                    Opacity="0.85" />
-                    </Grid>
-                    <TextBlock Text="Audio is only sent when your mic level exceeds this threshold."
-                               Foreground="{StaticResource TextMutedBrush}"
-                               FontSize="11" TextWrapping="Wrap" Margin="0,0,0,24" />
-
-                    <Border BorderBrush="#222326" BorderThickness="0,1,0,0" Margin="0,0,0,24" />
-
-                    <TextBlock Text="SPEAKER" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <ComboBox ItemsSource="{Binding OutputDevices}"
-                              SelectedItem="{Binding Settings.OutputDevice, Mode=TwoWay}"
-                              Style="{StaticResource DarkComboBox}"
-                              Margin="0,0,0,16" />
-
-                    <TextBlock Text="OUTPUT VOLUME" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8" />
-                    <DockPanel Margin="0,0,0,24">
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding Settings.OutputVolume, Converter={StaticResource VolumeToPercent}}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="12" Width="42" TextAlignment="Right"
-                                   VerticalAlignment="Center" />
-                        <Slider Minimum="0" Maximum="1"
-                                Value="{Binding Settings.OutputVolume, Mode=TwoWay}"
-                                SmallChange="0.05" LargeChange="0.1" />
-                    </DockPanel>
-                </StackPanel>
-            </ScrollViewer>
+        <DataTemplate DataType="{x:Type vm:EmojiUploaderViewModel}">
+            <controls:EmojiUploaderView />
         </DataTemplate>
     </Window.Resources>
 
@@ -1149,68 +732,7 @@
                             </DockPanel>
                         </Border>
 
-                        <!-- Slash Command Autocomplete -->
-                        <Border CornerRadius="8" Margin="0,0,0,4"
-                                Background="{StaticResource BgDarkBrush}"
-                                BorderBrush="#40FFFFFF" BorderThickness="1"
-                                Visibility="{Binding ShowSlashSuggestions, Converter={StaticResource BoolToVis}}">
-                            <ListBox x:Name="SuggestionList"
-                                     ItemsSource="{Binding SlashSuggestions}"
-                                     SelectedIndex="{Binding SelectedSuggestionIndex, Mode=TwoWay}"
-                                     Focusable="False"
-                                     MaxHeight="200"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     PreviewMouseLeftButtonDown="SuggestionList_PreviewMouseLeftButtonDown">
-                                <ListBox.ItemContainerStyle>
-                                    <Style TargetType="ListBoxItem">
-                                        <Setter Property="Focusable" Value="False" />
-                                        <Setter Property="Padding" Value="12,6" />
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Background" Value="Transparent" />
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="ListBoxItem">
-                                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
-                                                            Background="{TemplateBinding Background}"
-                                                            CornerRadius="4">
-                                                        <ContentPresenter />
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
-                                                        </Trigger>
-                                                        <Trigger Property="IsSelected" Value="True">
-                                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
-                                    </Style>
-                                </ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Foreground="{StaticResource AccentBlueBrush}"
-                                                       FontWeight="SemiBold" FontSize="14"
-                                                       VerticalAlignment="Center">
-                                                <Run Text="/" /><Run Text="{Binding Name, Mode=OneWay}" />
-                                            </TextBlock>
-                                            <TextBlock Text="{Binding Description}"
-                                                       Foreground="{StaticResource TextMutedBrush}"
-                                                       FontSize="13" Margin="12,0,0,0"
-                                                       VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding Usage}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="11" Margin="12,0,0,0"
-                                                       VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Border>
+                        <!-- Slash + Emoji Autocomplete (SubmenuHosts at end of RootGrid) -->
 
                         <!-- Typing Indicator -->
                         <TextBlock Text="{Binding TypingText}"
@@ -1220,8 +742,9 @@
                                    Margin="4,2,0,4"
                                    Visibility="{Binding HasTypingUsers, Converter={StaticResource BoolToVis}}" />
 
+
                         <!-- Text input row -->
-                        <Border Background="{StaticResource BgInputBrush}"
+                        <Border x:Name="TextInputBorder" Background="{StaticResource BgInputBrush}"
                                 CornerRadius="8">
                             <StackPanel>
                                 <!-- Formatting toolbar -->
@@ -1417,18 +940,42 @@
                                     </WrapPanel>
                                 </Border>
 
-                                <!-- Edit mode: fast plain TextBox -->
-                                <TextBox x:Name="MessageInput"
-                                         Style="{StaticResource DarkTextBox}"
-                                         Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
-                                         BorderThickness="0"
-                                         Background="Transparent"
-                                         AcceptsReturn="True"
-                                         TextWrapping="Wrap"
-                                         Padding="12,16"
-                                         MaxHeight="120"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                         PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                <!-- Edit mode: RichTextBox + Emoji button -->
+                                <DockPanel>
+                                    <Button x:Name="EmojiPickerButton" DockPanel.Dock="Right"
+                                            Style="{StaticResource ToolbarButton}"
+                                            Click="EmojiPicker_Click" Focusable="False"
+                                            VerticalAlignment="Top" Margin="0,14,8,0">
+                                        <!-- Smiley face icon -->
+                                        <Viewbox Width="20" Height="20">
+                                            <Canvas Width="20" Height="20">
+                                                <Ellipse Canvas.Left="1" Canvas.Top="1" Width="18" Height="18"
+                                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                         StrokeThickness="1.5" Fill="Transparent" />
+                                                <Ellipse Canvas.Left="6.5" Canvas.Top="7" Width="2" Height="2"
+                                                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                <Ellipse Canvas.Left="11.5" Canvas.Top="7" Width="2" Height="2"
+                                                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                <Path Data="M6,13 Q10,16 14,13"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Fill="Transparent" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <RichTextBox x:Name="MessageInput"
+                                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                                 CaretBrush="{StaticResource TextPrimaryBrush}"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 AcceptsReturn="True"
+                                                 Padding="12,16"
+                                                 FontSize="{Binding Settings.FontSize}"
+                                                 MaxHeight="480"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                 PreviewKeyDown="MessageInput_PreviewKeyDown" />
+                                </DockPanel>
 
                                 <!-- Preview mode: read-only rendered markdown -->
                                 <RichTextBox x:Name="MessagePreview"
@@ -1451,5 +998,208 @@
         </Grid>
 
         </Grid> <!-- /Content -->
+
+        <!-- Emoji Picker (SubmenuHost overlays entire window) -->
+        <controls:SubmenuHost x:Name="EmojiPickerHost"
+                              Grid.RowSpan="2" Panel.ZIndex="15"
+                              IsOpen="{Binding EmojiPicker.IsOpen, Mode=TwoWay}"
+                              PlacementTarget="{Binding ElementName=TextInputBorder}"
+                              ToggleElement="{Binding ElementName=EmojiPickerButton}"
+                              Placement="Top"
+                              SubmenuWidth="435" SubmenuHeight="435"
+                              VerticalOffset="-4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Search bar -->
+                <Border Grid.Row="0" Padding="12,10,12,8"
+                        BorderBrush="#3A3C42" BorderThickness="0,0,0,1">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource ToolbarButton}"
+                                Click="AddCustomEmoji_Click" Focusable="False"
+                                ToolTip="Upload custom emoji"
+                                Margin="4,0,0,0" Padding="4" VerticalAlignment="Center">
+                            <Viewbox Width="16" Height="16">
+                                <Canvas Width="14" Height="14">
+                                    <Line X1="7" Y1="2" X2="7" Y2="12"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    <Line X1="2" Y1="7" X2="12" Y2="7"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Canvas>
+                            </Viewbox>
+                        </Button>
+                        <TextBox x:Name="EmojiSearchBox"
+                                 Style="{StaticResource EmojiSearchTextBox}"
+                                 TextChanged="EmojiSearch_TextChanged" />
+                    </DockPanel>
+                </Border>
+
+                <!-- Sidebar + emoji grid -->
+                <DockPanel Grid.Row="1">
+                    <Border DockPanel.Dock="Left" Background="{StaticResource BgDarkestBrush}"
+                            BorderBrush="#3A3C42" BorderThickness="0,0,1,0" Padding="4">
+                        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="CategorySidebar" Width="36" />
+                        </ScrollViewer>
+                    </Border>
+                    <ScrollViewer x:Name="EmojiScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="EmojiGridPanel" Margin="8,4,8,8" />
+                    </ScrollViewer>
+                </DockPanel>
+
+                <!-- Preview panel -->
+                <Border Grid.Row="2" Background="{StaticResource BgDarkestBrush}"
+                        BorderBrush="#3A3C42" BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,8,8"
+                        Padding="12,8" MinHeight="42">
+                    <StackPanel x:Name="EmojiPreviewPanel" Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <Image x:Name="EmojiPreviewImage" Width="28" Height="28"
+                               Stretch="Uniform" Margin="0,0,8,0" />
+                        <TextBlock x:Name="EmojiPreviewName"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="13" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </controls:SubmenuHost>
+
+        <!-- Slash Command Autocomplete Submenu -->
+        <controls:SubmenuHost x:Name="SlashAutocompleteHost"
+                              Grid.RowSpan="2" Panel.ZIndex="13"
+                              Background="{StaticResource BgDarkBrush}"
+                              IsOpen="{Binding SlashAutocomplete.IsOpen, Mode=TwoWay}"
+                              PlacementTarget="{Binding ElementName=TextInputBorder}"
+                              Placement="Top"
+                              SubmenuMaxHeight="{Binding SlashAutocomplete.MaxHeight}"
+                              VerticalOffset="-4">
+            <ListBox x:Name="SlashSuggestionList"
+                     ItemsSource="{Binding SlashAutocomplete.Suggestions}"
+                     SelectedIndex="{Binding SlashAutocomplete.SelectedIndex, Mode=TwoWay}"
+                     Focusable="False"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="6,4,6,4"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     PreviewMouseLeftButtonDown="SlashSuggestionList_PreviewMouseLeftButtonDown">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Padding" Value="12,6" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="4">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Foreground="{StaticResource AccentBlueBrush}"
+                                       FontWeight="SemiBold" FontSize="14"
+                                       VerticalAlignment="Center">
+                                <Run Text="/" /><Run Text="{Binding Name, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Text="{Binding Description}"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="13" Margin="12,0,0,0"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Usage}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="11" Margin="12,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </controls:SubmenuHost>
+
+        <!-- Emoji Autocomplete Submenu -->
+        <controls:SubmenuHost x:Name="EmojiAutocompleteHost"
+                              Grid.RowSpan="2" Panel.ZIndex="14"
+                              Background="{StaticResource BgInputBrush}"
+                              IsOpen="{Binding EmojiAutocomplete.IsOpen, Mode=TwoWay}"
+                              PlacementTarget="{Binding ElementName=TextInputBorder}"
+                              Placement="Top"
+                              SubmenuMaxHeight="{Binding EmojiAutocomplete.MaxHeight}"
+                              VerticalOffset="-4">
+            <ListBox x:Name="EmojiSuggestionList"
+                     ItemsSource="{Binding EmojiAutocomplete.Suggestions}"
+                     SelectedIndex="{Binding EmojiAutocomplete.SelectedIndex, Mode=TwoWay}"
+                     Focusable="False"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="6,4,6,4"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     PreviewMouseLeftButtonDown="EmojiSuggestionList_PreviewMouseLeftButtonDown">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Padding" Value="8,4" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="4">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#35373C" />
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#4752C4" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{Binding Image}" Width="20" Height="20"
+                                   Stretch="Uniform" Margin="0,0,8,0"
+                                   VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CommandName}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="{Binding DataContext.Settings.FontSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </controls:SubmenuHost>
     </Grid>
 </Window>

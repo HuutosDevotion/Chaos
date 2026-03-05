@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
@@ -25,6 +26,8 @@ public class MessageViewModel : INotifyPropertyChanged
             ? Message.ImageUrl
             : $"{_baseUrl}{Message.ImageUrl}";
     public bool HasImage => Message.HasImage;
+    public int? ImageWidth => Message.ImageWidth;
+    public int? ImageHeight => Message.ImageHeight;
     public int ChannelId => Message.ChannelId;
 
     public bool ShowHeader
@@ -130,6 +133,10 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ChatService _chatService = new();
     private readonly VoiceService _voiceService = new();
     private readonly IKeyValueStore _settingsStore;
+    public EmojiService EmojiService { get; } = new();
+    public EmojiPickerViewModel EmojiPicker { get; } = new();
+    public EmojiAutocompleteViewModel EmojiAutocomplete { get; } = new();
+    public SlashAutocompleteViewModel SlashAutocomplete { get; } = new();
     private readonly DispatcherTimer _settingsSaveTimer;
     private readonly Dictionary<int, DateTime> _remoteLastSpoke = new();
     private readonly DispatcherTimer _remoteSpeakingTimer;
@@ -159,19 +166,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private byte[]? _pendingImageData;
     private string _pendingImageFilename = string.Empty;
     private BitmapSource? _pendingImagePreview;
-    private List<SlashCommandDto> _allCommands = new();
-    private int _selectedSuggestionIndex = -1;
-    private bool _showSlashSuggestions;
     private readonly Dictionary<string, DateTime> _typingUsers = new();
     private readonly System.Timers.Timer _typingCleanupTimer = new(1000) { AutoReset = true };
     private DateTime _lastTypingSent = DateTime.MinValue;
     private string _typingText = string.Empty;
 
-    private object? _activeModal;
+    private SubmenuViewModel? _activeModal;
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public ObservableCollection<MessageViewModel> Messages { get; } = new();
-    public ObservableCollection<SlashCommandDto> SlashSuggestions { get; } = new();
     public ObservableCollection<string> ConnectedUsers { get; } = new();
 
     public string ServerAddress
@@ -201,7 +204,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             _messageText = value;
             OnPropertyChanged();
-            UpdateSlashSuggestions(value);
+            SlashAutocomplete.Update(value);
             if (!string.IsNullOrEmpty(value) && _selectedTextChannel is not null && IsConnected)
             {
                 var now = DateTime.UtcNow;
@@ -214,19 +217,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    public bool ShowSlashSuggestions
-    {
-        get => _showSlashSuggestions;
-        set { _showSlashSuggestions = value; OnPropertyChanged(); }
-    }
 
-    public int SelectedSuggestionIndex
-    {
-        get => _selectedSuggestionIndex;
-        set { _selectedSuggestionIndex = value; OnPropertyChanged(); }
-    }
 
-    public object? ActiveModal
+    public SubmenuViewModel? ActiveModal
     {
         get => _activeModal;
         private set { _activeModal = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsAnyModalOpen)); OnPropertyChanged(nameof(IsImagePreviewOpen)); }
@@ -235,8 +228,33 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool IsImagePreviewOpen => _activeModal is ImagePreviewModalViewModel;
     public bool IsAnyModalOpen => _activeModal is not null;
 
-    public void CloseModal() => ActiveModal = null;
-    public void OpenModal(object modal) => ActiveModal = modal;
+    public void CloseModal()
+    {
+        if (_activeModal is not null)
+        {
+            _activeModal.PropertyChanged -= OnModalPropertyChanged;
+            _activeModal.Close();
+        }
+        ActiveModal = null;
+    }
+
+    public void OpenModal(SubmenuViewModel modal)
+    {
+        if (_activeModal is not null)
+            _activeModal.PropertyChanged -= OnModalPropertyChanged;
+        modal.Open();
+        modal.PropertyChanged += OnModalPropertyChanged;
+        ActiveModal = modal;
+    }
+
+    private void OnModalPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SubmenuViewModel.IsOpen) && sender is SubmenuViewModel vm && !vm.IsOpen)
+        {
+            vm.PropertyChanged -= OnModalPropertyChanged;
+            ActiveModal = null;
+        }
+    }
 
     public string ConnectionStatus
     {
@@ -320,37 +338,13 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ICommand ClearPendingImageCommand => new RelayCommand(_ => ClearPendingImage());
 
-    private void UpdateSlashSuggestions(string text)
-    {
-        SlashSuggestions.Clear();
-        SelectedSuggestionIndex = -1;
+    // Emoji suggestion support
+    public void UpdateEmojiSuggestions(string text, int cursorPos)
+        => EmojiAutocomplete.Update(text, cursorPos, EmojiService, SlashAutocomplete.IsOpen, SafeDispatch);
 
-        foreach (var cmd in SlashCommandFilter.Filter(_allCommands, text))
-            SlashSuggestions.Add(cmd);
+    public void DismissEmojiSuggestions() => EmojiAutocomplete.Dismiss();
 
-        ShowSlashSuggestions = SlashSuggestions.Count > 0;
-    }
-
-    public void SelectSuggestion(SlashCommandDto cmd)
-    {
-        MessageText = $"/{cmd.Name} ";
-        SelectedSuggestionIndex = -1;
-    }
-
-    public void DismissSuggestions()
-    {
-        ShowSlashSuggestions = false;
-        SelectedSuggestionIndex = -1;
-    }
-
-    public void NavigateSuggestions(int direction)
-    {
-        if (SlashSuggestions.Count == 0) return;
-        int next = SelectedSuggestionIndex + direction;
-        if (next < 0) next = SlashSuggestions.Count - 1;
-        else if (next >= SlashSuggestions.Count) next = 0;
-        SelectedSuggestionIndex = next;
-    }
+    public void NavigateEmojiSuggestions(int direction) => EmojiAutocomplete.Navigate(direction);
 
     public string MuteButtonText => IsMuted ? "\U0001F507" : "\U0001F3A4";
     public string MuteTooltipText => IsMuted ? "Unmute" : "Mute";
@@ -408,14 +402,15 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         Settings = new AppSettings
         {
-            FontSize        = _settingsStore.Get("FontSize",        14.0),
-            MessageSpacing  = _settingsStore.Get("MessageSpacing",  4.0),
-            UiScale         = _settingsStore.Get("UiScale",         1.0),
-            GroupMessages   = _settingsStore.Get("GroupMessages",   false),
-            InputDevice     = _settingsStore.Get("InputDevice",     "Default"),
-            OutputDevice    = _settingsStore.Get("OutputDevice",    "Default"),
-            InputVolume     = _settingsStore.Get("InputVolume",     1.0f),
-            OutputVolume    = _settingsStore.Get("OutputVolume",    1.0f),
+            FontSize              = _settingsStore.Get("FontSize",              14.0),
+            MessageSpacing        = _settingsStore.Get("MessageSpacing",        4.0),
+            UiScale               = _settingsStore.Get("UiScale",              1.0),
+            GroupMessages         = _settingsStore.Get("GroupMessages",         false),
+            ShowFormattingToolbar = _settingsStore.Get("ShowFormattingToolbar", false),
+            InputDevice           = _settingsStore.Get("InputDevice",           "Default"),
+            OutputDevice          = _settingsStore.Get("OutputDevice",          "Default"),
+            InputVolume           = _settingsStore.Get("InputVolume",           1.0f),
+            OutputVolume          = _settingsStore.Get("OutputVolume",          1.0f),
         };
 
         _username = _settingsStore.Get("Username", string.Empty);
@@ -464,6 +459,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _chatService.ChannelDeleted += OnChannelDeleted;
         _chatService.ChannelRenamed += OnChannelRenamed;
         _chatService.UserTyping += OnUserTyping;
+        _chatService.EmojiAdded += OnEmojiAdded;
         _typingCleanupTimer.Elapsed += (_, _) => CleanupTypingUsers();
         _typingCleanupTimer.Start();
         _voiceService.MicLevelChanged += level =>
@@ -535,6 +531,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (e.PropertyName == nameof(AppSettings.MicThreshold))
                 _voiceService.MicThreshold = Settings.MicThreshold;
         };
+
+        // Load emoji metadata + disk-cached images at startup (no network needed)
+        EmojiService.Initialize(_username, _settingsStore);
     }
 
     private static void SafeDispatch(Action action)
@@ -596,7 +595,8 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             var channels = await _chatService.GetChannels();
             var voiceMembers = await _chatService.GetAllVoiceMembers();
             var connectedUsers = await _chatService.GetConnectedUsers();
-            _allCommands = await _chatService.GetAvailableCommandsAsync();
+            SlashAutocomplete.SetCommands(await _chatService.GetAvailableCommandsAsync());
+            await EmojiService.SyncWithServerAsync(_chatService);
 
             SafeDispatch(() =>
             {
@@ -740,14 +740,24 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         if (_pendingImageData is not null)
         {
+            int? w = _pendingImagePreview?.PixelWidth;
+            int? h = _pendingImagePreview?.PixelHeight;
             var url = await _chatService.UploadImageAsync(_pendingImageData, _pendingImageFilename);
             if (url is not null)
-                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url);
+                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url, w, h);
             ClearPendingImage();
         }
 
         if (!string.IsNullOrWhiteSpace(MessageText))
         {
+            // Track emoji usage before sending
+            var emojiMatches = System.Text.RegularExpressions.Regex.Matches(
+                MessageText, @":([A-Za-z0-9_]+(?:~\d+)?):");
+            foreach (System.Text.RegularExpressions.Match match in emojiMatches)
+            {
+                EmojiService.TrackUsage(match.Groups[1].Value);
+            }
+
             await _chatService.SendMessage(_selectedTextChannel.Id, MessageText, null);
             MessageText = string.Empty;
         }
@@ -876,10 +886,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OpenCreateChannelModal()
     {
-        ActiveModal = new CreateChannelModalViewModel(
+        OpenModal(new CreateChannelModalViewModel(
             confirm: async (name, type) =>
             {
-                ActiveModal = null;
                 var dto = await _chatService.CreateChannelAsync(name, type);
                 if (dto?.Type == ChannelType.Text)
                 {
@@ -887,41 +896,62 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     if (channel is not null)
                         SelectedTextChannel = channel;
                 }
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenRenameChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        ActiveModal = new RenameChannelModalViewModel(
+        OpenModal(new RenameChannelModalViewModel(
             initialName: channel.Name,
             confirm: async name =>
             {
-                ActiveModal = null;
                 await _chatService.RenameChannelAsync(channel.Id, name);
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenDeleteChannelModal(ChannelViewModel? channel)
     {
         if (channel is null) return;
-        ActiveModal = new DeleteChannelModalViewModel(
+        OpenModal(new DeleteChannelModalViewModel(
             channelName: channel.Name,
             confirm: async () =>
             {
-                ActiveModal = null;
                 await _chatService.DeleteChannelAsync(channel.Id);
-            },
-            cancel: () => ActiveModal = null);
+            }));
     }
 
     private void OpenSettingsModal() =>
-        ActiveModal = new SettingsModalViewModel(Settings, () => ActiveModal = null);
+        OpenModal(new SettingsModalViewModel(Settings));
 
     public void OpenImagePreviewModal(string imageUrl) =>
-        ActiveModal = new ImagePreviewModalViewModel(imageUrl);
+        OpenModal(new ImagePreviewModalViewModel(imageUrl));
+
+    private void OnEmojiAdded(EmojiDto dto)
+    {
+        _ = Task.Run(async () => await EmojiService.AddEmojiAsync(dto));
+    }
+
+    public void OpenEmojiUploaderModal(byte[] imageData, string filename)
+    {
+        OpenModal(new EmojiUploaderViewModel(imageData, filename,
+            async (croppedBytes, extension, emojiName) =>
+            {
+                var fileName = await _chatService.UploadCustomEmojiImageAsync(croppedBytes, extension);
+                if (fileName is null)
+                    return "Failed to upload image to server.";
+
+                try
+                {
+                    await _chatService.RegisterCustomEmojiAsync(emojiName, fileName);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return ex.Message;
+                }
+            }));
+    }
 
     private void OnChannelCreated(ChannelDto dto)
     {
@@ -1011,8 +1041,9 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsStore.Set("FontSize",       Settings.FontSize);
         _settingsStore.Set("MessageSpacing", Settings.MessageSpacing);
         _settingsStore.Set("UiScale",        Settings.UiScale);
-        _settingsStore.Set("GroupMessages",  Settings.GroupMessages);
-        _settingsStore.Set("InputDevice",    Settings.InputDevice);
+        _settingsStore.Set("GroupMessages",         Settings.GroupMessages);
+        _settingsStore.Set("ShowFormattingToolbar", Settings.ShowFormattingToolbar);
+        _settingsStore.Set("InputDevice",           Settings.InputDevice);
         _settingsStore.Set("OutputDevice",   Settings.OutputDevice);
         _settingsStore.Set("InputVolume",    Settings.InputVolume);
         _settingsStore.Set("OutputVolume",   Settings.OutputVolume);
@@ -1042,6 +1073,7 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
+
 
 public class RelayCommand : ICommand
 {

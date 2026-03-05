@@ -23,6 +23,7 @@ public class ChatService : IAsyncDisposable
     public event Action<int>? ChannelDeleted;
     public event Action<ChannelDto>? ChannelRenamed;
     public event Action<int, string>? UserTyping; // channelId, username
+    public event Action<EmojiDto>? EmojiAdded;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
 
@@ -60,6 +61,7 @@ public class ChatService : IAsyncDisposable
         _connection.On<int>("ChannelDeleted", id => ChannelDeleted?.Invoke(id));
         _connection.On<ChannelDto>("ChannelRenamed", dto => ChannelRenamed?.Invoke(dto));
         _connection.On<int, string>("UserTyping", (channelId, username) => UserTyping?.Invoke(channelId, username));
+        _connection.On<EmojiDto>("EmojiAdded", dto => EmojiAdded?.Invoke(dto));
 
         _connection.Closed += _ =>
         {
@@ -80,6 +82,13 @@ public class ChatService : IAsyncDisposable
     {
         if (_connection is not null)
             return await _connection.InvokeAsync<List<SlashCommandDto>>("GetAvailableCommands");
+        return new();
+    }
+
+    public async Task<List<EmojiDto>> GetEmojisAsync()
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<List<EmojiDto>>("GetEmojis");
         return new();
     }
 
@@ -149,15 +158,50 @@ public class ChatService : IAsyncDisposable
         }
     }
 
+    public async Task<string?> UploadCustomEmojiImageAsync(byte[] fileData, string extension)
+    {
+        try
+        {
+            using var http = new HttpClient();
+            http.Timeout = TimeSpan.FromSeconds(30);
+            using var content = new MultipartFormDataContent();
+            var safeFilename = $"emoji{extension}";
+            var fileContent = new ByteArrayContent(fileData);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                extension == ".gif" ? "image/gif" : "image/png");
+            content.Add(fileContent, "file", safeFilename);
+            var response = await http.PostAsync($"{_baseUrl}/api/emoji/upload", content);
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return doc.RootElement.GetProperty("fileName").GetString();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[EmojiUpload] FAILED: {ex}");
+            return null;
+        }
+    }
+
+    public async Task<EmojiDto?> RegisterCustomEmojiAsync(string name, string fileName)
+    {
+        if (_connection is not null)
+            return await _connection.InvokeAsync<EmojiDto>("UploadCustomEmoji", name, fileName);
+        return null;
+    }
+
     public async Task StartTypingAsync(int channelId)
     {
         if (_connection is not null)
             await _connection.InvokeAsync("StartTyping", channelId);
     }
 
-    public async Task SendMessage(int channelId, string content, string? imageUrl = null)
+    public async Task SendMessage(int channelId, string content, string? imageUrl = null,
+                                  int? imageWidth = null, int? imageHeight = null)
     {
-        if (_connection is not null)
+        if (_connection is null) return;
+        if (imageUrl is not null && imageWidth.HasValue && imageHeight.HasValue)
+            await _connection.InvokeAsync("SendImageMessage", channelId, content, imageUrl, imageWidth.Value, imageHeight.Value);
+        else
             await _connection.InvokeAsync("SendMessage", channelId, content, imageUrl);
     }
 

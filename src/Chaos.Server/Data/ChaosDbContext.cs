@@ -11,6 +11,7 @@ public class ChaosDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Channel> Channels => Set<Channel>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<Emoji> Emojis => Set<Emoji>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

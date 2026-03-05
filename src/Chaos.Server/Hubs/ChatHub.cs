@@ -43,6 +43,17 @@ public class ChatHub : Hub
 
     public List<SlashCommandDto> GetAvailableCommands() => _commandDispatcher.GetCommandInfos();
 
+    public async Task<List<EmojiDto>> GetEmojis()
+    {
+        return await _db.Emojis.Select(e => new EmojiDto
+        {
+            Id = e.Id,
+            Name = e.Name,
+            Category = e.Category,
+            FileName = e.FileName
+        }).ToListAsync();
+    }
+
     public async Task<List<ChannelDto>> GetChannels()
     {
         return await _db.Channels.Select(c => new ChannelDto
@@ -67,7 +78,9 @@ public class ChatHub : Hub
                 Author = m.Author,
                 Content = m.Content,
                 Timestamp = m.Timestamp,
-                ImageUrl = m.ImageUrl
+                ImageUrl = m.ImageUrl,
+                ImageWidth = m.ImageWidth,
+                ImageHeight = m.ImageHeight
             })
             .ToListAsync();
     }
@@ -129,6 +142,18 @@ public class ChatHub : Hub
 
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)
     {
+        await SendMessageCore(channelId, content, imageUrl, null, null);
+    }
+
+    public async Task SendImageMessage(int channelId, string content, string imageUrl,
+                                       int imageWidth, int imageHeight)
+    {
+        await SendMessageCore(channelId, content, imageUrl, imageWidth, imageHeight);
+    }
+
+    private async Task SendMessageCore(int channelId, string content, string? imageUrl,
+                                       int? imageWidth, int? imageHeight)
+    {
         if (!_users.TryGetValue(Context.ConnectionId, out var user))
             return;
 
@@ -146,7 +171,9 @@ public class ChatHub : Hub
             Author = user.Username,
             Content = content,
             Timestamp = DateTime.UtcNow,
-            ImageUrl = imageUrl
+            ImageUrl = imageUrl,
+            ImageWidth = imageWidth,
+            ImageHeight = imageHeight
         };
 
         _db.Messages.Add(message);
@@ -159,7 +186,9 @@ public class ChatHub : Hub
             Author = message.Author,
             Content = message.Content,
             Timestamp = message.Timestamp,
-            ImageUrl = message.ImageUrl
+            ImageUrl = message.ImageUrl,
+            ImageWidth = message.ImageWidth,
+            ImageHeight = message.ImageHeight
         };
 
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);
@@ -184,6 +213,30 @@ public class ChatHub : Hub
                 Username = u.Username,
                 VoiceUserId = u.VoiceUserId
             }).ToList());
+    }
+
+    public async Task<EmojiDto> UploadCustomEmoji(string name, string fileName)
+    {
+        name = name.Trim();
+        if (string.IsNullOrEmpty(name))
+            throw new HubException("Emoji name cannot be empty.");
+
+        var existing = await _db.Emojis.FirstOrDefaultAsync(e => e.Name == name);
+        if (existing is not null)
+        {
+            existing.FileName = fileName;
+            existing.Category = "Custom";
+        }
+        else
+        {
+            existing = new Emoji { Name = name, Category = "Custom", FileName = fileName };
+            _db.Emojis.Add(existing);
+        }
+        await _db.SaveChangesAsync();
+
+        var dto = new EmojiDto { Id = existing.Id, Name = existing.Name, Category = existing.Category, FileName = existing.FileName };
+        await Clients.All.SendAsync("EmojiAdded", dto);
+        return dto;
     }
 
     public async Task<ChannelDto> CreateChannel(string name, ChannelType type)
