@@ -195,9 +195,13 @@ public class ChatService : IAsyncDisposable
             await _connection.InvokeAsync("StartTyping", channelId);
     }
 
-    public async Task SendMessage(int channelId, string content, string? imageUrl = null)
+    public async Task SendMessage(int channelId, string content, string? imageUrl = null,
+                                  int? imageWidth = null, int? imageHeight = null)
     {
-        if (_connection is not null)
+        if (_connection is null) return;
+        if (imageUrl is not null && imageWidth.HasValue && imageHeight.HasValue)
+            await _connection.InvokeAsync("SendImageMessage", channelId, content, imageUrl, imageWidth.Value, imageHeight.Value);
+        else
             await _connection.InvokeAsync("SendMessage", channelId, content, imageUrl);
     }
 

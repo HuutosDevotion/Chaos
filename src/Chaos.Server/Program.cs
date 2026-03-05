@@ -58,6 +58,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ChaosDbContext>();
     db.Database.EnsureCreated();
+    // Add columns for existing databases (safe to re-run; EnsureCreated won't alter existing tables)
+    try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Messages ADD COLUMN ImageWidth INTEGER"); } catch { }
+    try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Messages ADD COLUMN ImageHeight INTEGER"); } catch { }
     await EmojiSeeder.SeedAsync(db, builder.Environment.ContentRootPath);
 }
 

@@ -78,7 +78,9 @@ public class ChatHub : Hub
                 Author = m.Author,
                 Content = m.Content,
                 Timestamp = m.Timestamp,
-                ImageUrl = m.ImageUrl
+                ImageUrl = m.ImageUrl,
+                ImageWidth = m.ImageWidth,
+                ImageHeight = m.ImageHeight
             })
             .ToListAsync();
     }
@@ -140,6 +142,18 @@ public class ChatHub : Hub
 
     public async Task SendMessage(int channelId, string content, string? imageUrl = null)
     {
+        await SendMessageCore(channelId, content, imageUrl, null, null);
+    }
+
+    public async Task SendImageMessage(int channelId, string content, string imageUrl,
+                                       int imageWidth, int imageHeight)
+    {
+        await SendMessageCore(channelId, content, imageUrl, imageWidth, imageHeight);
+    }
+
+    private async Task SendMessageCore(int channelId, string content, string? imageUrl,
+                                       int? imageWidth, int? imageHeight)
+    {
         if (!_users.TryGetValue(Context.ConnectionId, out var user))
             return;
 
@@ -157,7 +171,9 @@ public class ChatHub : Hub
             Author = user.Username,
             Content = content,
             Timestamp = DateTime.UtcNow,
-            ImageUrl = imageUrl
+            ImageUrl = imageUrl,
+            ImageWidth = imageWidth,
+            ImageHeight = imageHeight
         };
 
         _db.Messages.Add(message);
@@ -170,7 +186,9 @@ public class ChatHub : Hub
             Author = message.Author,
             Content = message.Content,
             Timestamp = message.Timestamp,
-            ImageUrl = message.ImageUrl
+            ImageUrl = message.ImageUrl,
+            ImageWidth = message.ImageWidth,
+            ImageHeight = message.ImageHeight
         };
 
         await Clients.Group($"text_{channelId}").SendAsync("ReceiveMessage", dto);

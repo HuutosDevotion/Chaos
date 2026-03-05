@@ -356,7 +356,7 @@ public partial class MainWindow : Window
                     {
                         var bmp = await vm.EmojiService.GetImageAsync(emoji);
                         if (bmp is not null)
-                            Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
+                            Application.Current?.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => img.Source = bmp);
                     });
                 }
 
@@ -583,8 +583,12 @@ public partial class MainWindow : Window
                 chatScroll = FindScrollViewer(MessageList);
                 if (chatScroll is null) return;
 
-                chatScroll.ScrollChanged += (_, _) =>
+                chatScroll.ScrollChanged += (_, e) =>
+                {
+                    if (atBottom && e.ExtentHeightChange > 0)
+                        chatScroll.ScrollToBottom();
                     atBottom = chatScroll.VerticalOffset >= chatScroll.ScrollableHeight - 50;
+                };
 
                 chatScroll.SizeChanged += (_, _) =>
                     { if (atBottom) chatScroll.ScrollToBottom(); };
@@ -1936,7 +1940,26 @@ public partial class MainWindow : Window
         if (msg.HasImage && msg.ImageUrl is not null)
         {
             var imageUrl = msg.ImageUrl;
-            var placeholder = new Paragraph(new Run("Loading image...") { Foreground = muted, FontStyle = FontStyles.Italic })
+
+            // Calculate display size from known dimensions, clamped to 400x300
+            double displayW = 300, displayH = 200; // fallback for old messages without dimensions
+            if (msg.ImageWidth is > 0 && msg.ImageHeight is > 0)
+            {
+                displayW = msg.ImageWidth.Value;
+                displayH = msg.ImageHeight.Value;
+                double scale = Math.Min(400.0 / displayW, 300.0 / displayH);
+                if (scale < 1.0) { displayW *= scale; displayH *= scale; }
+            }
+
+            // Pre-sized placeholder so layout space is reserved immediately
+            var placeholderRect = new System.Windows.Shapes.Rectangle
+            {
+                Width = displayW, Height = displayH,
+                Fill = (Brush)FindResource("BgDarkBrush"),
+                RadiusX = 4, RadiusY = 4,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            var placeholder = new Paragraph(new InlineUIContainer(placeholderRect))
                               { Margin = new Thickness(16, 4, 16, 0) };
             doc.Blocks.Add(placeholder);
 
@@ -1955,7 +1978,7 @@ public partial class MainWindow : Window
                         bmp.EndInit();
                         bmp.Freeze();
 
-                        var img = new Image { Source = bmp, MaxWidth = 400, MaxHeight = 300,
+                        var img = new Image { Source = bmp, Width = displayW, Height = displayH,
                                       Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left,
                                       Cursor = Cursors.Hand, Tag = msg.ImageUrl };
                         var p = new Paragraph(new InlineUIContainer(img)) { Margin = new Thickness(16, 4, 16, 0) };
@@ -1967,7 +1990,11 @@ public partial class MainWindow : Window
                 {
                     Dispatcher.Invoke(() =>
                     {
-                        ((Run)placeholder.Inlines.FirstInline).Text = "Failed to load image";
+                        placeholderRect.Visibility = Visibility.Collapsed;
+                        var errorPara = new Paragraph(new Run("Failed to load image") { Foreground = muted, FontStyle = FontStyles.Italic })
+                                        { Margin = new Thickness(16, 4, 16, 0) };
+                        doc.Blocks.InsertAfter(placeholder, errorPara);
+                        doc.Blocks.Remove(placeholder);
                     });
                 }
             });
@@ -2427,7 +2454,7 @@ internal static class MarkdownRenderer
             {
                 var bmp = await emojiService.GetImageAsync(emoji);
                 if (bmp is not null)
-                    Application.Current?.Dispatcher.Invoke(() => img.Source = bmp);
+                    Application.Current?.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => img.Source = bmp);
             });
         }
 

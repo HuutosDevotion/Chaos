@@ -26,6 +26,8 @@ public class MessageViewModel : INotifyPropertyChanged
             ? Message.ImageUrl
             : $"{_baseUrl}{Message.ImageUrl}";
     public bool HasImage => Message.HasImage;
+    public int? ImageWidth => Message.ImageWidth;
+    public int? ImageHeight => Message.ImageHeight;
     public int ChannelId => Message.ChannelId;
 
     public bool ShowHeader
@@ -738,9 +740,11 @@ public class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         if (_pendingImageData is not null)
         {
+            int? w = _pendingImagePreview?.PixelWidth;
+            int? h = _pendingImagePreview?.PixelHeight;
             var url = await _chatService.UploadImageAsync(_pendingImageData, _pendingImageFilename);
             if (url is not null)
-                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url);
+                await _chatService.SendMessage(_selectedTextChannel.Id, string.Empty, url, w, h);
             ClearPendingImage();
         }
 

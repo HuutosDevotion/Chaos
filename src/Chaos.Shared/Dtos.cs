@@ -21,6 +21,8 @@ public class MessageDto
     public string Content { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; }
     public string? ImageUrl { get; set; }
+    public int? ImageWidth { get; set; }
+    public int? ImageHeight { get; set; }
     public bool HasImage => !string.IsNullOrEmpty(ImageUrl);
 }
 
