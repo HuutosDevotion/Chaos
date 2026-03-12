@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using Chaos.Client.Audio;
 using NAudio.Wave;
 
 namespace Chaos.Client.Services;
@@ -9,9 +10,18 @@ public class VoiceService : IDisposable
     private WaveInEvent? _waveIn;
     private readonly Dictionary<int, (WaveOutEvent WaveOut, BufferedWaveProvider Provider)> _userStreams = new();
     private readonly Dictionary<int, float> _userVolumes = new();
+    private readonly Dictionary<int, OpusCodec> _decoders = new();
+    private readonly Dictionary<int, JitterBuffer> _jitterBuffers = new();
     private UdpClient? _udpClient;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
+    private Timer? _playbackTimer;
+
+    private OpusCodec? _encoder;
+    private short[] _pcmAccumulator = new short[OpusCodec.FrameSize];
+    private int _pcmAccumulatorPos;
+    private byte[] _opusBuffer = new byte[4000]; // max opus output
+    private ushort _seqNum;
 
     private int _userId;
     private int _channelId;
@@ -21,15 +31,13 @@ public class VoiceService : IDisposable
     private bool _isDeafened;
     private bool _isActive;
 
+    // Noise gate / PTT integration points
+    private Func<short[], int, bool>? _transmitGate; // returns true if should transmit
+    private Func<bool>? _pttCheck; // returns true if PTT key is held
+
     public string InputDeviceName { get; set; } = "Default";
     public string OutputDeviceName { get; set; } = "Default";
     public float InputVolume { get; set; } = 1.0f;
-    public float MicThreshold { get; set; } = 0.02f;
-
-    public bool IsGateOpen => _isGateOpen;
-    private bool _isGateOpen;
-    private DateTime _lastAboveThreshold = DateTime.MinValue;
-    private static readonly TimeSpan GateHoldTime = TimeSpan.FromSeconds(1);
 
     private float _outputVolume = 1.0f;
     public float OutputVolume
@@ -47,15 +55,12 @@ public class VoiceService : IDisposable
     }
 
     private static readonly byte[] RegistrationMagic = "RGST"u8.ToArray();
-    private static readonly WaveFormat VoiceFormat = new(48000, 16, 1);
-
-    // Pre-buffer: holds last ~3 frames (120ms) to capture speech onset
-    private const int PreBufferFrames = 3;
-    private readonly Queue<byte[]> _preBuffer = new();
+    private static readonly WaveFormat VoiceFormat = new(OpusCodec.SampleRate, 16, OpusCodec.Channels);
 
     public event Action<float>? MicLevelChanged; // 0.0 to 1.0
     public event Action<string>? Error;
     public event Action<int, float>? RemoteAudioLevel; // userId, level (0.0-1.0)
+    public event Action<int, ushort>? PacketReceived; // userId, seqNum (for quality tracking)
 
     public bool IsMuted
     {
@@ -89,19 +94,22 @@ public class VoiceService : IDisposable
 
     public bool IsActive => _isActive;
 
+    public void SetTransmitGate(Func<short[], int, bool>? gate) => _transmitGate = gate;
+    public void SetPttCheck(Func<bool>? check) => _pttCheck = check;
+
     public void Start(string serverHost, int serverPort, int userId, int channelId)
     {
         Stop();
 
         _userId = userId;
         _channelId = channelId;
+        _seqNum = 0;
+        _pcmAccumulatorPos = 0;
 
-        // Resolve server address once upfront
         var ip = ResolveHost(serverHost);
         _serverEndpoint = new IPEndPoint(ip, serverPort);
         System.Diagnostics.Debug.WriteLine($"[Voice] Server endpoint: {_serverEndpoint}");
 
-        // Check for recording devices
         int deviceCount = WaveInEvent.DeviceCount;
         if (deviceCount == 0)
         {
@@ -109,13 +117,12 @@ public class VoiceService : IDisposable
             return;
         }
 
-        // Log available devices
         var defaultDevice = WaveInEvent.GetCapabilities(0);
         System.Diagnostics.Debug.WriteLine($"[Voice] Found {deviceCount} input device(s). Using: {defaultDevice.ProductName}");
 
         _udpClient = new UdpClient(_serverEndpoint.AddressFamily);
 
-        // Send registration packet
+        // Send registration packet: [4B userId][4B channelId][4B magic "RGST"]
         var regPacket = new byte[12];
         BitConverter.GetBytes(userId).CopyTo(regPacket, 0);
         BitConverter.GetBytes(channelId).CopyTo(regPacket, 4);
@@ -124,11 +131,12 @@ public class VoiceService : IDisposable
 
         try
         {
-            // Setup audio capture
+            _encoder = new OpusCodec();
+
             _waveIn = new WaveInEvent
             {
                 WaveFormat = VoiceFormat,
-                BufferMilliseconds = 40,
+                BufferMilliseconds = 20,
                 DeviceNumber = ResolveInputDevice(InputDeviceName)
             };
             _waveIn.DataAvailable += OnDataAvailable;
@@ -138,15 +146,16 @@ public class VoiceService : IDisposable
                     Error?.Invoke($"Recording error: {args.Exception.Message}");
             };
 
-            // Start receiving
             _receiveCts = new CancellationTokenSource();
             _receiveTask = Task.Run(() => ReceiveLoop(_receiveCts.Token));
 
-            // Start capture
+            // 20ms playback timer to drain jitter buffers
+            _playbackTimer = new Timer(PlaybackTimerCallback, null, 0, 20);
+
             if (!_isMuted) _waveIn.StartRecording();
 
             _isActive = true;
-            System.Diagnostics.Debug.WriteLine("[Voice] Started successfully");
+            System.Diagnostics.Debug.WriteLine("[Voice] Started successfully (Opus 48kHz)");
         }
         catch (Exception ex)
         {
@@ -157,8 +166,10 @@ public class VoiceService : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        // Apply input gain and calculate mic level in one pass
+        // Convert bytes to shorts, apply input gain, calculate mic level
+        int sampleCount = e.BytesRecorded / 2;
         float maxSample = 0;
+
         for (int i = 0; i < e.BytesRecorded - 1; i += 2)
         {
             short raw = (short)(e.Buffer[i] | (e.Buffer[i + 1] << 8));
@@ -171,66 +182,53 @@ public class VoiceService : IDisposable
             }
             float abs = Math.Abs(sample / 32768f);
             if (abs > maxSample) maxSample = abs;
-        }
-        MicLevelChanged?.Invoke(maxSample);
 
-        if (_isMuted || _udpClient is null || _serverEndpoint is null)
-            return;
+            // Accumulate into frame buffer
+            _pcmAccumulator[_pcmAccumulatorPos++] = sample;
 
-        // Copy current frame for pre-buffer
-        var frameCopy = new byte[e.BytesRecorded];
-        Buffer.BlockCopy(e.Buffer, 0, frameCopy, 0, e.BytesRecorded);
-
-        bool wasGateOpen = _isGateOpen;
-
-        // Voice gate with hysteresis: open threshold is MicThreshold,
-        // close threshold is 80% of that so slight volume dips don't cut speech
-        float closeThreshold = MicThreshold * 0.8f;
-        if (!_isGateOpen && maxSample >= MicThreshold)
-        {
-            _isGateOpen = true;
-            _lastAboveThreshold = DateTime.UtcNow;
-        }
-        else if (_isGateOpen && maxSample >= closeThreshold)
-        {
-            _lastAboveThreshold = DateTime.UtcNow;
-        }
-        else if (_isGateOpen && (DateTime.UtcNow - _lastAboveThreshold) > GateHoldTime)
-        {
-            _isGateOpen = false;
-        }
-
-        if (!_isGateOpen)
-        {
-            // Gate closed: buffer frames for speech onset capture
-            _preBuffer.Enqueue(frameCopy);
-            while (_preBuffer.Count > PreBufferFrames)
-                _preBuffer.Dequeue();
-            return;
-        }
-
-        // Gate just opened: flush pre-buffer to capture speech onset
-        if (!wasGateOpen)
-        {
-            while (_preBuffer.Count > 0)
+            if (_pcmAccumulatorPos >= OpusCodec.FrameSize)
             {
-                var buffered = _preBuffer.Dequeue();
-                SendAudioFrame(buffered, buffered.Length);
+                ProcessFrame(_pcmAccumulator, OpusCodec.FrameSize);
+                _pcmAccumulatorPos = 0;
             }
         }
 
-        // Send current frame
-        SendAudioFrame(e.Buffer, e.BytesRecorded);
+        MicLevelChanged?.Invoke(maxSample);
     }
 
-    private void SendAudioFrame(byte[] audioData, int length)
+    private void ProcessFrame(short[] pcm, int count)
     {
-        if (_udpClient is null || _serverEndpoint is null) return;
-        var packet = new byte[8 + length];
+        if (_isMuted || _udpClient is null || _serverEndpoint is null || _encoder is null)
+            return;
+
+        // Check PTT if set
+        if (_pttCheck is not null && !_pttCheck())
+            return;
+
+        // Check noise gate if set
+        if (_transmitGate is not null && !_transmitGate(pcm, count))
+            return;
+
+        // Encode with Opus
+        int encodedLen = _encoder.Encode(pcm, _opusBuffer);
+        if (encodedLen <= 0)
+            return;
+
+        // New packet format: [4B userId][4B channelId][2B seqNum][2B opusLen][opusData...]
+        var packet = new byte[12 + encodedLen];
         BitConverter.GetBytes(_userId).CopyTo(packet, 0);
         BitConverter.GetBytes(_channelId).CopyTo(packet, 4);
-        Buffer.BlockCopy(audioData, 0, packet, 8, length);
-        try { _udpClient.Send(packet, packet.Length, _serverEndpoint); } catch { }
+        BitConverter.GetBytes(_seqNum).CopyTo(packet, 8);
+        BitConverter.GetBytes((ushort)encodedLen).CopyTo(packet, 10);
+        Buffer.BlockCopy(_opusBuffer, 0, packet, 12, encodedLen);
+
+        _seqNum++;
+
+        try
+        {
+            _udpClient.Send(packet, packet.Length, _serverEndpoint);
+        }
+        catch { }
     }
 
     private (WaveOutEvent WaveOut, BufferedWaveProvider Provider) GetOrCreateUserStream(int userId)
@@ -246,27 +244,38 @@ public class VoiceService : IDisposable
         return (waveOut, provider);
     }
 
+    private OpusCodec GetOrCreateDecoder(int userId)
+    {
+        if (_decoders.TryGetValue(userId, out var decoder))
+            return decoder;
+        decoder = new OpusCodec();
+        _decoders[userId] = decoder;
+        return decoder;
+    }
+
+    private JitterBuffer GetOrCreateJitterBuffer(int userId)
+    {
+        if (_jitterBuffers.TryGetValue(userId, out var jb))
+            return jb;
+        var decoder = GetOrCreateDecoder(userId);
+        jb = new JitterBuffer(decoder);
+        _jitterBuffers[userId] = jb;
+        return jb;
+    }
+
     public void SetUserVolume(int userId, float volume)
     {
         volume = Math.Clamp(volume, 0f, 1f);
         _userVolumes[userId] = volume;
     }
 
-    // Scales 16-bit PCM samples by volume in-place on a copy, clamping to int16 range.
-    private static byte[] ApplyVolumeToPcm(byte[] buffer, int offset, int length, float volume)
+    private static void ApplyVolumeInPlace(short[] pcm, int count, float volume)
     {
-        var result = new byte[length];
-        for (int i = 0; i < length - 1; i += 2)
+        for (int i = 0; i < count; i++)
         {
-            short sample = (short)(buffer[offset + i] | (buffer[offset + i + 1] << 8));
-            float scaled = sample * volume;
-            if (scaled > 32767f) scaled = 32767f;
-            if (scaled < -32768f) scaled = -32768f;
-            short s = (short)scaled;
-            result[i] = (byte)s;
-            result[i + 1] = (byte)(s >> 8);
+            float scaled = pcm[i] * volume;
+            pcm[i] = (short)Math.Clamp(scaled, short.MinValue, short.MaxValue);
         }
-        return result;
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -276,35 +285,25 @@ public class VoiceService : IDisposable
             try
             {
                 var result = await _udpClient.ReceiveAsync(ct);
-                if (result.Buffer.Length < 8)
+                if (result.Buffer.Length < 12)
                     continue;
 
                 int senderId = BitConverter.ToInt32(result.Buffer, 0);
-                var audioLength = result.Buffer.Length - 8;
+                ushort seqNum = BitConverter.ToUInt16(result.Buffer, 8);
+                ushort opusLen = BitConverter.ToUInt16(result.Buffer, 10);
 
-                // Calculate remote user's audio level
-                if (audioLength > 0)
-                {
-                    float maxSample = 0;
-                    for (int i = 8; i < result.Buffer.Length - 1; i += 2)
-                    {
-                        short sample = (short)(result.Buffer[i] | (result.Buffer[i + 1] << 8));
-                        float abs = Math.Abs(sample / 32768f);
-                        if (abs > maxSample) maxSample = abs;
-                    }
-                    RemoteAudioLevel?.Invoke(senderId, maxSample);
-                }
+                if (result.Buffer.Length < 12 + opusLen)
+                    continue;
 
-                // Play audio
-                if (audioLength > 0 && !_isDeafened)
-                {
-                    var stream = GetOrCreateUserStream(senderId);
-                    float volume = _userVolumes.TryGetValue(senderId, out var vol) ? vol : 1.0f;
-                    var audio = volume == 1.0f
-                        ? result.Buffer[8..]
-                        : ApplyVolumeToPcm(result.Buffer, 8, audioLength, volume);
-                    stream.Provider.AddSamples(audio, 0, audioLength);
-                }
+                // Notify for quality tracking
+                PacketReceived?.Invoke(senderId, seqNum);
+
+                // Extract opus payload and push to jitter buffer
+                var opusData = new byte[opusLen];
+                Buffer.BlockCopy(result.Buffer, 12, opusData, 0, opusLen);
+
+                var jb = GetOrCreateJitterBuffer(senderId);
+                jb.Push(seqNum, opusData);
             }
             catch (OperationCanceledException)
             {
@@ -314,10 +313,45 @@ public class VoiceService : IDisposable
         }
     }
 
+    private void PlaybackTimerCallback(object? state)
+    {
+        if (!_isActive) return;
+
+        foreach (var (userId, jb) in _jitterBuffers)
+        {
+            var pcm = jb.Pop();
+            if (pcm is null)
+                continue;
+
+            // Calculate remote audio level
+            float maxSample = 0;
+            for (int i = 0; i < pcm.Length; i++)
+            {
+                float abs = Math.Abs(pcm[i] / 32768f);
+                if (abs > maxSample) maxSample = abs;
+            }
+            RemoteAudioLevel?.Invoke(userId, maxSample);
+
+            if (_isDeafened) continue;
+
+            // Apply user volume
+            float volume = _userVolumes.TryGetValue(userId, out var vol) ? vol : 1.0f;
+            if (volume != 1.0f)
+                ApplyVolumeInPlace(pcm, pcm.Length, volume);
+
+            var stream = GetOrCreateUserStream(userId);
+            var pcmBytes = new byte[pcm.Length * 2];
+            Buffer.BlockCopy(pcm, 0, pcmBytes, 0, pcmBytes.Length);
+            stream.Provider.AddSamples(pcmBytes, 0, pcmBytes.Length);
+        }
+    }
+
     public void Stop()
     {
         _isActive = false;
         _receiveCts?.Cancel();
+        _playbackTimer?.Dispose();
+        _playbackTimer = null;
 
         try { _waveIn?.StopRecording(); } catch { }
 
@@ -329,14 +363,21 @@ public class VoiceService : IDisposable
         _userStreams.Clear();
         _userVolumes.Clear();
 
+        foreach (var decoder in _decoders.Values)
+            decoder.Dispose();
+        _decoders.Clear();
+        _jitterBuffers.Clear();
+
         _waveIn?.Dispose();
         _udpClient?.Close();
         _udpClient?.Dispose();
+        _encoder?.Dispose();
 
         _waveIn = null;
         _udpClient = null;
         _receiveCts = null;
-        _preBuffer.Clear();
+        _encoder = null;
+        _pcmAccumulatorPos = 0;
     }
 
     public void Dispose()
@@ -369,7 +410,6 @@ public class VoiceService : IDisposable
         if (IPAddress.TryParse(host, out var parsed))
             return parsed;
         var addresses = Dns.GetHostAddresses(host);
-        // Prefer IPv4 to match server's UDP listener
         return addresses.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
             ?? addresses.First();
     }

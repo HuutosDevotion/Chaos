@@ -36,7 +36,7 @@ public class VoiceRelay : BackgroundService
                 var result = await _udpServer.ReceiveAsync(stoppingToken);
                 var data = result.Buffer;
 
-                if (data.Length < 8)
+                if (data.Length < 12)
                     continue;
 
                 int userId = BitConverter.ToInt32(data, 0);
